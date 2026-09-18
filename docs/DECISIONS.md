@@ -242,3 +242,59 @@ Homebrew bundle) plus our root, and the replacing variables point at that. Insta
 refuses to proceed if the bundle cannot be written, rather than setting a variable
 that would break ordinary HTTPS. Tested by `TestBundleContainsSystemRootsAndOurs`
 and by verifying curl still reaches example.com using only that bundle.
+
+---
+
+## D8 — Laravel 13, not 12 (2026-09-18)
+
+`composer create-project laravel/laravel` installs 13.32 today. The build map said
+12 because that was current when it was written. Nothing in this module depends on
+a 12-only behaviour, so we take what ships. PHP is 8.4 via Herd (D4).
+
+---
+
+## D9 — How prompt bodies are stored, and what changes for production (2026-09-18)
+
+**Now.** Prompt and answer text goes to object storage (MinIO locally, S3 in
+production), encrypted with `Crypt::encryptString` — Laravel's application key —
+under a key shaped `tenant/YYYY/MM/DD/<event id>-<kind>.enc`. The database row
+keeps only the object key and the character counts.
+
+**Why not a database column.** Bodies are large and rarely read, and every
+dashboard query would carry them. More importantly, retention means "purge raw
+content after 90 days, keep the derived scores": with the body in object storage
+that is a delete of an object, and the metrics and scores survive untouched.
+
+**Why the tenant is first in the path.** Deleting or expiring one customer's data
+becomes a prefix operation, which is what offboarding and a per-tenant lifecycle
+rule both need.
+
+**What changes before a pilot.** One application key for every tenant is not good
+enough: it is a single secret whose compromise exposes every customer. Production
+uses a per-tenant data key from KMS, decrypted per request and cached briefly in
+memory, with the ciphertext key stored on the `tenants` row. `App\Services\BodyStore`
+is the only class that touches encryption, so this change is confined to it — that
+is why it exists as a class rather than two calls in the controller.
+
+---
+
+## D10 — What the quality score is, and what it is not (2026-09-18)
+
+Six dimensions, equally weighted, each 0-100: clear goal, context given,
+constraints stated, expected output, examples, focus. Every dimension returns a
+plain-English reason, stored alongside the score, and the rubric version is stored
+with every row.
+
+**It is heuristic on purpose, not a model call.** Three reasons: it must be cheap
+enough to run on every interaction; it must be stable, so this month's scores can
+be compared with last month's; and it must not send an employee's prompt to a
+third party to be judged.
+
+**Equal weighting is honest.** Any other weighting would be invented precision.
+
+**Automated follow-ups are not scored.** A tool result the agent fed itself is not
+a prompt a person wrote, and scoring it would drag every average down unfairly.
+
+**It is for coaching, not ranking.** "Your prompts score low on constraints" is
+useful. "You are a 42" is not. That is why every score carries its reasons, and why
+the dashboard (Phase 7) shows them rather than a bare number.

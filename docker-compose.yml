@@ -34,14 +34,16 @@ services:
   # MinIO is an S3-compatible object store. It stands in for AWS S3 locally, so the
   # backend can use the same S3 driver in development and production.
   minio:
-    image: minio/minio:latest
+    # quay.io, not Docker Hub: "minio/minio" on Docker Hub now returns
+    # "pull access denied", so the official image comes from quay.
+    image: quay.io/minio/minio:latest
     container_name: aiul-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: aiul
       MINIO_ROOT_PASSWORD: aiul_dev_password
     ports:
-      - "127.0.0.1:9000:9000" # S3 API
+      - "127.0.0.1:9002:9000" # S3 API — 9002 on the host: ClickHouse already uses 9000
       - "127.0.0.1:9001:9001" # web console
     volumes:
       - minio-data:/data

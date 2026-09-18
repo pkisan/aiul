@@ -23,3 +23,8 @@ spool/
 
 # Local scratch
 *.local
+
+# Laravel
+/backend/storage/framework/cache/data/
+/backend/storage/logs/*.log
+/backend/public/build/

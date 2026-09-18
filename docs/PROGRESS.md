@@ -8,8 +8,8 @@ Last updated: 2026-09-18
 
 **Phase 6 — Backend ingestion + storage (Laravel).**
 
-Task in progress right now: starting the Docker data services and scaffolding the
-Laravel app in /backend.
+Task in progress right now: none. Phase 6 is complete and the milestone is
+verified end to end. Waiting for the owner before Phase 7.
 
 Phase 5 is DONE and verified live. The repo is now on GitHub at
 github.com/pkisan/aiul (private), pushed 2026-09-18 after GitHub push protection
@@ -171,7 +171,7 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Start Docker Desktop, bring up the compose services, scaffold Laravel in /backend.
+Phase 7: the Inertia + Vue dashboard. STOP until the owner confirms.
 
 ## Left — Phase 1
 
@@ -290,15 +290,30 @@ Start Docker Desktop, bring up the compose services, scaffold Laravel in /backen
 
 ## Left — Phase 6
 
-- [ ] Docker services healthy
-- [ ] Laravel 12 scaffolded in /backend
-- [ ] migrations with tenant_id + a global scope
-- [ ] device tokens, hashed at rest
-- [ ] POST /api/aiul/events returning accepted ids
-- [ ] encrypted bodies in MinIO
-- [ ] Horizon scoring job with a rubric version and per-dimension breakdown
-- [ ] feature tests
-- [ ] milestone: an event lands, appears against the right task, gets a score
+- [x] Docker services healthy. Two fixes: `minio/minio` on Docker Hub now returns
+      "pull access denied", so the image comes from `quay.io/minio/minio`; and
+      MinIO's S3 port moved to host 9002 because ClickHouse already owns 9000
+- [x] Laravel 13.32 scaffolded in /backend (D8), pointed at Postgres 5433,
+      Redis 6380, MinIO 9002
+- [x] seven migrations: tenants, devices, ai_sessions, ai_interactions,
+      quality_scores, consent_records, tenant_id on users. `BelongsToTenant`
+      applies a global scope AND stamps tenant_id on insert, so isolation does not
+      depend on anyone remembering a `where`
+- [x] device tokens: `aiul_` + 48 random characters, stored only as a sha256 hash,
+      issued by `php artisan aiul:provision-device`
+- [x] POST /api/aiul/events returns the ids it stored, which is exactly what the
+      agent's forwarder deletes on. Idempotent; one malformed event is rejected
+      without losing the others in the batch
+- [x] bodies encrypted in MinIO under `tenant/YYYY/MM/DD/<event id>-<kind>.enc`;
+      the row keeps only the key (D9)
+- [x] Horizon installed; `ScoreInteraction` scores on the queue with a rubric
+      version and per-dimension reasons (D10)
+- [x] 22 feature tests, run against real Postgres (`aiul_test`) rather than SQLite,
+      because the schema uses jsonb
+- [x] MILESTONE VERIFIED END TO END: an event POSTed with a real device token was
+      accepted, attached to task AIUL-42 and a new session, its body encrypted in
+      MinIO (confirmed unreadable in the bucket), and scored 100 by the queue
+      worker with all six dimensions and their reasons
 
 ## Left — later phases
 
@@ -344,6 +359,9 @@ Files that exist but change no setting and are trusted by nothing:
 | --- | --- | --- |
 | Dev root CA + combined bundle | `~/Library/Application Support/AIUL/dev-ca/` | `rm -rf ~/Library/Application\ Support/AIUL` |
 | Event spool (currently empty) | `~/Library/Application Support/AIUL/spool/` | same |
+
+Docker containers now running (`aiul-postgres`, `aiul-redis`, `aiul-minio`). Stop
+them with `docker compose down`; add `-v` to delete their data too.
 
 
 **Keychain: the owner ran `aiul ca trust` and then `aiul ca untrust` during the
