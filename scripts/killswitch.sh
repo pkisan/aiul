@@ -13,6 +13,7 @@
 #   3. launchctl env vars  the GUI-wide variables set at login
 #   4. /etc/zshenv block   the marked block that sets variables for terminals
 #   5. keychain trust      our dev root CA removed from the System keychain
+#   6. leftovers           the installed binary and the device token
 #
 # It deliberately does NOT delete ~/Library/Application Support/AIUL/dev-ca/, so a
 # CA can be re-trusted later instead of regenerated. Delete that folder by hand if
@@ -64,7 +65,7 @@ say "AI Usage Logger kill switch"
 [ "$DRY_RUN" -eq 1 ] && say "DRY RUN — nothing will be changed."
 
 # ---------------------------------------------------------------------------
-step "1/5  launchd jobs"
+step "1/6  launchd jobs"
 # launchd is macOS's service manager. Unloading a job stops the process and
 # prevents it starting again at boot or login.
 for plist in "$DAEMON_PLIST" "$AGENT_PLIST"; do
@@ -82,7 +83,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-step "2/5  system proxy on every network service"
+step "2/6  system proxy on every network service"
 # networksetup is the macOS command-line tool for network settings. A "network
 # service" is one entry in System Settings > Network: Wi-Fi, Ethernet, a VPN.
 # We turn the proxy off on all of them, because the agent may have set several.
@@ -104,7 +105,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-step "3/5  launchctl environment variables (GUI apps)"
+step "3/6  launchctl environment variables (GUI apps)"
 # launchctl setenv sets a variable for GUI applications launched afterwards.
 # unsetenv removes it. Apps already running keep their copy until restarted.
 console_uid=$(stat -f %u /dev/console 2>/dev/null || echo 0)
@@ -121,7 +122,7 @@ say "   cleared: $ENV_VARS"
 say "   NOTE: already-running apps keep their old copy until you quit and reopen them."
 
 # ---------------------------------------------------------------------------
-step "4/5  /etc/zshenv block (terminals)"
+step "4/6  /etc/zshenv block (terminals)"
 # /etc/zshenv is read by every zsh shell, including non-interactive ones. We only
 # ever write between our two markers, so we can remove exactly our block and
 # leave anything else in the file untouched.
@@ -145,7 +146,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-step "5/5  dev root CA trust in the System keychain"
+step "5/6  dev root CA trust in the System keychain"
 # A certificate in the System keychain marked as trusted is believed by Safari,
 # Chrome, curl and most macOS software. Removing it makes our minted certificates
 # fail again, which is exactly what we want when shutting everything down.
@@ -170,6 +171,22 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+step "6/6  leftovers"
+# The binary installed for the launch daemon, and the device token used to
+# authenticate to the backend.
+if [ -f /usr/local/bin/aiul ]; then
+  run "remove the installed binary" rm -f /usr/local/bin/aiul
+else
+  say "   not present: /usr/local/bin/aiul"
+fi
+
+if security find-generic-password -s com.aiul.agent -a device-token >/dev/null 2>&1; then
+  run "remove the device token from the keychain" security delete-generic-password -s com.aiul.agent -a device-token
+else
+  say "   no device token in the keychain"
+fi
+
+# ---------------------------------------------------------------------------
 say ""
 if [ "$DRY_RUN" -eq 1 ]; then
   say "Dry run finished. Nothing was changed."
@@ -183,5 +200,6 @@ say "  networksetup -getsecurewebproxy Wi-Fi          # Enabled: No"
 say "  launchctl getenv HTTPS_PROXY                   # prints nothing"
 say "  grep -c AIUL /etc/zshenv 2>/dev/null           # 0 or no such file"
 say "  security find-certificate -c 'AIUL Dev Root' /Library/Keychains/System.keychain   # not found"
+say "  ls /usr/local/bin/aiul                        # no such file"
 say "  curl -sI https://example.com >/dev/null && echo 'internet works'"
 exit 0
