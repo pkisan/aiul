@@ -8,8 +8,9 @@ Last updated: 2026-09-18
 
 **Phase 1 — Dev root CA in Go.**
 
-Task in progress right now: `internal/platform` trust interface plus the darwin
-implementation of `aiul ca trust` / `aiul ca untrust`.
+Task in progress right now: none. Phase 1 code is complete and committed. Waiting
+for the owner to run the Safari milestone, which requires their explicit "yes" to
+`aiul ca trust`.
 
 ## Plan for Phase 0
 
@@ -39,25 +40,36 @@ implementation of `aiul ca trust` / `aiul ca untrust`.
 - `internal/ca/ca_test.go` — 7 tests, all passing, including a real TLS handshake
   against a server using a leaf we minted
 
+- `internal/platform`: `TrustInstaller` interface, `trust_darwin.go` (security
+  add-trusted-cert / remove-trusted-cert), linux and windows stubs returning
+  `ErrUnsupported`. Verified the module builds for all three GOOS values.
+- `cmd/aiul/ca.go`: `ca init|info|trust|untrust|demo-server`. trust and untrust
+  print the exact commands and require an explicit yes.
+- Dev CA created on this Mac: `AIUL Dev Root - VWS18s-MacBook-Air.local`,
+  SHA-256 `1D E5 55 8B ...`, key mode confirmed `-rw-------`.
+- Smoke test passed: curl against `aiul ca demo-server` fails without our CA
+  (`SSL certificate problem: self signed certificate in certificate chain`) and
+  succeeds with `--cacert root.crt`. **No keychain change was made.**
+
 ## In progress
 
-- `internal/platform` (TrustInstaller interface + darwin implementation) and the
-  `aiul ca init|trust|untrust|info` commands.
+- Nothing.
 
 ## Next step
 
-Write `internal/platform/platform.go`, `trust_darwin.go`, stubs for linux/windows,
-then wire the `ca` commands in `cmd/aiul`.
+The owner runs the Phase 1 milestone: `aiul ca trust`, load
+https://localhost:8443/ in Safari (no warning), then `aiul ca untrust` and reload
+(warning returns). STOP until the owner confirms and asks for Phase 2.
 
 ## Left — Phase 1
 
 - [x] scripts/killswitch.sh (BEFORE any system change) + dry run verified
 - [x] internal/ca: root creation, load, leaf minting
 - [x] internal/ca unit tests
-- [ ] internal/platform TrustInstaller + darwin impl + linux/windows stubs
-- [ ] `aiul ca init|trust|untrust|info` commands (trust shows the command and asks first)
-- [ ] `aiul ca demo-server` — tiny local HTTPS server on a minted leaf, for the Safari test
-- [ ] Milestone: Safari loads the demo server with no warning after trust, warns again after untrust
+- [x] internal/platform TrustInstaller + darwin impl + linux/windows stubs
+- [x] `aiul ca init|info|trust|untrust` commands (trust shows the command and asks first)
+- [x] `aiul ca demo-server` — tiny local HTTPS server on a minted leaf, for the Safari test
+- [ ] Milestone: Safari loads the demo server with no warning after trust, warns again after untrust (owner runs this)
 
 ## Left — Phase 0
 
@@ -94,6 +106,17 @@ then wire the `ca` commands in `cmd/aiul`.
 
 ## Machine state — settings currently changed on this Mac
 
-**NONE.** No system proxy, no keychain trust, no env vars, no launchd jobs, no /etc/zshenv block.
+No system proxy. **No keychain trust.** No env vars. No launchd jobs. No
+/etc/zshenv block.
 
-Undo commands will be listed here the moment anything changes. From Phase 1 onward, `scripts/killswitch.sh` reverts everything in one command.
+One thing now exists on disk, but changes no setting and is trusted by nothing:
+
+| What | Where | Undo |
+| --- | --- | --- |
+| Dev root CA (cert + key, key 0600) | `~/Library/Application Support/AIUL/dev-ca/` | `rm -rf ~/Library/Application\ Support/AIUL/dev-ca` |
+
+If the owner runs `aiul ca trust`, add a keychain row here immediately, undone by
+`aiul ca untrust` or `sudo ./scripts/killswitch.sh`.
+
+`sudo ./scripts/killswitch.sh` reverts every system change in one command;
+`--dry-run` shows what it would do without changing anything.

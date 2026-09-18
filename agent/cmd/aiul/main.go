@@ -21,6 +21,8 @@ func main() {
 	switch os.Args[1] {
 	case "version":
 		fmt.Printf("aiul %s (%s/%s, %s)\n", version, runtime.GOOS, runtime.GOARCH, runtime.Version())
+	case "ca":
+		os.Exit(cmdCA(os.Args[2:]))
 	default:
 		fmt.Fprintf(os.Stderr, "aiul: unknown command %q\n\n", os.Args[1])
 		usage()
@@ -33,5 +35,7 @@ func usage() {
 
 Usage:
   aiul version    print the version and build platform
+  aiul ca         manage the development certificate authority
+                  (init, info, trust, untrust, demo-server)
 `)
 }
