@@ -173,3 +173,72 @@ have had to understand anyway.
 **Revisit if** HTTP/2 or WebSocket interception turns into more work than expected;
 `golang.org/x/net/http2` (a Go-team package, not a proxy framework) is the first
 thing to reach for then, not goproxy or go-mitmproxy.
+
+---
+
+## D6 — Privilege split: what needs root and what does not (2026-09-18)
+
+Rule: the root-privileged surface stays as small as possible, because this binary
+runs as root on employees' machines and is exactly the shape of thing an attacker
+would like to subvert.
+
+### Needs root
+
+| Action | Why |
+| --- | --- |
+| `networksetup -setsecurewebproxy` on each service | system network settings |
+| Writing `/etc/zshenv` | a file in /etc |
+| Writing `/Library/LaunchDaemons/` and `/Library/LaunchAgents/` | system directories |
+| `security add-trusted-cert -d` (admin trust domain) | machine-wide trust store |
+| Copying the binary to `/usr/local/bin/aiul` | root-owned location |
+
+All of it happens in `aiul install` and `aiul uninstall`, which run once. The
+long-running daemon re-applies the proxy setting when it drifts and removes it when
+unhealthy — the only root work it does while running.
+
+### Does not need root
+
+The proxy itself, minting certificates, parsing, redaction, the spool, and the
+forwarder. These are the parts handling untrusted input — traffic from the network
+— and they are the parts that should not be root.
+
+### The gap we are accepting for now, and how it closes
+
+Today `aiul run` does everything in one root process, because the proxy and the
+agent loop are one binary and the loop needs root for `networksetup`. That means
+the code parsing untrusted network traffic runs as root.
+
+The intended shape, before any pilot: the daemon drops to a dedicated unprivileged
+user after binding, and the few privileged operations move behind a tiny helper
+invoked over a local socket with a fixed, non-parameterised set of actions
+("proxy on", "proxy off"). Recorded here so it is a known debt, not an oversight.
+
+### Why the binary is copied to /usr/local/bin
+
+A root daemon must not run from a path a standard user can write. Running it from
+a home directory would let that user replace the binary and gain root.
+
+---
+
+## D7 — Which CA variable adds to the trust store and which replaces it (2026-09-18)
+
+This distinction caused a real bug during Phase 4, caught before anything was
+applied to a machine.
+
+| Variable | Behaviour | So it gets |
+| --- | --- | --- |
+| `NODE_EXTRA_CA_CERTS` | ADDS to Node's built-in roots | our root alone |
+| `NODE_USE_SYSTEM_CA=1` | tells Node to read the OS store as well | n/a |
+| `SSL_CERT_FILE` | **REPLACES** the roots for OpenSSL and curl | the full bundle |
+| `REQUESTS_CA_BUNDLE` | **REPLACES** the roots for Python | the full bundle |
+| `CODEX_CA_CERTIFICATE` | Rust/rustls | the full bundle, to be safe |
+
+Pointing a replacing variable at our root alone would mean curl could no longer
+verify any ordinary website — every connection we deliberately pass through sealed
+would fail, and we would have broken the machine while trying not to break a tool.
+
+So `aiul ca` writes `ca-bundle.pem`: the system roots (`/etc/ssl/cert.pem`, or the
+Homebrew bundle) plus our root, and the replacing variables point at that. Install
+refuses to proceed if the bundle cannot be written, rather than setting a variable
+that would break ordinary HTTPS. Tested by `TestBundleContainsSystemRootsAndOurs`
+and by verifying curl still reaches example.com using only that bundle.

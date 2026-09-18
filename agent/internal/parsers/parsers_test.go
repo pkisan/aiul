@@ -40,7 +40,7 @@ func TestForPicksTheRightParser(t *testing.T) {
 		{"api.anthropic.com", "/v1/messages", "anthropic"},
 		{"api.anthropic.com", "/v1/messages?beta=true", "anthropic"},
 		{"generativelanguage.googleapis.com", "/v1beta/models/gemini-2.5-pro:streamGenerateContent", "gemini"},
-		{"api.openai.com", "/v1/models", ""},        // not a conversation
+		{"api.openai.com", "/v1/models", ""},           // not a conversation
 		{"api.mistral.ai", "/v1/chat/completions", ""}, // no parser yet: metadata only
 	}
 	for _, c := range cases {

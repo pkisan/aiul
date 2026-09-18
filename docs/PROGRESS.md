@@ -8,8 +8,8 @@ Last updated: 2026-09-18
 
 **Phase 4 — Endpoint agent (darwin first).**
 
-Task in progress right now: `internal/forward` forwarder (spool draining, batching,
-backoff, delete only after the backend confirms).
+Task in progress right now: none. Phase 4 is code-complete and every command has
+been exercised in read-only or dry-run mode on this Mac. Nothing has been applied.
 
 Phase 3 is code-complete (63 tests, -race clean). The owner has NOT yet reported
 the by-hand milestone result; ask before assuming it passed.
@@ -125,7 +125,8 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Write `internal/forward/forwarder.go` and its tests against an httptest backend.
+The owner runs the Phase 4 milestone, which is the first time this project changes
+system settings. STOP until they confirm.
 
 ## Left — Phase 1
 
@@ -207,10 +208,21 @@ Write `internal/forward/forwarder.go` and its tests against an httptest backend.
       /etc/zshenv block editor never eats other content (including a truncated
       block), NO_PROXY covers local addresses, AllManagedVars covers everything the
       agent writes
-- [ ] forwarder with spool draining, backoff, delete-after-confirm
-- [ ] aiul run / install / uninstall / status / doctor
-- [ ] health checks, drift re-apply, fail open
-- [ ] privilege split recorded in DECISIONS.md
+- [x] forwarder: batches of 50, exponential backoff capped at 15 minutes, deletes
+      only what the backend confirmed, sets a corrupt file aside as .bad rather
+      than blocking the queue, and ignores HTTPS_PROXY so our own traffic never
+      goes through our own proxy (11 tests)
+- [x] device token in the macOS keychain via `security`, with linux/windows stubs
+- [x] aiul run / install / uninstall / status / doctor
+- [x] health checks: removes the system proxy when the proxy is unhealthy, and
+      re-applies it when it drifts back
+- [x] privilege split recorded in DECISIONS.md (D6), including the known debt that
+      `aiul run` is currently one root process
+- [x] D7: found and fixed a real bug before it reached the Mac — SSL_CERT_FILE and
+      REQUESTS_CA_BUNDLE REPLACE the trust store, so pointing them at our root
+      alone would have stopped curl verifying any ordinary website. `aiul` now
+      writes `ca-bundle.pem` (the 128 system roots plus ours) and install refuses
+      to proceed if it cannot
 - [ ] milestone: after install and a fresh login, Claude Code runs normally and its
       prompts are captured; uninstall leaves the Mac clean
 

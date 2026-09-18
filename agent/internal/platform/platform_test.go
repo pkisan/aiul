@@ -108,7 +108,7 @@ func TestCurrentReadsBackWhatWeWrote(t *testing.T) {
 func TestAllManagedVarsCoversWhatWeSet(t *testing.T) {
 	// Whatever the agent writes must also be in the removal list, or uninstall
 	// leaves variables behind.
-	written := DefaultEnvVars("http://127.0.0.1:8899", "/path/to/root.crt")
+	written := DefaultEnvVars("http://127.0.0.1:8899", "/path/to/root.crt", "/path/to/ca-bundle.pem")
 	for name := range written {
 		found := false
 		for _, managed := range AllManagedVars {
@@ -124,15 +124,23 @@ func TestAllManagedVarsCoversWhatWeSet(t *testing.T) {
 }
 
 func TestDefaultEnvVarsBypassesLocalAddresses(t *testing.T) {
-	vars := DefaultEnvVars("http://127.0.0.1:8899", "/path/root.crt")
+	vars := DefaultEnvVars("http://127.0.0.1:8899", "/path/root.crt", "/path/ca-bundle.pem")
 	noProxy := vars["NO_PROXY"]
 	for _, must := range []string{"localhost", "127.0.0.1", "::1"} {
 		if !strings.Contains(noProxy, must) {
 			t.Errorf("NO_PROXY must contain %q, got %q", must, noProxy)
 		}
 	}
+	// NODE_EXTRA_CA_CERTS adds to the trust store, so it gets our root alone.
 	if vars["NODE_EXTRA_CA_CERTS"] != "/path/root.crt" {
 		t.Errorf("NODE_EXTRA_CA_CERTS = %q", vars["NODE_EXTRA_CA_CERTS"])
+	}
+	// These REPLACE the trust store, so they must get the full bundle. Pointing
+	// them at our root alone would stop curl verifying any ordinary website.
+	for _, name := range []string{"SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CODEX_CA_CERTIFICATE"} {
+		if vars[name] != "/path/ca-bundle.pem" {
+			t.Errorf("%s = %q, want the full bundle — this variable replaces the trust store", name, vars[name])
+		}
 	}
 }
 

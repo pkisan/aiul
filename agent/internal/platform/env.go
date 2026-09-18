@@ -14,8 +14,16 @@ const (
 // capture matrix in AI-Usage-Logger-Build-Map.md and what each runtime actually
 // reads.
 //
-// caCertPath is the PEM file of our root CA; proxyURL is "http://127.0.0.1:8899".
-func DefaultEnvVars(proxyURL, caCertPath string) EnvVars {
+// caCertPath is our root CA on its own; bundlePath is the system roots PLUS our
+// root. The difference matters: some variables ADD to the trust store and others
+// REPLACE it, and pointing a replacing variable at our root alone would stop the
+// machine verifying any ordinary website.
+func DefaultEnvVars(proxyURL, caCertPath, bundlePath string) EnvVars {
+	// Fall back to the single certificate if no bundle could be written, but this
+	// is the wrong shape for the replacing variables and install warns about it.
+	if bundlePath == "" {
+		bundlePath = caCertPath
+	}
 	return EnvVars{
 		// Route through the proxy. Both spellings: tools disagree about case.
 		"HTTPS_PROXY": proxyURL,
@@ -27,14 +35,16 @@ func DefaultEnvVars(proxyURL, caCertPath string) EnvVars {
 		"no_proxy": strings.Join(NoProxyList, ","),
 
 		// Node and Bun runtimes do not read the macOS keychain, which is the whole
-		// reason macOS needs these variables at all.
+		// reason macOS needs these variables at all. NODE_EXTRA_CA_CERTS ADDS to
+		// Node's built-in roots, so our certificate alone is correct here.
 		"NODE_EXTRA_CA_CERTS": caCertPath,
 		"NODE_USE_SYSTEM_CA":  "1",
 
-		// Rust (Codex) and most Python tooling.
-		"SSL_CERT_FILE":        caCertPath,
-		"REQUESTS_CA_BUNDLE":   caCertPath,
-		"CODEX_CA_CERTIFICATE": caCertPath,
+		// These REPLACE the trust store for OpenSSL/curl, Python and Rust, so they
+		// must point at the full bundle or ordinary HTTPS stops working.
+		"SSL_CERT_FILE":        bundlePath,
+		"REQUESTS_CA_BUNDLE":   bundlePath,
+		"CODEX_CA_CERTIFICATE": bundlePath,
 	}
 }
 

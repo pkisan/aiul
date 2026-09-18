@@ -70,3 +70,9 @@ const InstalledBinaryPath = "/usr/local/bin/aiul"
 
 // DevAllowUnmanagedVar matches darwin.
 const DevAllowUnmanagedVar = "AIUL_DEV_ALLOW_UNMANAGED"
+
+// Device token storage. Linux will use the Secret Service API (libsecret) or a
+// root-only file with mode 0600 on a server without a desktop keyring.
+func SetDeviceToken(string) error  { return ErrUnsupported }
+func DeviceToken() (string, error) { return "", nil }
+func DeleteDeviceToken() error     { return nil }

@@ -70,3 +70,8 @@ const InstalledBinaryPath = "C:\\Program Files\\AIUL\\aiul.exe"
 
 // DevAllowUnmanagedVar matches darwin.
 const DevAllowUnmanagedVar = "AIUL_DEV_ALLOW_UNMANAGED"
+
+// Device token storage. Windows will use the Credential Manager (DPAPI).
+func SetDeviceToken(string) error  { return ErrUnsupported }
+func DeviceToken() (string, error) { return "", nil }
+func DeleteDeviceToken() error     { return nil }

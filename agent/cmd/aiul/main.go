@@ -25,6 +25,16 @@ func main() {
 		os.Exit(cmdCA(os.Args[2:]))
 	case "proxy":
 		os.Exit(cmdProxy(os.Args[2:]))
+	case "run":
+		os.Exit(cmdRun(os.Args[2:]))
+	case "install":
+		os.Exit(cmdInstall(os.Args[2:]))
+	case "uninstall":
+		os.Exit(cmdUninstall(os.Args[2:]))
+	case "status":
+		os.Exit(cmdStatus(os.Args[2:]))
+	case "doctor":
+		os.Exit(cmdDoctor(os.Args[2:]))
 	default:
 		fmt.Fprintf(os.Stderr, "aiul: unknown command %q\n\n", os.Args[1])
 		usage()
@@ -40,5 +50,11 @@ Usage:
   aiul ca         manage the development certificate authority
                   (init, info, trust, untrust, demo-server)
   aiul proxy      run the TLS-inspecting proxy on 127.0.0.1:8899
+  aiul run        run the proxy and the agent loop together (used by launchd)
+
+  aiul install    configure this Mac (DRY RUN unless you pass --apply)
+  aiul uninstall  remove every change aiul made
+  aiul status     a few lines: what is on right now
+  aiul doctor     explain in plain English what is and is not configured
 `)
 }
