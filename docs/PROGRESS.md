@@ -6,10 +6,33 @@ Last updated: 2026-09-18
 
 ## Current phase
 
-**Phase 5 — Task tagging.**
+**Phase 6 — Backend ingestion + storage (Laravel).**
 
-Task in progress right now: none. Phase 5 is complete and verified live on this
-Mac. Waiting for the owner to confirm before Phase 6.
+Task in progress right now: starting the Docker data services and scaffolding the
+Laravel app in /backend.
+
+Phase 5 is DONE and verified live. The repo is now on GitHub at
+github.com/pkisan/aiul (private), pushed 2026-09-18 after GitHub push protection
+flagged the redaction test fixtures — fixed by assembling them at run time, and
+the two historical strings were allowed through the GitHub UI.
+
+## Plan for Phase 6
+
+1. `docker compose up -d` — Postgres, Redis, MinIO. Needs Docker Desktop running.
+2. Scaffold Laravel 12 in /backend, pointed at those services.
+3. Migrations: `tenants`, `devices`, `ai_sessions`, `ai_interactions`,
+   `quality_scores`, `consent_records`. `tenant_id` on every table, enforced by a
+   global scope so a forgotten `where` cannot leak across tenants.
+4. Device-token authentication: tokens are hashed at rest, one per device, and the
+   ingestion endpoint accepts nothing else.
+5. `POST /api/aiul/events`: validates a batch, stores metadata in Postgres, puts
+   prompt and answer bodies in MinIO encrypted, replies with the ids it accepted —
+   which is exactly what the agent's forwarder deletes on.
+6. Horizon job: heuristic quality scoring over six dimensions (clear goal, context
+   given, constraints stated, expected output, examples, focus), storing a rubric
+   version and the per-dimension breakdown.
+7. Feature tests: authentication, tenant isolation, idempotency, task attribution,
+   scoring.
 
 Phase 4 is DONE. The owner reported the milestone "went as expected" and ran the
 uninstall, and `aiul status` on 2026-09-18 confirms this Mac has NO aiul settings
@@ -148,8 +171,7 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Phase 6: the Laravel backend — ingestion endpoint, migrations, MinIO storage,
-Horizon scoring. STOP until the owner confirms.
+Start Docker Desktop, bring up the compose services, scaffold Laravel in /backend.
 
 ## Left — Phase 1
 
@@ -265,6 +287,18 @@ Horizon scoring. STOP until the owner confirms.
 - [x] MILESTONE VERIFIED LIVE on this Mac: a request made from a checkout on
       branch `feature/AIUL-42-task-tagging` produced an event with
       `task_id: AIUL-42`, the correct repo, and `process: curl`
+
+## Left — Phase 6
+
+- [ ] Docker services healthy
+- [ ] Laravel 12 scaffolded in /backend
+- [ ] migrations with tenant_id + a global scope
+- [ ] device tokens, hashed at rest
+- [ ] POST /api/aiul/events returning accepted ids
+- [ ] encrypted bodies in MinIO
+- [ ] Horizon scoring job with a rubric version and per-dimension breakdown
+- [ ] feature tests
+- [ ] milestone: an event lands, appears against the right task, gets a score
 
 ## Left — later phases
 
