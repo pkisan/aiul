@@ -18,13 +18,21 @@ import (
 )
 
 const runUsage = `Usage:
-  aiul run [--endpoint URL] [--debug]
+  aiul run [--endpoint URL] [--manage-proxy] [--token TOKEN] [--debug]
 
 Runs the proxy and the agent loop in one process. This is what the LaunchDaemon
-starts. The agent loop:
-  - checks the proxy is healthy, and REMOVES the system proxy setting if it is not
-  - re-applies settings that have drifted
-  - forwards spooled events to the backend when one is configured
+starts, with --manage-proxy.
+
+WITHOUT --manage-proxy (the default) this changes NOTHING on your machine: it
+serves the proxy and forwards events, and you point one command at it yourself.
+
+WITH --manage-proxy the agent owns the system proxy setting: it re-applies the
+setting if something removes it, and REMOVES it if the proxy stops answering, so
+traffic is never blocked by a broken proxy. Only 'aiul install --apply' turns this
+on, because it is the only command that asked you first.
+
+The device token normally comes from the keychain. --token, or AIUL_DEVICE_TOKEN,
+overrides it for development so nothing has to be stored to try the backend.
 `
 
 // healthInterval is how often the agent loop checks itself. Short enough that a
@@ -33,6 +41,8 @@ const healthInterval = 30 * time.Second
 
 func cmdRun(args []string) int {
 	endpoint := ""
+	token := ""
+	manageProxy := false
 	level := slog.LevelInfo
 
 	for i := 0; i < len(args); i++ {
@@ -44,6 +54,15 @@ func cmdRun(args []string) int {
 			}
 			i++
 			endpoint = args[i]
+		case "--token":
+			if i+1 >= len(args) {
+				fmt.Fprint(os.Stderr, runUsage)
+				return 2
+			}
+			i++
+			token = args[i]
+		case "--manage-proxy":
+			manageProxy = true
 		case "--debug":
 			level = slog.LevelDebug
 		case "-h", "--help":
@@ -79,7 +98,14 @@ func cmdRun(args []string) int {
 		return 1
 	}
 
-	token, _ := platform.DeviceToken()
+	// Precedence: the flag, then the environment, then the keychain. The first two
+	// exist so the backend can be tried without storing anything on the machine.
+	if token == "" {
+		token = os.Getenv("AIUL_DEVICE_TOKEN")
+	}
+	if token == "" {
+		token, _ = platform.DeviceToken()
+	}
 	forwarder := forward.NewForwarder(spool, forward.Config{
 		Endpoint:    endpoint,
 		DeviceToken: token,
@@ -110,26 +136,36 @@ func cmdRun(args []string) int {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-stop
-		log.Info("stopping; removing the system proxy so traffic keeps flowing")
-		_ = platform.Proxy().Unset()
+		// Only undo what we were asked to manage. Removing a proxy setting we
+		// never set would be just as rude as setting one we were not asked to.
+		if manageProxy {
+			log.Info("stopping; removing the system proxy so traffic keeps flowing")
+			_ = platform.Proxy().Unset()
+		}
 		cancel()
 		os.Exit(0)
 	}()
 
-	go agentLoop(ctx, log, forwarder)
+	go agentLoop(ctx, log, forwarder, manageProxy)
 
-	log.Info("agent running", "proxy", proxyAddr, "spool", spool.Dir(), "forwarding", forwarder.Enabled())
+	log.Info("agent running",
+		"proxy", proxyAddr,
+		"spool", spool.Dir(),
+		"forwarding", forwarder.Enabled(),
+		"manages_system_proxy", manageProxy)
 	if err := p.ListenAndServe(); err != nil {
 		log.Error("the proxy stopped", "err", err)
-		// The proxy is gone, so nothing must be pointed at it any more.
-		_ = platform.Proxy().Unset()
+		if manageProxy {
+			// The proxy is gone, so nothing must be pointed at it any more.
+			_ = platform.Proxy().Unset()
+		}
 		return 1
 	}
 	return 0
 }
 
 // agentLoop is the housekeeping that runs alongside the proxy.
-func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forwarder) {
+func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forwarder, manageProxy bool) {
 	ticker := time.NewTicker(healthInterval)
 	defer ticker.Stop()
 
@@ -138,7 +174,9 @@ func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forward
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			healthCheck(log)
+			if manageProxy {
+				healthCheck(log)
+			}
 			drainSpool(ctx, log, forwarder)
 		}
 	}
@@ -146,6 +184,10 @@ func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forward
 
 // healthCheck makes sure the proxy is answering, and if it is not, takes the
 // system proxy setting away so traffic flows directly instead of failing.
+//
+// Only ever called with --manage-proxy. Without it this process must not touch a
+// system setting: "the proxy setting is not pointing at us" is the normal state on
+// a machine where nobody asked us to configure anything.
 func healthCheck(log *slog.Logger) {
 	conn, err := net.DialTimeout("tcp", proxyAddr, 5*time.Second)
 	if err != nil {

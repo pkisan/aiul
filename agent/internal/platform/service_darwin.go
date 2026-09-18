@@ -38,7 +38,7 @@ func (DarwinService) InstallCommands() []string {
 	return []string{
 		fmt.Sprintf("sudo cp <this binary> %s", InstalledBinaryPath),
 		fmt.Sprintf("sudo mkdir -p %s", logDir),
-		fmt.Sprintf("sudo tee %s   # a LaunchDaemon running '%s run'", daemonPlist, InstalledBinaryPath),
+		fmt.Sprintf("sudo tee %s   # a LaunchDaemon running '%s run --manage-proxy'", daemonPlist, InstalledBinaryPath),
 		fmt.Sprintf("sudo launchctl load -w %s", daemonPlist),
 	}
 }
@@ -78,6 +78,7 @@ func (s DarwinService) Install(binaryPath string) error {
 	<array>
 		<string>%s</string>
 		<string>run</string>
+		<string>--manage-proxy</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>

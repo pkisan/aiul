@@ -8,9 +8,29 @@ Last updated: 2026-09-18
 
 **Phase 7 — Minimal dashboard (Inertia + Vue).**
 
-Task in progress right now: none. Phase 7 is complete and verified live. Phases
-0-7 are all done; what remains is Phase 8 (signing, packaging, MDM, EDR) and
-Phase 9 (pilot), plus the debts listed below.
+Task in progress right now: none.
+
+Phases 0-7 are all done, and the FULL PIPELINE has now been run end to end on this
+Mac (2026-09-18): the Go agent captured a real request, masked the secrets in it,
+tagged it to the branch's ticket, spooled it, forwarded it to Laravel, and the
+queue worker scored it — with no manual step in between. What remains is Phase 8
+(signing, packaging, MDM, EDR) and Phase 9 (pilot), plus the debts below.
+
+### The end-to-end run, for reference
+
+```sh
+# terminal 1 — backend
+cd backend && php artisan serve --port=8088
+# terminal 2 — queue
+cd backend && php artisan queue:work
+# terminal 3 — agent (changes NOTHING on the machine without --manage-proxy)
+cd agent && AIUL_DEV_ALLOW_UNMANAGED=1 AIUL_DEVICE_TOKEN='<token>' \
+  ./aiul run --endpoint http://127.0.0.1:8088/api/aiul/events
+# terminal 4 — drive traffic from a checkout on a ticket branch
+HTTPS_PROXY=http://127.0.0.1:8899 NODE_EXTRA_CA_CERTS="$HOME/Library/Application Support/AIUL/dev-ca/root.crt" claude -p "..."
+```
+
+Issue a token with `php artisan aiul:provision-device "$(hostname)" --tenant=dev`.
 
 ### Before doing anything in a new session
 
@@ -194,10 +214,9 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Nothing is in progress. The owner decides what comes next: Phase 8 (signing and
-packaging — needs an Apple Developer account, so it costs money), hardening the
-debts below, or connecting the agent's forwarder to the running backend so the
-whole pipeline runs by itself.
+Nothing is in progress. The owner decides: the two security debts below (privilege
+split, per-tenant keys), the retention job, or Phase 8 (signing and packaging,
+which costs money and should wait until a pilot is real).
 
 ## Left — Phase 1
 
@@ -373,9 +392,6 @@ whole pipeline runs by itself.
 - Prompt bodies use one application-wide encryption key. D9 has the plan: a
   per-tenant key from KMS. `BodyStore` is the only class to change.
 - Brotli and zstd response bodies are recorded as metadata only.
-- The agent's forwarder has never run against the real backend end to end: the
-  backend was tested with curl, and the forwarder against a fake server. Wiring
-  the two together is a half-hour job and worth doing before a pilot.
 - Retention (purge bodies after N days, keep the scores) is designed into the
   schema but there is no job that does it yet.
 - Local dev seeds three users with the password "password".

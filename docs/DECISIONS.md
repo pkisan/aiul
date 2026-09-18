@@ -341,3 +341,30 @@ Two related choices: automated follow-ups are counted separately from human
 prompts, so one question does not look like twenty; and untagged work gets its own
 visible row rather than being dropped, because a dashboard that quietly discards
 what it cannot classify is a dashboard that lies.
+
+---
+
+## D13 — The agent touches the system proxy only when told to (2026-09-18)
+
+Found while wiring the forwarder to the backend: `aiul run` treated "the system
+proxy is not pointing at us" as drift and re-applied it after thirty seconds. So
+merely running the agent to try something would have reconfigured the machine's
+network settings without anyone being asked — exactly what rule 1 forbids.
+
+The health loop is now behind `--manage-proxy`:
+
+- **without it** (the default) `aiul run` changes nothing: it serves the proxy and
+  forwards events, and you point one command at it yourself with environment
+  variables
+- **with it**, the agent owns the setting: it re-applies the setting if something
+  removes it, and removes it if the proxy stops answering (rule 7, fail open)
+
+Only the LaunchDaemon written by `aiul install --apply` passes the flag, because
+that is the only path that asked first. On exit the agent removes the proxy setting
+only if it was managing it — taking away a setting we never made would be as rude
+as making one nobody asked for.
+
+The lesson worth keeping: "re-apply settings that have drifted" sounds like
+housekeeping, but on a machine that was never configured, every setting looks like
+drift. A reconciliation loop needs to know whether it owns the thing it is
+reconciling.
