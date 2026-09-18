@@ -107,3 +107,69 @@ owner's confirmation before Phase 2 code is written.
 **Privilege split (Phase 4).** Which work needs root (system proxy, `/etc/zshenv`,
 LaunchDaemon) and which can run as the user (proxy process, spool, forwarder). The
 root-privileged surface must be kept as small as possible and documented here.
+
+---
+
+## D5 — Proxy foundation: Go standard library only (2026-09-18)
+
+Rule 11 requires this comparison before any Phase 2 code.
+
+**Decision.** Build the proxy on `net/http`, `crypto/tls` and `crypto/x509` alone.
+No proxy framework.
+
+### What we actually need
+
+1. Handle `CONNECT` and decide capture / tunnel / pass **before** any certificate
+   exists, from the hostname in the CONNECT line.
+2. Mint a leaf per captured host, signed by our CA, cached in memory.
+3. Dial upstream with **full** verification against the system roots (rule 5).
+4. Stream responses chunk by chunk with immediate flushing (rule 6).
+5. Detect a client that rejects our certificate mid-handshake and move that host to
+   a tunnel list (rule 4).
+6. Read gzip/br/zstd on our copy only, reassemble SSE, run parsers, write events.
+
+Points 4, 5 and 6 are the whole product, and no library provides them.
+
+### The three options
+
+**goproxy.** Small and widely used, but it is built around "hijack the connection
+and hand you a `*http.Request`". Its MITM path assumes you want to sign everything
+it sees, its certificate handling is its own, and streaming behaviour has to be
+fought rather than configured. We would be overriding most of it to get the
+per-host classification and the flush guarantees, while still owning all the
+capture logic.
+
+**go-mitmproxy.** Closer in spirit (an addon model like mitmproxy's), but it is a
+much bigger dependency, less widely deployed, and it buffers bodies by default to
+present them to addons — exactly the behaviour rule 6 forbids. Taking it would mean
+either accepting buffered responses or patching around its core.
+
+**Standard library.** `http.Server` with a `CONNECT` handler, `net.Dial`,
+`tls.Server` with `GetCertificate`, and `io.Copy` on a `TeeReader` is roughly the
+same amount of code as configuring either library around its defaults — but every
+line is ours, readable, and does exactly what our rules require. Go's `crypto/tls`
+is production-grade and is what both libraries use underneath anyway.
+
+### Why the standard library wins here
+
+- **Classification before the handshake.** We decide from the CONNECT hostname.
+  Frameworks want to MITM first and let you inspect afterwards.
+- **Streaming is non-negotiable.** With `io.Copy` and an explicit `Flush` we can
+  prove chunk-by-chunk delivery in a test. With a framework we would be proving the
+  framework's behaviour instead.
+- **Handshake-failure detection.** We need the error from `tls.Conn.Handshake()`
+  itself to add a host to the tunnel list. That is trivial when we own the
+  handshake and awkward when a library owns it.
+- **Nothing to sign or audit but our own code.** This binary is code-signed,
+  notarized and submitted for EDR allowlisting (Phase 8). Fewer third-party lines
+  in a TLS-intercepting binary is a direct security and review benefit.
+- **The owner is new to Go.** Standard-library code is the code the documentation,
+  the books and every future session already understand.
+
+**Cost accepted.** We write the CONNECT plumbing, the certificate cache and the
+tunnel bookkeeping ourselves — a few hundred lines, all of them things we would
+have had to understand anyway.
+
+**Revisit if** HTTP/2 or WebSocket interception turns into more work than expected;
+`golang.org/x/net/http2` (a Go-team package, not a proxy framework) is the first
+thing to reach for then, not goproxy or go-mitmproxy.
