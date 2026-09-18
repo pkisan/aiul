@@ -487,3 +487,33 @@ func TestCapturedStreamIsReassembledIntoOneAnswer(t *testing.T) {
 		t.Error("duration should be recorded")
 	}
 }
+
+// TestHousekeepingCallsAreNotStored: an allow-listed host makes many calls that
+// are not conversations. They must not become events.
+func TestHousekeepingCallsAreNotStored(t *testing.T) {
+	root := newTestRoot(t)
+	origin := newOriginServer(t, "api.anthropic.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"servers":[]}`)
+	}))
+	defer origin.close()
+
+	sink := &collector{}
+	proxyAddr, _ := startProxy(t, Config{Root: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
+	ourPool := x509.NewCertPool()
+	ourPool.AddCert(root.Cert)
+
+	client := clientThrough(proxyAddr, ourPool)
+	for _, path := range []string{"/mcp-registry/v0/servers", "/api/oauth/account/settings", "/api/event_logging/v2/batch"} {
+		resp, err := client.Get("https://api.anthropic.com" + path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		resp.Body.Close()
+	}
+
+	// Give the proxy a moment to record anything it was going to record.
+	time.Sleep(200 * time.Millisecond)
+	if got := sink.all(); len(got) != 0 {
+		t.Errorf("housekeeping calls produced %d events, want 0: %+v", len(got), got)
+	}
+}

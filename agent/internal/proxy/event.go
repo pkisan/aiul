@@ -99,7 +99,19 @@ func (p *Proxy) record(in interaction) {
 		AllowListVersion: AllowListVersion,
 	}
 
-	if parser := parsers.For(in.Host, in.Path); parser != nil {
+	parser := parsers.For(in.Host, in.Path)
+	if parser == nil {
+		// An allow-listed host makes plenty of calls that are not conversations:
+		// registry lookups, account settings, telemetry batches. One Claude Code
+		// run produced twelve of them and a single real exchange. Storing them
+		// would mean holding data about the user for no benefit, so they are
+		// decrypted, forwarded and forgotten.
+		p.log.Debug("no parser for this endpoint; nothing recorded",
+			"host", in.Host, "method", in.Method, "path", in.Path, "status", in.Status)
+		return
+	}
+
+	{
 		ev.Parser = parser.Name()
 		ex := p.exchange(in)
 		res, err := parser.Parse(ex)

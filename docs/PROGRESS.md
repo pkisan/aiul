@@ -6,11 +6,27 @@ Last updated: 2026-09-18
 
 ## Current phase
 
-**Phase 2 — Proxy engine in Go (the core).**
+**Phase 3 — Redaction.**
 
-Task in progress right now: none. Phase 2 is DONE and the milestone passed with
-Claude Code. Waiting for the owner's decisions on the two open questions below
-before Phase 3.
+Task in progress right now: `internal/redact` — the rule list and its tests.
+
+Phase 2 is DONE, milestone passed with Claude Code. The owner decided:
+spool only parsed conversations (done, `TestHousekeepingCallsAreNotStored`);
+leave brotli/zstd undecoded for now; start Phase 3.
+
+## Plan for Phase 3
+
+1. `internal/redact/redact.go` — one rule list, each rule a name plus a compiled
+   regexp plus how to mask it. Text-like bodies only.
+2. Rules: OpenAI, Anthropic, AWS, GitHub, Stripe, Google keys; bearer tokens;
+   password/secret/token in key=value and JSON form; PEM private key blocks;
+   emails; phone numbers; Aadhaar; PAN.
+3. `redact_test.go` — one test per rule, plus tests that non-secrets are left
+   alone (no over-masking) and that masking is stable.
+4. Wire it into `proxy.record` so every Event is redacted before it reaches the
+   sink. The request forwarded to the provider is never touched.
+5. A proxy test proving a fake API key in a prompt is masked in the event while
+   the provider received the original bytes.
 
 Phase 1 is DONE: the owner confirmed the Safari test passed (no warning while
 trusted, warning again after untrust).
@@ -80,9 +96,7 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-The owner runs the Phase 2 milestone with a real AI CLI (Gemini CLI, OpenCode or
-Claude Code) through `HTTPS_PROXY=http://127.0.0.1:8899` in ONE terminal. Then
-STOP until they confirm and ask for Phase 3.
+Write `internal/redact/redact.go` and `redact_test.go`.
 
 ## Left — Phase 1
 
@@ -139,6 +153,16 @@ STOP until they confirm and ask for Phase 3.
 - [ ] Owner installs Docker Desktop (`brew install --cask docker`) — needs approval, not run
 - [ ] Milestone: `aiul version` runs; `docker compose ps` healthy; curl through mitmweb with explicit --proxy in one terminal only
 
+## Left — Phase 3
+
+- [x] Decision applied: only parsed conversations are spooled; housekeeping calls
+      on an allow-listed host are decrypted, forwarded and forgotten
+- [ ] internal/redact rule list
+- [ ] a test per rule, plus over-masking tests
+- [ ] wired into proxy.record, before anything reaches the sink
+- [ ] milestone: a fake API key in a prompt is masked in the stored event while the
+      provider still receives the original request
+
 ## Left — later phases
 
 - [ ] Phase 2 — proxy engine (CONNECT, classify, mint, stream, SSE reassembly, parsers, spool)
@@ -150,16 +174,9 @@ STOP until they confirm and ask for Phase 3.
 
 ## Blockers / open questions for the user
 
-- **Noise in the spool.** The Claude Code run produced 13 events, of which 12 were
-  api.anthropic.com housekeeping calls (`/mcp-registry/v0/servers`,
-  `/api/oauth/account/settings`, telemetry batches) with no parser and no
-  conversation. Options: (a) spool only events a parser understood, (b) spool
-  everything and let the backend filter, (c) keep a metadata-only event but drop
-  the empty body fields. Awaiting the owner's choice.
-- **brotli/zstd.** Not decoded yet; such bodies are recorded as metadata only,
-  never as rubbish. Decoding needs a dependency (`andybalholm/brotli`,
-  `klauspost/compress`), which breaks the stdlib-only preference. Claude Code did
-  not use them, so this is not yet urgent.
+- **brotli/zstd.** Decided: leave undecoded for now. Such bodies are recorded as
+  metadata only, never as rubbish. Revisit if the logs show real captures being
+  lost; the decoders would be `andybalholm/brotli` and `klauspost/compress`.
 - Gemini CLI is unusable on this account (Google tier error). Use Claude Code,
   OpenCode or Codex for future capture work.
 
