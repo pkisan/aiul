@@ -8,7 +8,7 @@ Last updated: 2026-09-18
 
 **Phase 2 — Proxy engine in Go (the core).**
 
-Task in progress right now: `internal/proxy/proxy.go` — CONNECT handling and raw pass-through.
+Task in progress right now: SSE reassembly and decompression on our copy.
 
 Phase 1 is DONE: the owner confirmed the Safari test passed (no warning while
 trusted, warning again after untrust).
@@ -78,8 +78,8 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Write `internal/proxy/proxy.go`: listener on 127.0.0.1:8899, CONNECT parsing,
-classify, raw byte pass-through for pass and tunnel. Capture path comes after.
+Write `internal/proxy/stream.go`: gzip/br/zstd decompression on our copy only, and
+SSE reassembly into one answer with token counts. Then the parsers.
 
 ## Left — Phase 1
 
@@ -97,10 +97,16 @@ classify, raw byte pass-through for pass and tunnel. Capture path comes after.
 - [x] D5 recorded: standard library only, no proxy framework (`5cc3022`)
 - [x] hosts.go: allow-list v1 + anchored matcher + tunnel list, 6 tests passing with -race
 - [x] certs.go: bounded LRU leaf cache, renews within 1h of expiry, 6 tests with -race
-- [ ] proxy.go: CONNECT, classify, pass/tunnel raw pass-through
-- [ ] capture path: verified upstream dial, SAN copy, mint, GetCertificate, ALPN http/1.1
-- [ ] streaming with immediate flush + test proving it
-- [ ] handshake-failure detection feeds the tunnel list
+- [x] proxy.go: CONNECT, classify, pass/tunnel raw pass-through, hijack + rewind
+- [x] capture path: verified upstream dial (`UpstreamRootCAs`, nil = system roots,
+      no InsecureSkipVerify anywhere), SAN names copied from the real certificate,
+      minted leaf, ALPN http/1.1, warns if the client wants another protocol
+- [x] streaming with immediate flush + test proving a chunk arrives while the
+      response is still open. Fixed a real bug found by that test: the chunked
+      terminator was missing, so clients hung until their own timeout. Regression
+      test added.
+- [x] handshake-failure detection feeds the tunnel list; test proves the tool
+      works again on the retry
 - [ ] gzip/br/zstd decompression on our copy; SSE reassembly
 - [ ] parsers: interface + OpenAI, Anthropic, Gemini against testdata fixtures
 - [ ] forward: JSON event spool
