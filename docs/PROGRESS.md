@@ -6,10 +6,38 @@ Last updated: 2026-09-18
 
 ## Current phase
 
-**Phase 3 — Redaction.**
+**Phase 4 — Endpoint agent (darwin first).**
 
-Task in progress right now: none. Phase 3 is code-complete, 63 tests pass with
--race. Waiting for the owner to verify the milestone.
+Task in progress right now: `internal/platform` interfaces and their darwin
+implementations.
+
+Phase 3 is code-complete (63 tests, -race clean). The owner has NOT yet reported
+the by-hand milestone result; ask before assuming it passed.
+
+## Plan for Phase 4
+
+Nothing in this phase touches the Mac without showing the exact commands and
+getting an explicit yes. `aiul install` defaults to a dry run.
+
+1. `internal/platform`: interfaces for ProxyConfigurator, EnvWriter, MDMChecker,
+   ToolDetector, ServiceManager, plus the existing TrustInstaller.
+2. darwin implementations:
+   - proxy via `networksetup` on every active network service
+   - terminal env vars via a marked block in `/etc/zshenv`
+   - GUI env vars via a LaunchAgent running `launchctl setenv` at login
+   - LaunchDaemon plist for `aiul run`, LaunchAgent plist for per-user setup
+   - MDM check via `profiles status -type enrollment`, with
+     AIUL_DEV_ALLOW_UNMANAGED=1 as a loud dev override
+   - detect claude, codex, gemini, opencode, Cursor, VS Code
+3. linux/windows stubs for each, so the module keeps building for every GOOS.
+4. `internal/forward`: forwarder reading the spool, batching to the backend with a
+   device token from the keychain, backoff, delete only after confirmation, its own
+   connection bypassing the proxy.
+5. `aiul run` (proxy + agent loop), `aiul install`, `aiul uninstall`, `aiul status`,
+   `aiul doctor`.
+6. Health checks: re-apply drifted settings, and fail open — remove the proxy
+   setting if the proxy is unhealthy.
+7. Record the privilege split in DECISIONS.md.
 
 Phase 2 is DONE, milestone passed with Claude Code. The owner decided:
 spool only parsed conversations (done, `TestHousekeepingCallsAreNotStored`);
@@ -97,8 +125,7 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-The owner verifies the Phase 3 milestone (commands at the end of the phase). Then
-STOP until they confirm and ask for Phase 4.
+Write the `internal/platform` interfaces, then `proxyconf_darwin.go`.
 
 ## Left — Phase 1
 
@@ -170,6 +197,16 @@ STOP until they confirm and ask for Phase 4.
       unmodified, and the stored event has neither the key nor the email while the
       rest of the prompt stays readable
 - [ ] Owner verifies the milestone by hand
+
+## Left — Phase 4
+
+- [ ] platform interfaces + darwin implementations + linux/windows stubs
+- [ ] forwarder with spool draining, backoff, delete-after-confirm
+- [ ] aiul run / install / uninstall / status / doctor
+- [ ] health checks, drift re-apply, fail open
+- [ ] privilege split recorded in DECISIONS.md
+- [ ] milestone: after install and a fresh login, Claude Code runs normally and its
+      prompts are captured; uninstall leaves the Mac clean
 
 ## Left — later phases
 
