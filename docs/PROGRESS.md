@@ -8,7 +8,43 @@ Last updated: 2026-09-18
 
 **Phase 7 — Minimal dashboard (Inertia + Vue).**
 
-Task in progress right now: none.
+Task in progress right now: **the privilege split (D6)** — the code that parses
+untrusted network traffic must stop running as root.
+
+## Plan for the privilege split
+
+The shape, from D6:
+
+```
+aiul helper   root, tiny, no network. Listens on a unix socket and answers a
+              fixed set of verbs. Never parses traffic.
+aiul run      unprivileged (_aiul). Proxy, TLS, parsing, redaction, spool,
+              forwarder — everything that touches bytes from the network.
+```
+
+The worker needs exactly three privileged things, so the helper has exactly three
+verbs plus a health check:
+
+| Verb | Why the worker cannot do it itself |
+| --- | --- |
+| `PING` | health check |
+| `PROXY-ON` / `PROXY-OFF` | networksetup needs root |
+| `PROCESS <port>` | lsof cannot see another user's processes without root |
+
+Steps:
+
+1. `internal/helper`: the protocol, a client and a server. One file each, text
+   lines, a fixed verb list, and a port argument validated as an integer.
+2. `cmd/aiul/helper.go`: `aiul helper`, root, socket at /var/run/aiul-helper.sock
+   owned root:_aiul mode 0660.
+3. `aiul run` prefers the helper when the socket exists, and falls back to doing
+   it directly when run by hand in development.
+4. `aiul install`: create the `_aiul` service account, a spool directory it owns,
+   a CA location it can read, and TWO launchd jobs — the helper as root, the
+   worker as `_aiul` via the plist's UserName key, so no privilege-dropping code
+   is needed at all.
+5. Tests: the protocol rejects unknown verbs and malformed arguments, and the
+   worker keeps working when the helper is absent.
 
 Phases 0-7 are all done, and the FULL PIPELINE has now been run end to end on this
 Mac (2026-09-18): the Go agent captured a real request, masked the secrets in it,
@@ -214,9 +250,7 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Nothing is in progress. The owner decides: the two security debts below (privilege
-split, per-tenant keys), the retention job, or Phase 8 (signing and packaging,
-which costs money and should wait until a pilot is real).
+Write `internal/helper/protocol.go` and its tests.
 
 ## Left — Phase 1
 
