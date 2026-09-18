@@ -8,7 +8,7 @@ Last updated: 2026-09-18
 
 **Phase 2 — Proxy engine in Go (the core).**
 
-Task in progress right now: `internal/proxy/certs.go` — the bounded leaf cache.
+Task in progress right now: `internal/proxy/proxy.go` — CONNECT handling and raw pass-through.
 
 Phase 1 is DONE: the owner confirmed the Safari test passed (no warning while
 trusted, warning again after untrust).
@@ -78,8 +78,8 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Write `internal/proxy/certs.go` and `certs_test.go` (bounded in-memory leaf cache,
-keyed by host, evicting expired entries).
+Write `internal/proxy/proxy.go`: listener on 127.0.0.1:8899, CONNECT parsing,
+classify, raw byte pass-through for pass and tunnel. Capture path comes after.
 
 ## Left — Phase 1
 
@@ -96,7 +96,7 @@ keyed by host, evicting expired entries).
 
 - [x] D5 recorded: standard library only, no proxy framework (`5cc3022`)
 - [x] hosts.go: allow-list v1 + anchored matcher + tunnel list, 6 tests passing with -race
-- [ ] certs.go: bounded leaf cache respecting expiry, with tests
+- [x] certs.go: bounded LRU leaf cache, renews within 1h of expiry, 6 tests with -race
 - [ ] proxy.go: CONNECT, classify, pass/tunnel raw pass-through
 - [ ] capture path: verified upstream dial, SAN copy, mint, GetCertificate, ALPN http/1.1
 - [ ] streaming with immediate flush + test proving it
