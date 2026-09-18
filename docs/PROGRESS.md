@@ -28,7 +28,7 @@ installed on this Mac. Waiting for the owner to verify the milestone.
 - Tooling check: Go 1.24.4, PHP 8.4.23 (Herd), Composer, mitmproxy 12.2.3, git present
 - Go module `github.com/aayatti/aiul`; `cmd/aiul/main.go` with `aiul version`; `go vet` clean
 - `docker-compose.yml`: Postgres 16 (127.0.0.1:5433), Redis 7 (127.0.0.1:6380), MinIO (127.0.0.1:9000/9001)
-- git repository initialised, first commit made
+- git repository initialised, first commit `3e9c53c`
 
 ## In progress
 
