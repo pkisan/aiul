@@ -298,3 +298,46 @@ a prompt a person wrote, and scoring it would drag every average down unfairly.
 **It is for coaching, not ranking.** "Your prompts score low on constraints" is
 useful. "You are a 42" is not. That is why every score carries its reasons, and why
 the dashboard (Phase 7) shows them rather than a bare number.
+
+---
+
+## D11 — Seeing a number is not the same as reading someone's words (2026-09-18)
+
+The dashboard separates two permissions that are usually conflated:
+
+| Who | Sees aggregates | Reads prompt text |
+| --- | --- | --- |
+| member | their own only | their own only |
+| manager | yes | **no** |
+| admin | yes | only with `can_view_raw_prompts` granted separately |
+
+A manager being able to see that a task consumed forty prompts is management. A
+manager being able to read those forty prompts is surveillance. Making the second
+a separate grant — not implied by the role, revocable without demoting anyone — is
+what lets a team accept the tool at all.
+
+Three things reinforce it:
+
+- **Every raw view is written to the audit log before the text is returned.** If
+  the log write fails, nobody reads anything.
+- **Reading someone else's prompt requires a typed reason**, stored with the
+  record. Reading your own does not.
+- **The person can see who read their words**, on their own "my data" page. The
+  audit log is not something only auditors see.
+
+## D12 — The dashboard states how its numbers are defined (2026-09-18)
+
+"AI time" is the summed length of sessions: interactions on one task with no gap
+longer than the idle window (30 minutes, configurable). It is not wall-clock time
+between the first and last prompt of the day, which would count lunch, and not the
+sum of model response times, which would count only the seconds the model spent
+typing.
+
+That definition is rendered on the page, not buried in documentation, and a test
+asserts it is there. A metric people cannot explain is a metric they will argue
+with — and in a tool that measures people's work, that argument is fatal.
+
+Two related choices: automated follow-ups are counted separately from human
+prompts, so one question does not look like twenty; and untagged work gets its own
+visible row rather than being dropped, because a dashboard that quietly discards
+what it cannot classify is a dashboard that lies.

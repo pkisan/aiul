@@ -8,7 +8,9 @@ Last updated: 2026-09-18
 
 **Phase 7 — Minimal dashboard (Inertia + Vue).**
 
-Task in progress right now: scaffolding Inertia + Vue and the dashboard pages.
+Task in progress right now: none. Phase 7 is complete and verified live. Phases
+0-7 are all done; what remains is Phase 8 (signing, packaging, MDM, EDR) and
+Phase 9 (pilot), plus the debts listed below.
 
 ### Before doing anything in a new session
 
@@ -192,7 +194,10 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Install Breeze with Inertia + Vue, add roles, then build the pages.
+Nothing is in progress. The owner decides what comes next: Phase 8 (signing and
+packaging — needs an Apple Developer account, so it costs money), hardening the
+debts below, or connecting the agent's forwarder to the running backend so the
+whole pipeline runs by itself.
 
 ## Left — Phase 1
 
@@ -338,13 +343,42 @@ Install Breeze with Inertia + Vue, add roles, then build the pages.
 
 ## Left — Phase 7
 
-- [ ] Breeze (Inertia + Vue) installed
-- [ ] roles on users + a policy for raw prompt access
-- [ ] dashboard: per task, per person, scores, untagged bucket
-- [ ] raw-prompt view, audit-logged on every view
-- [ ] "my data" page
-- [ ] feature tests
-- [ ] milestone: a manager sees usage per project; opening a raw prompt is logged
+- [x] Breeze (Inertia + Vue) installed. Two scaffolding problems fixed: Breeze 2.4
+      imports `resources/js/bootstrap.js`, which Laravel 13 no longer ships (added
+      it); and `breeze:install` OVERWRITES AppServiceProvider and User — the tenant
+      bindings and the roles had to be restored, which the isolation test caught
+      immediately. A note in AppServiceProvider warns the next person.
+- [x] roles (member/manager/admin) plus a separate `can_view_raw_prompts` grant,
+      and `AiInteractionPolicy` (D11)
+- [x] dashboard: totals, per task, per person, weakest dimensions with reasons,
+      untagged as its own visible row
+- [x] raw-prompt view: policy-checked, audit-logged BEFORE the text is returned,
+      and a typed reason required to read someone else's prompt
+- [x] "my data" page, open to every role, listing what was captured and who read it
+- [x] `SetTenantFromUser` prepended to the web group so it runs before route-model
+      binding — otherwise a cross-tenant row loads and the policy answers 403,
+      which admits the row exists. It now answers 404. A test covers this.
+- [x] 14 dashboard feature tests; 59 backend tests in total
+- [x] MILESTONE VERIFIED LIVE over HTTP: the manager saw AIUL-42 with its score of
+      100 and `canViewRaw: false`, was refused the prompt text with 403; the admin
+      with the grant was refused WITHOUT a reason, allowed WITH one, and the audit
+      log recorded "Arun Admin looked at interaction #1 | reason: support
+      investigation | ip: 127.0.0.1"
+
+## Known debts, recorded rather than hidden
+
+- `aiul run` is one root process, so traffic parsing runs as root. D6 has the plan:
+  drop privileges after binding, move the few privileged operations behind a tiny
+  helper.
+- Prompt bodies use one application-wide encryption key. D9 has the plan: a
+  per-tenant key from KMS. `BodyStore` is the only class to change.
+- Brotli and zstd response bodies are recorded as metadata only.
+- The agent's forwarder has never run against the real backend end to end: the
+  backend was tested with curl, and the forwarder against a fake server. Wiring
+  the two together is a half-hour job and worth doing before a pilot.
+- Retention (purge bodies after N days, keep the scores) is designed into the
+  schema but there is no job that does it yet.
+- Local dev seeds three users with the password "password".
 
 ## Left — later phases
 
