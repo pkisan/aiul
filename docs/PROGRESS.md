@@ -6,10 +6,10 @@ Last updated: 2026-09-18
 
 ## Current phase
 
-**Phase 0 — Foundations (macOS).**
+**Phase 1 — Dev root CA in Go.**
 
-Task in progress right now: Phase 0 complete except Docker Desktop, which is not
-installed on this Mac. Waiting for the owner to verify the milestone.
+Task in progress right now: `internal/platform` trust interface plus the darwin
+implementation of `aiul ca trust` / `aiul ca untrust`.
 
 ## Plan for Phase 0
 
@@ -30,14 +30,34 @@ installed on this Mac. Waiting for the owner to verify the milestone.
 - `docker-compose.yml`: Postgres 16 (127.0.0.1:5433), Redis 7 (127.0.0.1:6380), MinIO (127.0.0.1:9000/9001)
 - git repository initialised, first commit `3e9c53c`
 
+### Phase 1 (in progress)
+
+- `scripts/killswitch.sh` — written, dry run verified clean on this Mac (`7ff6d87`)
+- Go module renamed to `github.com/pkisan/aiul` (`7ff6d87`)
+- `internal/ca/ca.go` — dev root creation, load, paths, fingerprint; key written 0600
+- `internal/ca/leaf.go` — `MintLeaf`, 24h leaves, SAN from hosts, ECDSA P-256
+- `internal/ca/ca_test.go` — 7 tests, all passing, including a real TLS handshake
+  against a server using a leaf we minted
+
 ## In progress
 
-- Nothing. Phase 0 is written; the owner verifies the milestone next.
+- `internal/platform` (TrustInstaller interface + darwin implementation) and the
+  `aiul ca init|trust|untrust|info` commands.
 
 ## Next step
 
-Owner runs the Phase 0 verification commands (see SETUP-MAC.md). Then STOP until
-the owner confirms and asks for Phase 1.
+Write `internal/platform/platform.go`, `trust_darwin.go`, stubs for linux/windows,
+then wire the `ca` commands in `cmd/aiul`.
+
+## Left — Phase 1
+
+- [x] scripts/killswitch.sh (BEFORE any system change) + dry run verified
+- [x] internal/ca: root creation, load, leaf minting
+- [x] internal/ca unit tests
+- [ ] internal/platform TrustInstaller + darwin impl + linux/windows stubs
+- [ ] `aiul ca init|trust|untrust|info` commands (trust shows the command and asks first)
+- [ ] `aiul ca demo-server` — tiny local HTTPS server on a minted leaf, for the Safari test
+- [ ] Milestone: Safari loads the demo server with no warning after trust, warns again after untrust
 
 ## Left — Phase 0
 
@@ -51,7 +71,6 @@ the owner confirms and asks for Phase 1.
 
 ## Left — later phases
 
-- [ ] Phase 1 — dev root CA in Go (`aiul ca init|trust|untrust`), leaf minting, scripts/killswitch.sh FIRST
 - [ ] Phase 2 — proxy engine (CONNECT, classify, mint, stream, SSE reassembly, parsers, spool)
 - [ ] Phase 3 — redaction
 - [ ] Phase 4 — endpoint agent (darwin platform impls, install/uninstall/status/doctor, forwarder)
