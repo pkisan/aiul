@@ -6,10 +6,31 @@ Last updated: 2026-09-18
 
 ## Current phase
 
-**Phase 6 — Backend ingestion + storage (Laravel).**
+**Phase 7 — Minimal dashboard (Inertia + Vue).**
 
-Task in progress right now: none. Phase 6 is complete and the milestone is
-verified end to end. Waiting for the owner before Phase 7.
+Task in progress right now: scaffolding Inertia + Vue and the dashboard pages.
+
+### Before doing anything in a new session
+
+The backend needs its data services running:
+
+```sh
+open -a Docker && sleep 40
+cd ~/Desktop/Aayatti && docker compose up -d && docker compose ps
+```
+
+## Plan for Phase 7
+
+1. Breeze (Inertia + Vue) for auth and the app shell.
+2. Roles on users: member, manager, admin. A manager sees aggregates; only an
+   explicit permission reveals raw prompt text.
+3. Dashboard: interactions per task, AI time per task and per person with the
+   definition of "AI time" shown on the page, average scores with their reasons,
+   and an explicit "untagged" bucket.
+4. A raw-prompt view behind a policy, where EVERY view writes a consent_records
+   row naming who looked, at what, and why.
+5. A "my data" page where a person sees exactly what was captured about them.
+6. Feature tests for the gate and the audit log above all.
 
 Phase 5 is DONE and verified live. The repo is now on GitHub at
 github.com/pkisan/aiul (private), pushed 2026-09-18 after GitHub push protection
@@ -171,7 +192,7 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Phase 7: the Inertia + Vue dashboard. STOP until the owner confirms.
+Install Breeze with Inertia + Vue, add roles, then build the pages.
 
 ## Left — Phase 1
 
@@ -314,6 +335,16 @@ Phase 7: the Inertia + Vue dashboard. STOP until the owner confirms.
       accepted, attached to task AIUL-42 and a new session, its body encrypted in
       MinIO (confirmed unreadable in the bucket), and scored 100 by the queue
       worker with all six dimensions and their reasons
+
+## Left — Phase 7
+
+- [ ] Breeze (Inertia + Vue) installed
+- [ ] roles on users + a policy for raw prompt access
+- [ ] dashboard: per task, per person, scores, untagged bucket
+- [ ] raw-prompt view, audit-logged on every view
+- [ ] "my data" page
+- [ ] feature tests
+- [ ] milestone: a manager sees usage per project; opening a raw prompt is logged
 
 ## Left — later phases
 
