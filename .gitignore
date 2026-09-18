@@ -1,0 +1,25 @@
+# Secrets and certificates — never commit these. Present from day one.
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+dev-ca/
+spool/
+
+# Go build output
+/agent/aiul
+/agent/bin/
+
+# PHP / Laravel
+/backend/vendor/
+/backend/node_modules/
+/backend/.env
+/backend/storage/*.key
+
+# macOS
+.DS_Store
+
+# Local scratch
+*.local
