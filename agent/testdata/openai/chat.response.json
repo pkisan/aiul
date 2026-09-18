@@ -1,0 +1,9 @@
+{
+  "id": "chatcmpl-anon2",
+  "object": "chat.completion",
+  "model": "gpt-5",
+  "choices": [
+    {"index": 0, "message": {"role": "assistant", "content": "Because the reply appears while it is generated."}, "finish_reason": "stop"}
+  ],
+  "usage": {"prompt_tokens": 19, "completion_tokens": 9, "total_tokens": 28}
+}

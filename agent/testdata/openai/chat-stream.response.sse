@@ -1,0 +1,11 @@
+data: {"id":"chatcmpl-anon","object":"chat.completion.chunk","model":"gpt-5","choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}
+
+data: {"id":"chatcmpl-anon","object":"chat.completion.chunk","model":"gpt-5","choices":[{"index":0,"delta":{"content":"The user sees"}}]}
+
+data: {"id":"chatcmpl-anon","object":"chat.completion.chunk","model":"gpt-5","choices":[{"index":0,"delta":{"content":" the answer as it is written."}}]}
+
+data: {"id":"chatcmpl-anon","object":"chat.completion.chunk","model":"gpt-5","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"chatcmpl-anon","object":"chat.completion.chunk","model":"gpt-5","choices":[],"usage":{"prompt_tokens":23,"completion_tokens":11,"total_tokens":34}}
+
+data: [DONE]

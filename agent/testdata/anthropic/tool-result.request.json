@@ -1,0 +1,9 @@
+{
+  "model": "claude-opus-5",
+  "max_tokens": 1024,
+  "messages": [
+    {"role": "user", "content": "List the files in this repo."},
+    {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_anon", "name": "bash", "input": {"command": "ls"}}]},
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_anon", "content": "README.md\nmain.go"}]}
+  ]
+}

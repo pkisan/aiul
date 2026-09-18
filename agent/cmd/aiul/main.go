@@ -23,6 +23,8 @@ func main() {
 		fmt.Printf("aiul %s (%s/%s, %s)\n", version, runtime.GOOS, runtime.GOARCH, runtime.Version())
 	case "ca":
 		os.Exit(cmdCA(os.Args[2:]))
+	case "proxy":
+		os.Exit(cmdProxy(os.Args[2:]))
 	default:
 		fmt.Fprintf(os.Stderr, "aiul: unknown command %q\n\n", os.Args[1])
 		usage()
@@ -37,5 +39,6 @@ Usage:
   aiul version    print the version and build platform
   aiul ca         manage the development certificate authority
                   (init, info, trust, untrust, demo-server)
+  aiul proxy      run the TLS-inspecting proxy on 127.0.0.1:8899
 `)
 }

@@ -8,7 +8,8 @@ Last updated: 2026-09-18
 
 **Phase 2 — Proxy engine in Go (the core).**
 
-Task in progress right now: SSE reassembly and decompression on our copy.
+Task in progress right now: none — Phase 2 is code-complete. Waiting for the owner
+to run the milestone with a real AI CLI.
 
 Phase 1 is DONE: the owner confirmed the Safari test passed (no warning while
 trusted, warning again after untrust).
@@ -78,8 +79,9 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Write `internal/proxy/stream.go`: gzip/br/zstd decompression on our copy only, and
-SSE reassembly into one answer with token counts. Then the parsers.
+The owner runs the Phase 2 milestone with a real AI CLI (Gemini CLI, OpenCode or
+Claude Code) through `HTTPS_PROXY=http://127.0.0.1:8899` in ONE terminal. Then
+STOP until they confirm and ask for Phase 3.
 
 ## Left — Phase 1
 
@@ -107,10 +109,16 @@ SSE reassembly into one answer with token counts. Then the parsers.
       test added.
 - [x] handshake-failure detection feeds the tunnel list; test proves the tool
       works again on the retry
-- [ ] gzip/br/zstd decompression on our copy; SSE reassembly
-- [ ] parsers: interface + OpenAI, Anthropic, Gemini against testdata fixtures
-- [ ] forward: JSON event spool
-- [ ] `aiul proxy` command + milestone run
+- [x] gzip/deflate decompression on our copy; br and zstd are reported unreadable
+      rather than stored as rubbish (see the open question below); SSE reassembly
+- [x] parsers: interface + OpenAI, Anthropic, Gemini against anonymised fixtures in
+      `agent/testdata/`, including automated-follow-up detection (tool results)
+- [x] forward: JSON event spool, one file per event, 0600, atomic rename
+- [x] `aiul proxy` command
+- [x] Verified live from this session: `curl https://example.com` through the proxy
+      showed its REAL issuer (Cloudflare) and produced no event, while
+      `https://api.openai.com/v1/models` showed OUR issuer and spooled one event.
+- [ ] Milestone with a real AI CLI (owner runs this)
 
 ## Left — Phase 0
 

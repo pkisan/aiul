@@ -1,0 +1,6 @@
+{
+  "model": "gpt-5",
+  "messages": [
+    {"role": "user", "content": [{"type": "text", "text": "Why is streaming better?"}]}
+  ]
+}

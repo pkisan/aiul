@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -224,11 +226,12 @@ func TestCaptureReadsTheConversation(t *testing.T) {
 		t.Errorf("client body = %q, want the provider's unmodified answer", body)
 	}
 
-	events := sink.all()
-	if len(events) != 1 {
-		t.Fatalf("got %d events, want 1", len(events))
+	// The event is written by the proxy's own goroutine, a moment after the client
+	// has its answer, so wait for it rather than assuming an order.
+	if !eventually(2*time.Second, func() bool { return len(sink.all()) == 1 }) {
+		t.Fatalf("got %d events, want 1", len(sink.all()))
 	}
-	e := events[0]
+	e := sink.all()[0]
 	if e.Host != "api.openai.com" || e.Path != "/v1/chat/completions" || e.Status != 200 {
 		t.Errorf("event = %+v", e)
 	}
@@ -404,5 +407,83 @@ func TestStreamedResponseTerminatesPromptly(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("reading the streamed response did not finish: the chunked terminator is missing")
+	}
+}
+
+// TestCapturedStreamIsReassembledIntoOneAnswer is the Phase 2 milestone in test
+// form: a streaming Anthropic conversation goes through the proxy, the client
+// still receives it chunk by chunk, and the event holds the full prompt and the
+// reassembled answer.
+func TestCapturedStreamIsReassembledIntoOneAnswer(t *testing.T) {
+	root := newTestRoot(t)
+
+	sseBody, err := os.ReadFile(filepath.Join("..", "..", "testdata", "anthropic", "messages-stream.response.sse"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reqBody, err := os.ReadFile(filepath.Join("..", "..", "testdata", "anthropic", "messages-stream.request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	origin := newOriginServer(t, "api.anthropic.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got, _ := io.ReadAll(r.Body)
+		if len(got) != len(reqBody) {
+			t.Errorf("the provider must receive the request unmodified: got %d bytes, want %d", len(got), len(reqBody))
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		// Send it in small pieces, as a real provider does.
+		for _, block := range strings.SplitAfter(string(sseBody), "\n\n") {
+			fmt.Fprint(w, block)
+			fl.Flush()
+		}
+	}))
+	defer origin.close()
+
+	sink := &collector{}
+	proxyAddr, _ := startProxy(t, Config{Root: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
+	ourPool := x509.NewCertPool()
+	ourPool.AddCert(root.Cert)
+
+	resp, err := clientThrough(proxyAddr, ourPool).Post(
+		"https://api.anthropic.com/v1/messages", "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	clientSaw, _ := io.ReadAll(resp.Body)
+
+	// The client must receive the stream byte for byte.
+	if !strings.Contains(string(clientSaw), "terminates the encrypted connection") {
+		t.Errorf("the client did not receive the whole stream: %q", clientSaw)
+	}
+
+	if !eventually(2*time.Second, func() bool { return len(sink.all()) == 1 }) {
+		t.Fatalf("got %d events, want 1", len(sink.all()))
+	}
+	e := sink.all()[0]
+
+	if e.Parser != "anthropic" || e.Model != "claude-opus-5" {
+		t.Errorf("parser=%q model=%q", e.Parser, e.Model)
+	}
+	if e.Prompt != "Explain what a TLS proxy does in two sentences." {
+		t.Errorf("prompt = %q", e.Prompt)
+	}
+	want := "A TLS proxy sits between a client and a server and terminates the encrypted connection."
+	if e.Answer != want {
+		t.Errorf("answer = %q\nwant     %q", e.Answer, want)
+	}
+	if !e.Streamed {
+		t.Error("the event should be marked streamed")
+	}
+	if e.PromptTokens != 24 || e.ResponseTokens != 37 {
+		t.Errorf("tokens = %d/%d, want 24/37", e.PromptTokens, e.ResponseTokens)
+	}
+	if e.ID == "" {
+		t.Error("every event needs an id")
+	}
+	if e.DurationMS < 0 {
+		t.Error("duration should be recorded")
 	}
 }

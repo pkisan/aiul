@@ -1,0 +1,9 @@
+{
+  "model": "claude-opus-5",
+  "max_tokens": 1024,
+  "stream": true,
+  "system": "You are a helpful assistant for a PHP team.",
+  "messages": [
+    {"role": "user", "content": "Explain what a TLS proxy does in two sentences."}
+  ]
+}

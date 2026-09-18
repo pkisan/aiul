@@ -1,8 +1,13 @@
 package proxy
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
+	"strconv"
 	"time"
+
+	"github.com/pkisan/aiul/internal/parsers"
 )
 
 // interaction is what the proxy observed on one request/response pair, before any
@@ -50,8 +55,13 @@ type Event struct {
 	Model    string    `json:"model,omitempty"`
 	Parser   string    `json:"parser,omitempty"`
 	Prompt   string    `json:"prompt,omitempty"`
+	System   string    `json:"system,omitempty"`
 	Answer   string    `json:"answer,omitempty"`
 	Streamed bool      `json:"streamed,omitempty"`
+
+	// Automated marks a request the wire format shows is an agent's own follow-up
+	// (a tool result, say) rather than something a person typed.
+	Automated bool `json:"automated,omitempty"`
 
 	PromptTokens   int `json:"prompt_tokens,omitempty"`
 	ResponseTokens int `json:"response_tokens,omitempty"`
@@ -67,14 +77,17 @@ type Event struct {
 }
 
 // record turns a raw interaction into an Event and hands it to the sink.
-// Parsing and redaction are added in the next steps of Phase 2 and in Phase 3;
-// for now it captures the metadata every event needs.
+//
+// Redaction (Phase 3) will run on the Event before it leaves this function. The
+// bodies here are OUR copies; the client and provider already have the originals.
 func (p *Proxy) record(in interaction) {
 	if p.cfg.Sink == nil {
 		return
 	}
-	p.cfg.Sink.Record(Event{
+
+	ev := Event{
 		Schema:           1,
+		ID:               newEventID(),
 		Time:             in.Started,
 		Host:             in.Host,
 		Method:           in.Method,
@@ -84,5 +97,75 @@ func (p *Proxy) record(in interaction) {
 		ResponseBytes:    in.ResponseBytes,
 		DurationMS:       in.Duration.Milliseconds(),
 		AllowListVersion: AllowListVersion,
-	})
+	}
+
+	if parser := parsers.For(in.Host, in.Path); parser != nil {
+		ev.Parser = parser.Name()
+		ex := p.exchange(in)
+		res, err := parser.Parse(ex)
+		if err != nil {
+			// A body we could not read is still worth recording as metadata.
+			p.log.Debug("parse failed", "host", in.Host, "parser", parser.Name(), "err", err)
+		}
+		ev.Tool = res.Tool
+		ev.Model = res.Model
+		ev.Prompt = res.Prompt
+		ev.System = res.System
+		ev.Answer = res.Answer
+		ev.Streamed = res.Streamed
+		ev.Automated = res.Automated
+		ev.PromptTokens = res.PromptTokens
+		ev.ResponseTokens = res.ResponseTokens
+	}
+
+	p.cfg.Sink.Record(ev)
+}
+
+// exchange prepares our copies for a parser: decompress, and split a streamed
+// response into its SSE payloads.
+func (p *Proxy) exchange(in interaction) parsers.Exchange {
+	reqBody, reqOK := decompress(in.RequestCopy, in.RequestHeader.Get("Content-Encoding"))
+	respBody, respOK := decompress(in.ResponseCopy, in.ResponseHead.Get("Content-Encoding"))
+
+	if !reqOK || !respOK {
+		// br and zstd are not decoded yet; say so once rather than storing rubbish.
+		p.log.Debug("body was compressed in a format we do not decode yet",
+			"host", in.Host,
+			"request_encoding", in.RequestHeader.Get("Content-Encoding"),
+			"response_encoding", in.ResponseHead.Get("Content-Encoding"))
+	}
+
+	ex := parsers.Exchange{
+		Host:     in.Host,
+		Path:     in.Path,
+		Method:   in.Method,
+		Status:   in.Status,
+		ReqHead:  in.RequestHeader,
+		RespHead: in.ResponseHead,
+		Started:  in.Started,
+		Duration: in.Duration,
+	}
+	if reqOK {
+		ex.ReqBody = reqBody
+	}
+	if respOK {
+		if isSSE(in.ResponseHead.Get("Content-Type")) {
+			for _, e := range parseSSE(respBody) {
+				ex.SSE = append(ex.SSE, e.Data)
+			}
+		} else {
+			ex.RespBody = respBody
+		}
+	}
+	return ex
+}
+
+// newEventID returns a random identifier for one event, so the backend can
+// deduplicate a batch that was sent twice after a retry.
+func newEventID() string {
+	var b [12]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(b[:])
 }

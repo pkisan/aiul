@@ -1,0 +1,9 @@
+{
+  "id": "msg_anon_0002",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-5",
+  "content": [{"type": "text", "text": "Two files: README.md and main.go."}],
+  "stop_reason": "end_turn",
+  "usage": {"input_tokens": 61, "output_tokens": 12}
+}

@@ -1,0 +1,6 @@
+{
+  "contents": [
+    {"role": "user", "parts": [{"text": "Give one sentence about certificate pinning."}]}
+  ],
+  "systemInstruction": {"parts": [{"text": "Answer briefly."}]}
+}
