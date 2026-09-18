@@ -8,8 +8,8 @@ Last updated: 2026-09-18
 
 **Phase 5 — Task tagging.**
 
-Task in progress right now: `internal/platform` process lookup, then
-`internal/tasks`.
+Task in progress right now: none. Phase 5 is complete and verified live on this
+Mac. Waiting for the owner to confirm before Phase 6.
 
 Phase 4 is DONE. The owner reported the milestone "went as expected" and ran the
 uninstall, and `aiul status` on 2026-09-18 confirms this Mac has NO aiul settings
@@ -148,7 +148,8 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Write the ProcessFinder interface and `process_darwin.go`.
+Phase 6: the Laravel backend — ingestion endpoint, migrations, MinIO storage,
+Horizon scoring. STOP until the owner confirms.
 
 ## Left — Phase 1
 
@@ -250,11 +251,20 @@ Write the ProcessFinder interface and `process_darwin.go`.
 
 ## Left — Phase 5
 
-- [ ] platform ProcessFinder (lsof on darwin) + linux/windows stubs
-- [ ] internal/tasks: git branch from a directory, task ID by regexp, cached
-- [ ] wired into the proxy so each event carries task, branch and repo
-- [ ] tests over temporary git repositories
-- [ ] milestone: a captured event carries the correct task ID
+- [x] platform ProcessFinder using lsof on darwin + linux/windows stubs
+- [x] internal/tasks: reads `.git/HEAD` directly (no git binary, nothing executed),
+      walks up to the repository root, handles worktrees and detached HEAD, caches
+      for 30s so a branch switch is picked up
+- [x] wired into the proxy: each event carries task_id, branch, repo, work_dir and
+      the process name; a failed lookup leaves the event untagged and never breaks
+      the request
+- [x] tests over real temporary git repositories (10 in internal/tasks, 2 in the
+      proxy), including the over-matching bug found and fixed: `release-2026` was
+      being read as the ticket RELEASE-2026, so the default pattern is now
+      `\b[A-Z]{2,6}-\d+\b`
+- [x] MILESTONE VERIFIED LIVE on this Mac: a request made from a checkout on
+      branch `feature/AIUL-42-task-tagging` produced an event with
+      `task_id: AIUL-42`, the correct repo, and `process: curl`
 
 ## Left — later phases
 

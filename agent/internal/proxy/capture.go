@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/pkisan/aiul/internal/tasks"
 )
 
 // capture is the interception path, used only for allow-listed AI hosts.
@@ -23,7 +25,7 @@ import (
 // We connect upstream FIRST, because that is where we learn which names the real
 // certificate carries — so our copy claims exactly what the genuine server claims
 // and nothing more.
-func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream net.Conn, hostport string) {
+func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream net.Conn, hostport string, ctx tasks.Info) {
 	host := normalizeHost(hostport)
 	started := time.Now()
 
@@ -92,7 +94,7 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 			return
 		}
 
-		if err := p.forward(req, clientTLS, upstreamTLS, upstreamBuf, host, started); err != nil {
+		if err := p.forward(req, clientTLS, upstreamTLS, upstreamBuf, host, started, ctx); err != nil {
 			p.log.Debug("forwarding ended", "host", host, "err", err)
 			return
 		}

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -18,6 +19,8 @@ import (
 	"time"
 
 	"github.com/pkisan/aiul/internal/ca"
+	"github.com/pkisan/aiul/internal/platform"
+	"github.com/pkisan/aiul/internal/tasks"
 )
 
 // ---------------------------------------------------------------------------
@@ -591,5 +594,129 @@ func TestSecretsAreMaskedButTheProviderGetsTheOriginal(t *testing.T) {
 	// 5. The rest of the prompt must still be readable, or the record is useless.
 	if !strings.Contains(e.Prompt, "is that safe to commit?") {
 		t.Errorf("redaction destroyed the useful part of the prompt: %q", e.Prompt)
+	}
+}
+
+// fakeProcesses stands in for lsof so the task-tagging path can be tested without
+// depending on what happens to be running on the machine.
+type fakeProcesses struct {
+	name string
+	dir  string
+	err  error
+}
+
+func (f fakeProcesses) ByLocalPort(int) (platform.Process, error) {
+	if f.err != nil {
+		return platform.Process{}, f.err
+	}
+	return platform.Process{PID: 4242, Name: f.name}, nil
+}
+
+func (f fakeProcesses) WorkingDir(int) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.dir, nil
+}
+
+// TestCapturedEventCarriesTheTaskID is the Phase 5 milestone: an interaction
+// started from a checkout on branch ABC-123 is stored against task ABC-123.
+func TestCapturedEventCarriesTheTaskID(t *testing.T) {
+	root := newTestRoot(t)
+
+	// A real repository on a branch that names a ticket.
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-q")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(repo, "README.md"), []byte("hi\n"), 0o644)
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-qm", "first")
+	runGit(t, repo, "checkout", "-qb", "feature/ABC-123-add-login")
+
+	origin := newOriginServer(t, "api.anthropic.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.ReadAll(r.Body)
+		fmt.Fprint(w, `{"model":"claude-opus-5","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":5,"output_tokens":2}}`)
+	}))
+	defer origin.close()
+
+	sink := &collector{}
+	proxyAddr, _ := startProxy(t, Config{
+		Root:            root,
+		Sink:            sink,
+		UpstreamRootCAs: origin.rootPool,
+		Tasks:           tasks.NewResolver(),
+		Processes:       fakeProcesses{name: "claude", dir: repo},
+	}, origin.addr)
+
+	ourPool := x509.NewCertPool()
+	ourPool.AddCert(root.Cert)
+	resp, err := clientThrough(proxyAddr, ourPool).Post("https://api.anthropic.com/v1/messages",
+		"application/json", strings.NewReader(`{"model":"claude-opus-5","messages":[{"role":"user","content":"hello"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if !eventually(2*time.Second, func() bool { return len(sink.all()) == 1 }) {
+		t.Fatalf("got %d events, want 1", len(sink.all()))
+	}
+	e := sink.all()[0]
+
+	if e.TaskID != "ABC-123" {
+		t.Errorf("task = %q, want ABC-123", e.TaskID)
+	}
+	if e.Branch != "feature/ABC-123-add-login" {
+		t.Errorf("branch = %q", e.Branch)
+	}
+	if e.Repo != repo {
+		t.Errorf("repo = %q, want %q", e.Repo, repo)
+	}
+	if e.Process != "claude" {
+		t.Errorf("process = %q", e.Process)
+	}
+}
+
+// Not knowing the task is normal — a browser, or a directory that is not a
+// checkout — and must never break the capture.
+func TestCaptureWorksWhenTheTaskIsUnknown(t *testing.T) {
+	root := newTestRoot(t)
+	origin := newOriginServer(t, "api.anthropic.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"model":"m","content":[{"type":"text","text":"ok"}]}`)
+	}))
+	defer origin.close()
+
+	sink := &collector{}
+	proxyAddr, _ := startProxy(t, Config{
+		Root:            root,
+		Sink:            sink,
+		UpstreamRootCAs: origin.rootPool,
+		Tasks:           tasks.NewResolver(),
+		Processes:       fakeProcesses{err: fmt.Errorf("no process found")},
+	}, origin.addr)
+
+	ourPool := x509.NewCertPool()
+	ourPool.AddCert(root.Cert)
+	resp, err := clientThrough(proxyAddr, ourPool).Post("https://api.anthropic.com/v1/messages",
+		"application/json", strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+	if err != nil {
+		t.Fatalf("a failed process lookup must not break the request: %v", err)
+	}
+	resp.Body.Close()
+
+	if !eventually(2*time.Second, func() bool { return len(sink.all()) == 1 }) {
+		t.Fatal("the event should still be recorded, just untagged")
+	}
+	if got := sink.all()[0].TaskID; got != "" {
+		t.Errorf("task = %q, want empty (the untagged bucket)", got)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
 	}
 }

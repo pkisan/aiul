@@ -3,12 +3,14 @@ package proxy
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/pkisan/aiul/internal/parsers"
 	"github.com/pkisan/aiul/internal/redact"
+	"github.com/pkisan/aiul/internal/tasks"
 )
 
 // interaction is what the proxy observed on one request/response pair, before any
@@ -33,6 +35,10 @@ type interaction struct {
 
 	Started  time.Time
 	Duration time.Duration
+
+	// Task is what we worked out about where this interaction came from: the
+	// process, its working directory, the branch and the task ID.
+	Task tasks.Info
 }
 
 // Sink receives one finished interaction. internal/forward implements it by
@@ -82,6 +88,14 @@ type Event struct {
 
 	// RedactionRulesVersion records which rule list produced this record.
 	RedactionRulesVersion int `json:"redaction_rules_version"`
+
+	// Where the work was happening. TaskID empty means the backend's "untagged"
+	// bucket: better than attaching the event to a task we guessed at.
+	TaskID  string `json:"task_id,omitempty"`
+	Branch  string `json:"branch,omitempty"`
+	Repo    string `json:"repo,omitempty"`
+	WorkDir string `json:"work_dir,omitempty"`
+	Process string `json:"process,omitempty"`
 }
 
 // record turns a raw interaction into an Event and hands it to the sink.
@@ -105,6 +119,12 @@ func (p *Proxy) record(in interaction) {
 		ResponseBytes:    in.ResponseBytes,
 		DurationMS:       in.Duration.Milliseconds(),
 		AllowListVersion: AllowListVersion,
+
+		TaskID:  in.Task.TaskID,
+		Branch:  in.Task.Branch,
+		Repo:    in.Task.Repo,
+		WorkDir: in.Task.Dir,
+		Process: in.Task.Process,
 	}
 
 	parser := parsers.For(in.Host, in.Path)
@@ -199,4 +219,34 @@ func newEventID() string {
 		return strconv.FormatInt(time.Now().UnixNano(), 36)
 	}
 	return hex.EncodeToString(b[:])
+}
+
+// contextOf works out which task a connection belongs to, from the port it came
+// from. Everything here is best-effort: not knowing is normal and never an error,
+// because plenty of AI traffic comes from a browser or a directory that is not a
+// checkout.
+func (p *Proxy) contextOf(clientConn net.Conn) tasks.Info {
+	if p.cfg.Tasks == nil || p.cfg.Processes == nil {
+		return tasks.Info{}
+	}
+
+	addr, ok := clientConn.RemoteAddr().(*net.TCPAddr)
+	if !ok {
+		return tasks.Info{}
+	}
+
+	proc, err := p.cfg.Processes.ByLocalPort(addr.Port)
+	if err != nil {
+		p.log.Debug("could not identify the client process", "port", addr.Port, "err", err)
+		return tasks.Info{}
+	}
+
+	dir, err := p.cfg.Processes.WorkingDir(proc.PID)
+	if err != nil {
+		return tasks.Info{Process: proc.Name}
+	}
+
+	info := p.cfg.Tasks.Resolve(dir)
+	info.Process = proc.Name
+	return info
 }

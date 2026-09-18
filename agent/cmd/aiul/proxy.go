@@ -9,7 +9,9 @@ import (
 
 	"github.com/pkisan/aiul/internal/ca"
 	"github.com/pkisan/aiul/internal/forward"
+	"github.com/pkisan/aiul/internal/platform"
 	"github.com/pkisan/aiul/internal/proxy"
+	"github.com/pkisan/aiul/internal/tasks"
 )
 
 const proxyUsage = `Usage:
@@ -74,6 +76,10 @@ func cmdProxy(args []string) int {
 		Root:   root,
 		Logger: logger,
 		Sink:   sinkFunc(spool.Record),
+		// Task tagging: the source port identifies the client process, its working
+		// directory gives the checkout, and the branch there gives the task ID.
+		Tasks:     tasks.NewResolver(),
+		Processes: platform.Processes(),
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "aiul proxy: %v\n", err)

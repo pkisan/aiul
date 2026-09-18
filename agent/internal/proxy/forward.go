@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
+
+	"github.com/pkisan/aiul/internal/tasks"
 	"time"
 )
 
@@ -25,7 +27,7 @@ const maxCopyBytes = 4 << 20 // 4 MiB
 //
 // Rule 8's other half: the request we send upstream is byte-for-byte what the
 // client sent. Redaction happens later, on our copy only.
-func (p *Proxy) forward(req *http.Request, client io.Writer, upstream *tls.Conn, upstreamBuf *bufio.Reader, host string, connStarted time.Time) error {
+func (p *Proxy) forward(req *http.Request, client io.Writer, upstream *tls.Conn, upstreamBuf *bufio.Reader, host string, connStarted time.Time, taskCtx tasks.Info) error {
 	started := time.Now()
 
 	// Tee the request body: the original goes upstream, a bounded copy comes to us.
@@ -71,6 +73,7 @@ func (p *Proxy) forward(req *http.Request, client io.Writer, upstream *tls.Conn,
 		ResponseHead:  resp.Header,
 		Started:       started,
 		Duration:      time.Since(started),
+		Task:          taskCtx,
 	}
 	p.record(ev)
 

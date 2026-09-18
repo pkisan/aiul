@@ -75,3 +75,12 @@ const DevAllowUnmanagedVar = "AIUL_DEV_ALLOW_UNMANAGED"
 func SetDeviceToken(string) error  { return ErrUnsupported }
 func DeviceToken() (string, error) { return "", nil }
 func DeleteDeviceToken() error     { return nil }
+
+// WindowsProcess: GetExtendedTcpTable maps a port to a process id; the working
+// directory needs more work on Windows and may not be available at all.
+type WindowsProcess struct{}
+
+func Processes() ProcessFinder { return WindowsProcess{} }
+
+func (WindowsProcess) ByLocalPort(int) (Process, error) { return Process{}, ErrUnsupported }
+func (WindowsProcess) WorkingDir(int) (string, error)   { return "", ErrUnsupported }

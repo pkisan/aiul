@@ -14,6 +14,7 @@ import (
 	"github.com/pkisan/aiul/internal/forward"
 	"github.com/pkisan/aiul/internal/platform"
 	"github.com/pkisan/aiul/internal/proxy"
+	"github.com/pkisan/aiul/internal/tasks"
 )
 
 const runUsage = `Usage:
@@ -90,6 +91,10 @@ func cmdRun(args []string) int {
 		Root:   root,
 		Logger: log,
 		Sink:   sinkFunc(spool.Record),
+		// Task tagging: the source port identifies the client process, its working
+		// directory gives the checkout, and the branch there gives the task ID.
+		Tasks:     tasks.NewResolver(),
+		Processes: platform.Processes(),
 	})
 	if err != nil {
 		log.Error("cannot start the proxy", "err", err)

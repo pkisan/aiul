@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/pkisan/aiul/internal/ca"
+	"github.com/pkisan/aiul/internal/platform"
 	"github.com/pkisan/aiul/internal/redact"
+	"github.com/pkisan/aiul/internal/tasks"
 )
 
 // How an explicit HTTPS proxy works, in short.
@@ -67,6 +69,13 @@ type Config struct {
 	// Rule 5: this only ever ADDS roots. There is no option to skip verification,
 	// and tls.Config.InsecureSkipVerify appears nowhere in this package.
 	UpstreamRootCAs *x509.CertPool
+
+	// Tasks resolves a working directory to a git branch and task ID. Nil disables
+	// task tagging, which is what most tests want.
+	Tasks *tasks.Resolver
+
+	// Processes finds which program opened a connection. Nil disables the lookup.
+	Processes platform.ProcessFinder
 
 	// Dial opens the connection to the real server. It exists so tests can point
 	// every hostname at a local fake provider. Nil means an ordinary TCP dial.
@@ -200,7 +209,10 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 		switch decision {
 		case Capture:
-			p.capture(clientConn, clientReader, upstream, hostport)
+			// The source port identifies the client process, and through it the
+			// working directory and the task. Look it up now, while the connection
+			// is open: ports are reused quickly.
+			p.capture(clientConn, clientReader, upstream, hostport, p.contextOf(clientConn))
 		default:
 			// Pass and tunnel are byte-for-byte identical on the wire. The only
 			// difference is that tunnel means "we know this is an AI host we chose

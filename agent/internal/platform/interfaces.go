@@ -83,3 +83,23 @@ type ServiceManager interface {
 	// Running reports whether our jobs are loaded.
 	Running() (bool, error)
 }
+
+// ProcessFinder answers "which program opened this connection, and where is it
+// working?". That is how an event gets a task ID with no action from the user: the
+// process's working directory is a checkout, the checkout has a branch, and the
+// branch name carries the ticket.
+type ProcessFinder interface {
+	// ByLocalPort finds the process that owns a TCP connection from this local
+	// port on the loopback interface. A port is reused quickly, so the answer is
+	// only meaningful while the connection is open.
+	ByLocalPort(port int) (Process, error)
+
+	// WorkingDir returns a process's current working directory.
+	WorkingDir(pid int) (string, error)
+}
+
+// Process is a program that opened a connection to our proxy.
+type Process struct {
+	PID  int
+	Name string // "claude", "node", "Cursor Helper"
+}

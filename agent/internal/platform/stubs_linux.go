@@ -76,3 +76,12 @@ const DevAllowUnmanagedVar = "AIUL_DEV_ALLOW_UNMANAGED"
 func SetDeviceToken(string) error  { return ErrUnsupported }
 func DeviceToken() (string, error) { return "", nil }
 func DeleteDeviceToken() error     { return nil }
+
+// LinuxProcess: read /proc/net/tcp to map a port to an inode, then find the
+// process holding that inode in /proc/<pid>/fd, and read /proc/<pid>/cwd.
+type LinuxProcess struct{}
+
+func Processes() ProcessFinder { return LinuxProcess{} }
+
+func (LinuxProcess) ByLocalPort(int) (Process, error) { return Process{}, ErrUnsupported }
+func (LinuxProcess) WorkingDir(int) (string, error)   { return "", ErrUnsupported }
