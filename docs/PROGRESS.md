@@ -8,8 +8,8 @@ Last updated: 2026-09-18
 
 **Phase 4 — Endpoint agent (darwin first).**
 
-Task in progress right now: `internal/platform` interfaces and their darwin
-implementations.
+Task in progress right now: `internal/forward` forwarder (spool draining, batching,
+backoff, delete only after the backend confirms).
 
 Phase 3 is code-complete (63 tests, -race clean). The owner has NOT yet reported
 the by-hand milestone result; ask before assuming it passed.
@@ -125,7 +125,7 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Write the `internal/platform` interfaces, then `proxyconf_darwin.go`.
+Write `internal/forward/forwarder.go` and its tests against an httptest backend.
 
 ## Left — Phase 1
 
@@ -200,7 +200,13 @@ Write the `internal/platform` interfaces, then `proxyconf_darwin.go`.
 
 ## Left — Phase 4
 
-- [ ] platform interfaces + darwin implementations + linux/windows stubs
+- [x] platform interfaces (ProxyConfigurator, EnvWriter, MDMChecker, ToolDetector,
+      ServiceManager) + darwin implementations + linux/windows stubs; all three
+      GOOS values build
+- [x] platform tests: every mutating operation can print its commands first, the
+      /etc/zshenv block editor never eats other content (including a truncated
+      block), NO_PROXY covers local addresses, AllManagedVars covers everything the
+      agent writes
 - [ ] forwarder with spool draining, backoff, delete-after-confirm
 - [ ] aiul run / install / uninstall / status / doctor
 - [ ] health checks, drift re-apply, fail open
