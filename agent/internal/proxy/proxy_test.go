@@ -517,3 +517,79 @@ func TestHousekeepingCallsAreNotStored(t *testing.T) {
 		t.Errorf("housekeeping calls produced %d events, want 0: %+v", len(got), got)
 	}
 }
+
+// TestSecretsAreMaskedButTheProviderGetsTheOriginal is the Phase 3 milestone: a
+// fake API key in a prompt is masked in the stored event, while the provider
+// receives the request exactly as the client sent it. Rule 8.
+func TestSecretsAreMaskedButTheProviderGetsTheOriginal(t *testing.T) {
+	root := newTestRoot(t)
+
+	const fakeKey = "sk-proj-abcdefGHIJKL0123456789mnopqrstuvwxyz"
+	const email = "punit@example.com"
+	reqBody := fmt.Sprintf(`{"model":"claude-opus-5","messages":[{"role":"user","content":"my key is %s and my email is %s, is that safe to commit?"}]}`, fakeKey, email)
+
+	var providerSaw string
+	origin := newOriginServer(t, "api.anthropic.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got, _ := io.ReadAll(r.Body)
+		providerSaw = string(got)
+		fmt.Fprintf(w, `{"model":"claude-opus-5","content":[{"type":"text","text":"No. Rotate %s immediately."}],"usage":{"input_tokens":20,"output_tokens":8}}`, fakeKey)
+	}))
+	defer origin.close()
+
+	sink := &collector{}
+	proxyAddr, _ := startProxy(t, Config{Root: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
+	ourPool := x509.NewCertPool()
+	ourPool.AddCert(root.Cert)
+
+	resp, err := clientThrough(proxyAddr, ourPool).Post(
+		"https://api.anthropic.com/v1/messages", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	clientSaw, _ := io.ReadAll(resp.Body)
+
+	// 1. The provider must have received the ORIGINAL request, key and all.
+	if providerSaw != reqBody {
+		t.Errorf("the provider did not receive the request unmodified:\n  got:  %s\n  want: %s", providerSaw, reqBody)
+	}
+
+	// 2. The client must have received the provider's ORIGINAL answer.
+	if !strings.Contains(string(clientSaw), fakeKey) {
+		t.Error("the client's answer was modified; only our copy may be redacted")
+	}
+
+	// 3. Our stored event must have neither the key nor the email.
+	if !eventually(2*time.Second, func() bool { return len(sink.all()) == 1 }) {
+		t.Fatalf("got %d events, want 1", len(sink.all()))
+	}
+	e := sink.all()[0]
+
+	if strings.Contains(e.Prompt, fakeKey) {
+		t.Errorf("the API key survived into the stored prompt: %q", e.Prompt)
+	}
+	if strings.Contains(e.Prompt, email) {
+		t.Errorf("the email survived into the stored prompt: %q", e.Prompt)
+	}
+	if strings.Contains(e.Answer, fakeKey) {
+		t.Errorf("the API key survived into the stored answer: %q", e.Answer)
+	}
+
+	// 4. The event records that something was masked, without the values.
+	if len(e.Redacted) == 0 {
+		t.Error("the event should list the rules that matched")
+	}
+	for _, name := range e.Redacted {
+		if strings.Contains(name, "sk-") || strings.Contains(name, "@") {
+			t.Errorf("a rule name leaked a value: %q", name)
+		}
+	}
+	if e.RedactionRulesVersion == 0 {
+		t.Error("the event should record which rule list was used")
+	}
+
+	// 5. The rest of the prompt must still be readable, or the record is useless.
+	if !strings.Contains(e.Prompt, "is that safe to commit?") {
+		t.Errorf("redaction destroyed the useful part of the prompt: %q", e.Prompt)
+	}
+}

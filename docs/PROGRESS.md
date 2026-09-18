@@ -8,7 +8,8 @@ Last updated: 2026-09-18
 
 **Phase 3 — Redaction.**
 
-Task in progress right now: `internal/redact` — the rule list and its tests.
+Task in progress right now: none. Phase 3 is code-complete, 63 tests pass with
+-race. Waiting for the owner to verify the milestone.
 
 Phase 2 is DONE, milestone passed with Claude Code. The owner decided:
 spool only parsed conversations (done, `TestHousekeepingCallsAreNotStored`);
@@ -96,7 +97,8 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Write `internal/redact/redact.go` and `redact_test.go`.
+The owner verifies the Phase 3 milestone (commands at the end of the phase). Then
+STOP until they confirm and ask for Phase 4.
 
 ## Left — Phase 1
 
@@ -157,11 +159,17 @@ Write `internal/redact/redact.go` and `redact_test.go`.
 
 - [x] Decision applied: only parsed conversations are spooled; housekeeping calls
       on an allow-listed host are decrypted, forwarded and forgotten
-- [ ] internal/redact rule list
-- [ ] a test per rule, plus over-masking tests
-- [ ] wired into proxy.record, before anything reaches the sink
-- [ ] milestone: a fake API key in a prompt is masked in the stored event while the
-      provider still receives the original request
+- [x] internal/redact rule list v1: anthropic/openai/google/aws/github/stripe/slack
+      keys, bearer tokens, JWTs, password-style assignments, PEM private key
+      blocks, connection-string passwords, emails, phones, Aadhaar, PAN, cards
+- [x] a test per rule, plus ten over-masking cases proving ordinary prompts are
+      left alone, plus a test that rule names never leak a value
+- [x] wired into `proxy.record`; redaction has no switch to turn it off
+- [x] milestone test `TestSecretsAreMaskedButTheProviderGetsTheOriginal`: the
+      provider receives the request byte for byte, the client receives the answer
+      unmodified, and the stored event has neither the key nor the email while the
+      rest of the prompt stays readable
+- [ ] Owner verifies the milestone by hand
 
 ## Left — later phases
 

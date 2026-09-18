@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pkisan/aiul/internal/parsers"
+	"github.com/pkisan/aiul/internal/redact"
 )
 
 // interaction is what the proxy observed on one request/response pair, before any
@@ -74,6 +75,13 @@ type Event struct {
 	// AllowListVersion records which version of the allow-list decided to capture
 	// this, so an event can always be explained later.
 	AllowListVersion int `json:"allowlist_version"`
+
+	// Redacted names the redaction rules that matched, so a stored record shows
+	// that a secret was present without keeping it. Never holds a value.
+	Redacted []string `json:"redacted,omitempty"`
+
+	// RedactionRulesVersion records which rule list produced this record.
+	RedactionRulesVersion int `json:"redaction_rules_version"`
 }
 
 // record turns a raw interaction into an Event and hands it to the sink.
@@ -128,6 +136,17 @@ func (p *Proxy) record(in interaction) {
 		ev.Automated = res.Automated
 		ev.PromptTokens = res.PromptTokens
 		ev.ResponseTokens = res.ResponseTokens
+	}
+
+	// Rule 8: mask before anything is stored or sent. The provider already has the
+	// original request; this only touches our copy.
+	texts, found := p.redactor.Strings(ev.Prompt, ev.System, ev.Answer)
+	ev.Prompt, ev.System, ev.Answer = texts[0], texts[1], texts[2]
+	ev.Redacted = found.Names()
+	ev.RedactionRulesVersion = found.RulesVersion
+	if found.Any() {
+		// The names of the rules, never the values.
+		p.log.Info("masked secrets before storing", "host", in.Host, "found", redact.Describe(found))
 	}
 
 	p.cfg.Sink.Record(ev)

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pkisan/aiul/internal/ca"
+	"github.com/pkisan/aiul/internal/redact"
 )
 
 // How an explicit HTTPS proxy works, in short.
@@ -74,10 +75,11 @@ type Config struct {
 
 // Proxy is the explicit HTTPS proxy.
 type Proxy struct {
-	cfg    Config
-	certs  *CertCache
-	log    *slog.Logger
-	server *http.Server
+	cfg      Config
+	certs    *CertCache
+	log      *slog.Logger
+	redactor *redact.Redactor
+	server   *http.Server
 
 	wg sync.WaitGroup
 }
@@ -100,7 +102,13 @@ func New(cfg Config) (*Proxy, error) {
 		return nil, errors.New("proxy: no CA root; run 'aiul ca init' first")
 	}
 
-	p := &Proxy{cfg: cfg, certs: NewCertCache(cfg.Root), log: cfg.Logger}
+	p := &Proxy{
+		cfg:   cfg,
+		certs: NewCertCache(cfg.Root),
+		log:   cfg.Logger,
+		// Redaction is not optional and has no switch to turn it off. Rule 8.
+		redactor: redact.New(),
+	}
 	p.server = &http.Server{
 		Addr:    cfg.Addr,
 		Handler: http.HandlerFunc(p.handle),
