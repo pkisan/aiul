@@ -8,8 +8,9 @@ Last updated: 2026-09-18
 
 **Phase 2 — Proxy engine in Go (the core).**
 
-Task in progress right now: none — Phase 2 is code-complete. Waiting for the owner
-to run the milestone with a real AI CLI.
+Task in progress right now: none. Phase 2 is DONE and the milestone passed with
+Claude Code. Waiting for the owner's decisions on the two open questions below
+before Phase 3.
 
 Phase 1 is DONE: the owner confirmed the Safari test passed (no warning while
 trusted, warning again after untrust).
@@ -118,7 +119,15 @@ STOP until they confirm and ask for Phase 3.
 - [x] Verified live from this session: `curl https://example.com` through the proxy
       showed its REAL issuer (Cloudflare) and produced no event, while
       `https://api.openai.com/v1/models` showed OUR issuer and spooled one event.
-- [ ] Milestone with a real AI CLI (owner runs this)
+- [x] MILESTONE PASSED with Claude Code (2026-09-18), run from this session with
+      per-command environment variables only:
+      `HTTPS_PROXY=http://127.0.0.1:8899 NODE_USE_SYSTEM_CA=1 NODE_EXTRA_CA_CERTS=<root.crt> claude -p "..."`
+      Claude Code worked normally and did NOT reject our certificate. The event
+      shows parser=anthropic, model=claude-opus-5, streamed=true, the full prompt,
+      the reassembled answer, and token counts. The spool was deleted afterwards
+      because it held a real prompt in plaintext (redaction is Phase 3).
+      Gemini CLI could not be used: Google rejects the account tier
+      ("IneligibleTierError"), unrelated to the proxy.
 
 ## Left — Phase 0
 
@@ -141,7 +150,23 @@ STOP until they confirm and ask for Phase 3.
 
 ## Blockers / open questions for the user
 
+- **Noise in the spool.** The Claude Code run produced 13 events, of which 12 were
+  api.anthropic.com housekeeping calls (`/mcp-registry/v0/servers`,
+  `/api/oauth/account/settings`, telemetry batches) with no parser and no
+  conversation. Options: (a) spool only events a parser understood, (b) spool
+  everything and let the backend filter, (c) keep a metadata-only event but drop
+  the empty body fields. Awaiting the owner's choice.
+- **brotli/zstd.** Not decoded yet; such bodies are recorded as metadata only,
+  never as rubbish. Decoding needs a dependency (`andybalholm/brotli`,
+  `klauspost/compress`), which breaks the stdlib-only preference. Claude Code did
+  not use them, so this is not yet urgent.
+- Gemini CLI is unusable on this account (Google tier error). Use Claude Code,
+  OpenCode or Codex for future capture work.
+
 - PHP is 8.4.23 via Herd, not 8.3. Laravel 12 supports 8.4, so we use it (D4).
+- Docker Desktop 4.91.0 is already in /Applications and `docker` 29.8.0 works. The
+  Homebrew cask refuses to reinstall over it, which is fine: just `open -a Docker`
+  when Phase 6 needs the data services.
 - Go module path confirmed as `github.com/pkisan/aiul`.
 - **Before Phase 2 starts:** rule 11 requires a written comparison of stdlib-only
   vs goproxy vs go-mitmproxy in DECISIONS.md, with a recommendation, confirmed by
