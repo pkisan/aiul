@@ -27,6 +27,8 @@ func main() {
 		os.Exit(cmdProxy(os.Args[2:]))
 	case "run":
 		os.Exit(cmdRun(os.Args[2:]))
+	case "helper":
+		os.Exit(cmdHelper(os.Args[2:]))
 	case "install":
 		os.Exit(cmdInstall(os.Args[2:]))
 	case "uninstall":
@@ -51,6 +53,7 @@ Usage:
                   (init, info, trust, untrust, demo-server)
   aiul proxy      run the TLS-inspecting proxy on 127.0.0.1:8899
   aiul run        run the proxy and the agent loop together (used by launchd)
+  aiul helper     the small root-only half: system proxy and process lookup
 
   aiul install    configure this Mac (DRY RUN unless you pass --apply)
   aiul uninstall  remove every change aiul made

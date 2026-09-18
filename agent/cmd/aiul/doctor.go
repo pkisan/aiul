@@ -8,6 +8,7 @@ import (
 
 	"github.com/pkisan/aiul/internal/ca"
 	"github.com/pkisan/aiul/internal/forward"
+	"github.com/pkisan/aiul/internal/helper"
 	"github.com/pkisan/aiul/internal/platform"
 )
 
@@ -126,13 +127,23 @@ func runChecks() []check {
 		})
 	}
 
-	// --- the background job --------------------------------------------------
+	// --- the two background jobs ---------------------------------------------
 	running, _ := platform.Service().Running()
 	out = append(out, check{
-		name:   "background job is loaded",
+		name:   "background jobs are loaded",
 		ok:     running,
 		detail: jobDetail(running),
 		fix:    "sudo aiul install --apply",
+	})
+
+	// --- the privilege split --------------------------------------------------
+	helperUp := helper.NewClient(helper.SocketPath).Available()
+	uid, _ := platform.ServiceAccount()
+	out = append(out, check{
+		name:   "traffic is parsed WITHOUT root",
+		ok:     helperUp && uid >= 0,
+		detail: privilegeDetail(helperUp, uid),
+		fix:    "sudo aiul install --apply   (running by hand is fine; this only applies to the installed agent)",
 	})
 
 	// --- MDM -----------------------------------------------------------------
@@ -228,9 +239,24 @@ func envDetail(vars platform.EnvVars) string {
 
 func jobDetail(running bool) string {
 	if running {
-		return "com.aiul.agent is loaded in launchd"
+		return "com.aiul.helper (root) and com.aiul.agent (unprivileged) are both loaded"
 	}
-	return "com.aiul.agent is not loaded; the proxy will not start at boot"
+	return "not loaded; the proxy will not start at boot"
+}
+
+// privilegeDetail explains the split in plain English, because "is the helper
+// running" is not a question anyone should have to translate.
+func privilegeDetail(helperUp bool, uid int) string {
+	switch {
+	case helperUp && uid >= 0:
+		return fmt.Sprintf("the worker runs as %s (uid %d) and asks a small root helper for the "+
+			"three things that need privileges", platform.ServiceUserName, uid)
+	case uid < 0:
+		return "the " + platform.ServiceUserName + " service account does not exist, so nothing is installed yet"
+	default:
+		return "the root helper is not answering, so the installed worker cannot set the system proxy " +
+			"or identify which process made a request"
+	}
 }
 
 func tokenDetail(token string) string {

@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/pkisan/aiul/internal/paths"
 	"time"
 )
 
@@ -24,14 +26,10 @@ type Spool struct {
 	seq int
 }
 
-// DefaultDir is where events are spooled on macOS: under the user's own
-// Application Support directory, not a shared location.
+// DefaultDir is where events are spooled. Where that is depends on how the agent
+// is running — see internal/paths.
 func DefaultDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, "Library", "Application Support", "AIUL", "spool"), nil
+	return paths.SpoolDir()
 }
 
 // NewSpool creates the directory if needed and returns a spool writing into it.

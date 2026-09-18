@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -19,8 +21,22 @@ import (
 // The privilege split is deliberate and recorded in docs/DECISIONS.md: the daemon
 // needs root only to change network settings and write /etc/zshenv.
 const (
+	// Two jobs, because the agent is two processes (see docs/DECISIONS.md, D6):
+	//
+	//   helper — root, tiny, answers four verbs on a unix socket
+	//   worker — runs as _aiul, does the proxy, parsing, redaction and forwarding
+	//
+	// launchd starts the worker as the service account directly through the
+	// plist's UserName key, so there is no privilege-dropping code to get wrong.
+	helperLabel = "com.aiul.helper"
+	helperPlist = "/Library/LaunchDaemons/com.aiul.helper.plist"
+
 	daemonLabel = "com.aiul.agent"
 	daemonPlist = "/Library/LaunchDaemons/com.aiul.agent.plist"
+
+	// Where the worker keeps its state. It cannot use a home directory, because
+	// the service account deliberately has none.
+	WorkerStateDir = "/var/db/aiul"
 
 	// Where the installed binary lives. /usr/local/bin is not writable by a
 	// standard user, which is what we want for a binary that runs as root.
@@ -37,8 +53,11 @@ func Service() ServiceManager { return DarwinService{} }
 func (DarwinService) InstallCommands() []string {
 	return []string{
 		fmt.Sprintf("sudo cp <this binary> %s", InstalledBinaryPath),
-		fmt.Sprintf("sudo mkdir -p %s", logDir),
-		fmt.Sprintf("sudo tee %s   # a LaunchDaemon running '%s run --manage-proxy'", daemonPlist, InstalledBinaryPath),
+		fmt.Sprintf("sudo mkdir -p %s %s", logDir, WorkerStateDir),
+		fmt.Sprintf("sudo chown -R %s:%s %s", ServiceUserName, ServiceGroupName, WorkerStateDir),
+		fmt.Sprintf("sudo tee %s   # root helper: '%s helper'", helperPlist, InstalledBinaryPath),
+		fmt.Sprintf("sudo tee %s   # worker as %s: '%s run --manage-proxy'", daemonPlist, ServiceUserName, InstalledBinaryPath),
+		fmt.Sprintf("sudo launchctl load -w %s", helperPlist),
 		fmt.Sprintf("sudo launchctl load -w %s", daemonPlist),
 	}
 }
@@ -46,14 +65,38 @@ func (DarwinService) InstallCommands() []string {
 func (DarwinService) UninstallCommands() []string {
 	return []string{
 		fmt.Sprintf("sudo launchctl unload -w %s", daemonPlist),
-		fmt.Sprintf("sudo rm -f %s", daemonPlist),
+		fmt.Sprintf("sudo launchctl unload -w %s", helperPlist),
+		fmt.Sprintf("sudo rm -f %s %s", daemonPlist, helperPlist),
 		fmt.Sprintf("sudo rm -f %s", InstalledBinaryPath),
+		fmt.Sprintf("sudo dscl . -delete /Users/%s", ServiceUserName),
+		fmt.Sprintf("sudo dscl . -delete /Groups/%s", ServiceGroupName),
 	}
 }
 
 func (s DarwinService) Install(binaryPath string) error {
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", logDir, err)
+	// The service account the worker runs as. Created first: the directories it
+	// owns and the socket group both refer to it.
+	uid, gid, err := CreateServiceAccount()
+	if err != nil {
+		return err
+	}
+
+	for _, dir := range []string{logDir, WorkerStateDir} {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return fmt.Errorf("create %s: %w", dir, err)
+		}
+	}
+	// The worker writes its spool here and must own it. The log directory stays
+	// root-owned; both processes append to files launchd opens for them.
+	if err := chownTree(WorkerStateDir, uid, gid); err != nil {
+		return fmt.Errorf("give %s to %s: %w", WorkerStateDir, ServiceUserName, err)
+	}
+
+	// The CA lives in the installing user's home, which the service account
+	// cannot read. Copy it to the state directory and give it to that account:
+	// without its key the worker cannot mint a certificate for anything.
+	if err := copyCAForWorker(uid, gid); err != nil {
+		return fmt.Errorf("give the CA to %s: %w", ServiceUserName, err)
 	}
 
 	// Copy the binary somewhere root-owned. Running a root daemon from a user's
@@ -68,51 +111,150 @@ func (s DarwinService) Install(binaryPath string) error {
 		}
 	}
 
-	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+	// 1. the root helper
+	helper := daemonPlistXML(helperLabel, "", []string{
+		InstalledBinaryPath, "helper", "--group", strconv.Itoa(gid),
+	}, logDir+"/helper.log", logDir+"/helper.err.log")
+
+	if err := os.WriteFile(helperPlist, []byte(helper), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", helperPlist, err)
+	}
+
+	// 2. the worker, as the service account. UserName is what keeps the code that
+	// parses network traffic out of root.
+	worker := daemonPlistXML(daemonLabel, ServiceUserName, []string{
+		InstalledBinaryPath, "run", "--manage-proxy",
+	}, logDir+"/agent.log", logDir+"/agent.err.log")
+
+	if err := os.WriteFile(daemonPlist, []byte(worker), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", daemonPlist, err)
+	}
+
+	// The helper first: the worker asks it for the system proxy as soon as it
+	// starts.
+	if err := run("launchctl", "load", "-w", helperPlist); err != nil {
+		return fmt.Errorf("load the helper: %w", err)
+	}
+	if err := run("launchctl", "load", "-w", daemonPlist); err != nil {
+		return fmt.Errorf("load the worker: %w", err)
+	}
+
+	return nil
+}
+
+// daemonPlistXML builds a launchd job. An empty user means it runs as root.
+func daemonPlistXML(label, user string, argv []string, stdout, stderr string) string {
+	var args strings.Builder
+	for _, a := range argv {
+		fmt.Fprintf(&args, "\t\t<string>%s</string>\n", a)
+	}
+
+	userKey := ""
+	if user != "" {
+		userKey = fmt.Sprintf("\t<key>UserName</key>\n\t<string>%s</string>\n", user)
+	}
+
+	// Both halves must agree where the CA and the spool are. The service account
+	// has no home directory, so this cannot be left to a default.
+	env := fmt.Sprintf(`	<key>EnvironmentVariables</key>
+	<dict>
+		<key>AIUL_STATE_DIR</key>
+		<string>%s</string>
+	</dict>
+`, WorkerStateDir)
+
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>Label</key>
 	<string>%s</string>
-	<key>ProgramArguments</key>
+%s%s	<key>ProgramArguments</key>
 	<array>
-		<string>%s</string>
-		<string>run</string>
-		<string>--manage-proxy</string>
-	</array>
+%s	</array>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
 	<true/>
 	<key>StandardOutPath</key>
-	<string>%s/agent.log</string>
+	<string>%s</string>
 	<key>StandardErrorPath</key>
-	<string>%s/agent.err.log</string>
+	<string>%s</string>
 	<key>ProcessType</key>
 	<string>Background</string>
 </dict>
 </plist>
-`, daemonLabel, InstalledBinaryPath, logDir, logDir)
+`, label, userKey, env, args.String(), stdout, stderr)
+}
 
-	if err := os.WriteFile(daemonPlist, []byte(plist), 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", daemonPlist, err)
+// copyCAForWorker copies the development CA into the worker's own directory.
+//
+// The key keeps mode 0600 and changes owner rather than becoming readable by
+// everyone: exactly one account on the machine can mint certificates with it.
+func copyCAForWorker(uid, gid int) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
 	}
-	if err := run("launchctl", "load", "-w", daemonPlist); err != nil {
-		return fmt.Errorf("load the launch daemon: %w", err)
+	source := filepath.Join(home, "Library", "Application Support", "AIUL", "dev-ca")
+	target := filepath.Join(WorkerStateDir, "dev-ca")
+
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		return err
 	}
-	return nil
+
+	for name, mode := range map[string]os.FileMode{
+		"root.crt":      0o644,
+		"root.key":      0o600,
+		"ca-bundle.pem": 0o644,
+	} {
+		data, err := os.ReadFile(filepath.Join(source, name))
+		if err != nil {
+			if os.IsNotExist(err) && name == "ca-bundle.pem" {
+				continue // written on demand; not fatal if absent
+			}
+
+			return fmt.Errorf("read %s: %w", name, err)
+		}
+		if err := os.WriteFile(filepath.Join(target, name), data, mode); err != nil {
+			return err
+		}
+	}
+
+	return chownTree(target, uid, gid)
+}
+
+// chownTree gives a directory and everything under it to the service account.
+func chownTree(root string, uid, gid int) error {
+	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		return os.Chown(path, uid, gid)
+	})
 }
 
 func (DarwinService) Uninstall() error {
 	var firstErr error
-	if _, err := os.Stat(daemonPlist); err == nil {
-		_ = run("launchctl", "unload", "-w", daemonPlist)
-		if err := os.Remove(daemonPlist); err != nil && firstErr == nil {
-			firstErr = err
+
+	// The worker first, then the helper: the worker asks the helper to remove the
+	// system proxy on its way out.
+	for _, plist := range []string{daemonPlist, helperPlist} {
+		if _, err := os.Stat(plist); err == nil {
+			_ = run("launchctl", "unload", "-w", plist)
+			if err := os.Remove(plist); err != nil && firstErr == nil {
+				firstErr = err
+			}
 		}
 	}
 	// bootout catches a job loaded without a plist on disk.
 	_ = run("launchctl", "bootout", "system/"+daemonLabel)
+	_ = run("launchctl", "bootout", "system/"+helperLabel)
+
+	if err := DeleteServiceAccount(); err != nil && firstErr == nil {
+		firstErr = err
+	}
 
 	if err := os.Remove(InstalledBinaryPath); err != nil && !os.IsNotExist(err) && firstErr == nil {
 		firstErr = err
@@ -125,5 +267,8 @@ func (DarwinService) Running() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("launchctl list: %w", err)
 	}
-	return strings.Contains(string(out), daemonLabel), nil
+
+	// Both halves have to be there for the agent to work.
+	return strings.Contains(string(out), daemonLabel) &&
+		strings.Contains(string(out), helperLabel), nil
 }

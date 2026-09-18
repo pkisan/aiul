@@ -13,7 +13,7 @@
 #   3. launchctl env vars  the GUI-wide variables set at login
 #   4. /etc/zshenv block   the marked block that sets variables for terminals
 #   5. keychain trust      our dev root CA removed from the System keychain
-#   6. leftovers           the installed binary and the device token
+#   6. leftovers           the installed binary, the service account, the token
 #
 # It deliberately does NOT delete ~/Library/Application Support/AIUL/dev-ca/, so a
 # CA can be re-trusted later instead of regenerated. Delete that folder by hand if
@@ -29,6 +29,9 @@ ZSHENV_FILE="/etc/zshenv"
 BLOCK_BEGIN="# >>> AIUL BEGIN >>>"
 BLOCK_END="# <<< AIUL END <<<"
 DAEMON_PLIST="/Library/LaunchDaemons/com.aiul.agent.plist"
+HELPER_PLIST="/Library/LaunchDaemons/com.aiul.helper.plist"
+SERVICE_USER="_aiul"
+STATE_DIR="/var/db/aiul"
 AGENT_PLIST="/Library/LaunchAgents/com.aiul.session.plist"
 CA_COMMON_NAME_PREFIX="AIUL Dev Root"
 ENV_VARS="HTTPS_PROXY HTTP_PROXY NO_PROXY NODE_EXTRA_CA_CERTS NODE_USE_SYSTEM_CA SSL_CERT_FILE CODEX_CA_CERTIFICATE CLAUDE_CODE_CERT_STORE REQUESTS_CA_BUNDLE"
@@ -68,7 +71,9 @@ say "AI Usage Logger kill switch"
 step "1/6  launchd jobs"
 # launchd is macOS's service manager. Unloading a job stops the process and
 # prevents it starting again at boot or login.
-for plist in "$DAEMON_PLIST" "$AGENT_PLIST"; do
+# The worker first, then the helper: the worker asks the helper to remove the
+# system proxy on its way out.
+for plist in "$DAEMON_PLIST" "$HELPER_PLIST" "$AGENT_PLIST"; do
   if [ -f "$plist" ]; then
     run "unload $plist" launchctl unload -w "$plist"
     run "remove $plist" rm -f "$plist"
@@ -79,6 +84,7 @@ done
 # bootout also catches a job that was loaded without a plist on disk.
 if [ "$DRY_RUN" -eq 0 ]; then
   launchctl bootout system/com.aiul.agent >/dev/null 2>&1
+  launchctl bootout system/com.aiul.helper >/dev/null 2>&1
   launchctl bootout "gui/$(stat -f %u /dev/console)/com.aiul.session" >/dev/null 2>&1
 fi
 
@@ -180,6 +186,20 @@ else
   say "   not present: /usr/local/bin/aiul"
 fi
 
+if dscl . -read /Users/$SERVICE_USER >/dev/null 2>&1; then
+  run "remove the $SERVICE_USER service account" dscl . -delete /Users/$SERVICE_USER
+  run "remove the $SERVICE_USER group" dscl . -delete /Groups/$SERVICE_USER
+else
+  say "   no $SERVICE_USER service account"
+fi
+
+if [ -d "$STATE_DIR" ]; then
+  say "   NOTE: $STATE_DIR still holds the worker's CA copy and spooled events."
+  say "   Remove it by hand if you want it gone: sudo rm -rf $STATE_DIR"
+else
+  say "   no $STATE_DIR"
+fi
+
 if security find-generic-password -s com.aiul.agent -a device-token >/dev/null 2>&1; then
   run "remove the device token from the keychain" security delete-generic-password -s com.aiul.agent -a device-token
 else
@@ -201,5 +221,6 @@ say "  launchctl getenv HTTPS_PROXY                   # prints nothing"
 say "  grep -c AIUL /etc/zshenv 2>/dev/null           # 0 or no such file"
 say "  security find-certificate -c 'AIUL Dev Root' /Library/Keychains/System.keychain   # not found"
 say "  ls /usr/local/bin/aiul                        # no such file"
+say "  dscl . -read /Users/_aiul                      # record not found"
 say "  curl -sI https://example.com >/dev/null && echo 'internet works'"
 exit 0

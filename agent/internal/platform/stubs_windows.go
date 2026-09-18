@@ -84,3 +84,14 @@ func Processes() ProcessFinder { return WindowsProcess{} }
 
 func (WindowsProcess) ByLocalPort(int) (Process, error) { return Process{}, ErrUnsupported }
 func (WindowsProcess) WorkingDir(int) (string, error)   { return "", ErrUnsupported }
+
+// Service account. On Windows this is a virtual service account.
+const (
+	ServiceUserName  = "aiul"
+	ServiceGroupName = "aiul"
+)
+
+func ServiceAccount() (int, int)              { return -1, -1 }
+func CreateServiceAccountCommands() []string  { return nil }
+func CreateServiceAccount() (int, int, error) { return -1, -1, ErrUnsupported }
+func DeleteServiceAccount() error             { return ErrUnsupported }

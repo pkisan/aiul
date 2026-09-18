@@ -21,7 +21,9 @@ Without --apply this is a DRY RUN: it prints every command it would run and
 changes nothing. That is the default on purpose.
 
 With --apply it will, as root:
-  - install the binary and a LaunchDaemon that runs 'aiul run'
+  - create the _aiul service account, which the worker runs as
+  - install the binary and TWO launchd jobs: a tiny root helper, and the worker
+    (proxy, parsing, redaction, forwarding) running unprivileged as _aiul
   - trust the development CA in the System keychain
   - point every network service's HTTPS proxy at ` + proxyAddr + `
   - write environment variables to /etc/zshenv and a login LaunchAgent
@@ -75,15 +77,19 @@ func cmdInstall(args []string) int {
 	fmt.Println("What 'aiul install --apply' will do to this Mac")
 	fmt.Println("===============================================")
 	fmt.Println()
-	fmt.Println("1. Run the agent in the background")
+	fmt.Println("1. Create the service account the worker runs as")
+	fmt.Println("   The code that parses network traffic does NOT run as root: it runs as")
+	fmt.Printf("   %s, a hidden account with no login shell and no home directory.\n", platform.ServiceUserName)
+	printCommands(platform.CreateServiceAccountCommands())
+	fmt.Println("2. Run the agent in the background, as two processes")
 	printCommands(platform.Service().InstallCommands())
-	fmt.Println("2. Trust our development CA, so software accepts the certificates we mint")
+	fmt.Println("3. Trust our development CA, so software accepts the certificates we mint")
 	fmt.Printf("   certificate: %s\n", root.Cert.Subject.CommonName)
 	fmt.Printf("   SHA-256:     %s\n", ca.Fingerprint(root.Cert))
 	printCommands(platform.Trust().InstallCommands(certPath))
-	fmt.Printf("3. Send HTTPS traffic through %s\n", proxyAddr)
+	fmt.Printf("4. Send HTTPS traffic through %s\n", proxyAddr)
 	printCommands(platform.Proxy().SetCommands(proxyAddr))
-	fmt.Println("4. Set environment variables so CLI runtimes trust our CA")
+	fmt.Println("5. Set environment variables so CLI runtimes trust our CA")
 	for _, k := range sortedEnvKeys(vars) {
 		fmt.Printf("   %-22s %s\n", k, vars[k])
 	}
@@ -116,7 +122,7 @@ func cmdInstall(args []string) int {
 		name string
 		do   func() error
 	}{
-		{"install the background job", func() error { return platform.Service().Install(self) }},
+		{"create the service account and the background jobs", func() error { return platform.Service().Install(self) }},
 		{"trust the CA", func() error { return platform.Trust().Install(certPath) }},
 		{"write environment variables", func() error { return platform.Env().Write(vars) }},
 		{"set the system proxy", func() error { return platform.Proxy().Set(proxyAddr) }},

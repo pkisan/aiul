@@ -8,8 +8,8 @@ Last updated: 2026-09-18
 
 **Phase 7 — Minimal dashboard (Inertia + Vue).**
 
-Task in progress right now: **the privilege split (D6)** — the code that parses
-untrusted network traffic must stop running as root.
+Task in progress right now: none. **The privilege split is DONE** (D6 rewritten
+with what was actually built).
 
 ## Plan for the privilege split
 
@@ -250,7 +250,13 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Write `internal/helper/protocol.go` and its tests.
+The owner decides: per-tenant encryption keys (D9), the retention job, or Phase 8.
+
+Note: the privilege split has been built and unit-tested, and the helper protocol
+was exercised over a real socket, but `install --apply` has NOT been run since the
+change. The next install on this Mac is the first one that creates the _aiul
+account and two launchd jobs — worth watching, and `sudo ./scripts/killswitch.sh`
+now also removes the service account.
 
 ## Left — Phase 1
 
@@ -420,9 +426,6 @@ Write `internal/helper/protocol.go` and its tests.
 
 ## Known debts, recorded rather than hidden
 
-- `aiul run` is one root process, so traffic parsing runs as root. D6 has the plan:
-  drop privileges after binding, move the few privileged operations behind a tiny
-  helper.
 - Prompt bodies use one application-wide encryption key. D9 has the plan: a
   per-tenant key from KMS. `BodyStore` is the only class to change.
 - Brotli and zstd response bodies are recorded as metadata only.

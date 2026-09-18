@@ -112,6 +112,10 @@ func cmdRun(args []string) int {
 		Logger:      log,
 	})
 
+	// Where the three privileged operations come from: the root helper when one is
+	// listening, this process otherwise.
+	privileged := chooseSource(log)
+
 	p, err := proxy.New(proxy.Config{
 		Addr:   proxyAddr,
 		Root:   root,
@@ -120,7 +124,7 @@ func cmdRun(args []string) int {
 		// Task tagging: the source port identifies the client process, its working
 		// directory gives the checkout, and the branch there gives the task ID.
 		Tasks:     tasks.NewResolver(),
-		Processes: platform.Processes(),
+		Processes: sourceFinder{source: privileged},
 	})
 	if err != nil {
 		log.Error("cannot start the proxy", "err", err)
@@ -140,13 +144,13 @@ func cmdRun(args []string) int {
 		// never set would be just as rude as setting one we were not asked to.
 		if manageProxy {
 			log.Info("stopping; removing the system proxy so traffic keeps flowing")
-			_ = platform.Proxy().Unset()
+			_ = privileged.ProxyOff()
 		}
 		cancel()
 		os.Exit(0)
 	}()
 
-	go agentLoop(ctx, log, forwarder, manageProxy)
+	go agentLoop(ctx, log, forwarder, manageProxy, privileged)
 
 	log.Info("agent running",
 		"proxy", proxyAddr,
@@ -157,7 +161,7 @@ func cmdRun(args []string) int {
 		log.Error("the proxy stopped", "err", err)
 		if manageProxy {
 			// The proxy is gone, so nothing must be pointed at it any more.
-			_ = platform.Proxy().Unset()
+			_ = privileged.ProxyOff()
 		}
 		return 1
 	}
@@ -165,7 +169,7 @@ func cmdRun(args []string) int {
 }
 
 // agentLoop is the housekeeping that runs alongside the proxy.
-func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forwarder, manageProxy bool) {
+func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forwarder, manageProxy bool, privileged privilegedSource) {
 	ticker := time.NewTicker(healthInterval)
 	defer ticker.Stop()
 
@@ -175,7 +179,7 @@ func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forward
 			return
 		case <-ticker.C:
 			if manageProxy {
-				healthCheck(log)
+				healthCheck(log, privileged)
 			}
 			drainSpool(ctx, log, forwarder)
 		}
@@ -188,12 +192,12 @@ func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forward
 // Only ever called with --manage-proxy. Without it this process must not touch a
 // system setting: "the proxy setting is not pointing at us" is the normal state on
 // a machine where nobody asked us to configure anything.
-func healthCheck(log *slog.Logger) {
+func healthCheck(log *slog.Logger, privileged privilegedSource) {
 	conn, err := net.DialTimeout("tcp", proxyAddr, 5*time.Second)
 	if err != nil {
 		log.Error("the proxy is not answering; removing the system proxy so traffic is not blocked",
 			"addr", proxyAddr, "err", err)
-		if err := platform.Proxy().Unset(); err != nil {
+		if err := privileged.ProxyOff(); err != nil {
 			log.Error("could not remove the system proxy", "err", err)
 		}
 		return
@@ -209,7 +213,7 @@ func healthCheck(log *slog.Logger) {
 	for service, value := range current {
 		if value != proxyAddr {
 			log.Info("the proxy setting drifted; re-applying", "service", service, "was", value)
-			if err := platform.Proxy().Set(proxyAddr); err != nil {
+			if err := privileged.ProxyOn(); err != nil {
 				log.Error("could not re-apply the proxy setting", "err", err)
 			}
 			return

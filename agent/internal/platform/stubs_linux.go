@@ -85,3 +85,14 @@ func Processes() ProcessFinder { return LinuxProcess{} }
 
 func (LinuxProcess) ByLocalPort(int) (Process, error) { return Process{}, ErrUnsupported }
 func (LinuxProcess) WorkingDir(int) (string, error)   { return "", ErrUnsupported }
+
+// Service account. On Linux this is `useradd --system aiul`.
+const (
+	ServiceUserName  = "aiul"
+	ServiceGroupName = "aiul"
+)
+
+func ServiceAccount() (int, int)              { return -1, -1 }
+func CreateServiceAccountCommands() []string  { return nil }
+func CreateServiceAccount() (int, int, error) { return -1, -1, ErrUnsupported }
+func DeleteServiceAccount() error             { return ErrUnsupported }

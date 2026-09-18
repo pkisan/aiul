@@ -27,6 +27,8 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+
+	"github.com/pkisan/aiul/internal/paths"
 	"time"
 )
 
@@ -42,14 +44,10 @@ const (
 	organization = "AI Usage Logger (development)"
 )
 
-// Dir returns the directory holding the dev CA files. macOS convention is to put
-// application data under ~/Library/Application Support/<App>.
+// Dir returns the directory holding the dev CA files. Where that is depends on
+// how the agent is running — see internal/paths.
 func Dir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("find home directory: %w", err)
-	}
-	return filepath.Join(home, "Library", "Application Support", "AIUL", "dev-ca"), nil
+	return paths.CADir()
 }
 
 // Paths of the two files that make up the CA.

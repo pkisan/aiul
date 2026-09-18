@@ -202,16 +202,51 @@ The proxy itself, minting certificates, parsing, redaction, the spool, and the
 forwarder. These are the parts handling untrusted input — traffic from the network
 — and they are the parts that should not be root.
 
-### The gap we are accepting for now, and how it closes
+### The split, as built (2026-09-18)
 
-Today `aiul run` does everything in one root process, because the proxy and the
-agent loop are one binary and the loop needs root for `networksetup`. That means
-the code parsing untrusted network traffic runs as root.
+This debt is now paid. The agent is two processes:
 
-The intended shape, before any pilot: the daemon drops to a dedicated unprivileged
-user after binding, and the few privileged operations move behind a tiny helper
-invoked over a local socket with a fixed, non-parameterised set of actions
-("proxy on", "proxy off"). Recorded here so it is a known debt, not an oversight.
+```
+aiul helper   root. Listens on /var/run/aiul-helper.sock (root:_aiul, 0660) and
+              answers four verbs. Opens no network socket, parses nothing that
+              came from the network.
+aiul run      runs as _aiul. Proxy, TLS termination, HTTP parsing, decompression,
+              SSE reassembly, redaction, spool, forwarder.
+```
+
+The worker needs exactly three privileged things, so the helper has exactly three
+verbs plus a health check:
+
+| Verb | Why the worker cannot do it | Argument |
+| --- | --- | --- |
+| `PING` | health check | none |
+| `PROXY-ON` | `networksetup` needs root | **none** — the address is compiled in |
+| `PROXY-OFF` | same | none |
+| `PROCESS <port>` | `lsof` cannot see another user's processes | one integer, range-checked |
+
+**No verb takes a path, a command, or a hostname.** `PROXY-ON` deliberately takes
+no argument: if it accepted an address, anything that could talk to the socket
+could redirect the whole machine's traffic. A privileged helper that accepts a
+string somebody else chose is an escalation waiting to be found.
+
+**No privilege-dropping code.** launchd starts the worker as `_aiul` through the
+plist's `UserName` key, so there is nothing to get wrong in Go — no `setuid`, no
+ordering question about which resources were opened before the drop.
+
+**The service account** is created at install: `_aiul`, hidden, `/usr/bin/false`
+as its shell, `/var/empty` as its home. It owns `/var/db/aiul`, which holds its
+copy of the CA (key still 0600, owner `_aiul`) and the spool. That copy is why
+`internal/paths` exists: running by hand uses your home directory, and the
+installed worker uses `/var/db/aiul`, and the CA code and the spool code must not
+disagree about which.
+
+**Falling back.** Run by hand with no helper listening, the worker does what it
+can itself and says so in its log. Task tagging then sees only your own processes,
+which is the correct behaviour for a process that is not root.
+
+What is still root: `install`, `uninstall`, and the helper itself. That is the
+whole privileged surface, and it is about two hundred lines that never touch a
+byte from the network.
 
 ### Why the binary is copied to /usr/local/bin
 
