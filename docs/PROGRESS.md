@@ -6,10 +6,33 @@ Last updated: 2026-09-18
 
 ## Current phase
 
-**Phase 4 — Endpoint agent (darwin first).**
+**Phase 5 — Task tagging.**
 
-Task in progress right now: none. Phase 4 is code-complete and every command has
-been exercised in read-only or dry-run mode on this Mac. Nothing has been applied.
+Task in progress right now: `internal/platform` process lookup, then
+`internal/tasks`.
+
+Phase 4 is DONE. The owner reported the milestone "went as expected" and ran the
+uninstall, and `aiul status` on 2026-09-18 confirms this Mac has NO aiul settings
+applied. Note: the `claude -p "say hello"` check produced no spooled event, which
+is what you would expect if it was run after the uninstall — if the owner meant it
+to be captured, that needs rechecking with the proxy running.
+
+## Plan for Phase 5
+
+Goal: a captured event carries the task ID with zero clicks from the user.
+
+The chain is: the connection's local source port -> the process that owns it ->
+that process's working directory -> the git branch there -> a task ID matched by a
+configurable regexp (default `[A-Z]+-\d+`).
+
+1. `internal/platform`: a ProcessFinder interface, darwin implementation using
+   `lsof`, stubs for linux/windows.
+2. `internal/tasks`: read the git branch of a directory (and its parents), extract
+   the task ID, with a small cache. No git binary required — read `.git/HEAD`.
+3. Wire it into the proxy: the CONNECT handler records the source port, and the
+   event gains task, branch, repo and the process name.
+4. Tests: temporary git repositories, the regexp, a detached HEAD, a directory
+   that is not a repository, and worktrees.
 
 Phase 3 is code-complete (63 tests, -race clean). The owner has NOT yet reported
 the by-hand milestone result; ask before assuming it passed.
@@ -125,8 +148,7 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-The owner runs the Phase 4 milestone, which is the first time this project changes
-system settings. STOP until they confirm.
+Write the ProcessFinder interface and `process_darwin.go`.
 
 ## Left — Phase 1
 
@@ -223,8 +245,16 @@ system settings. STOP until they confirm.
       alone would have stopped curl verifying any ordinary website. `aiul` now
       writes `ca-bundle.pem` (the 128 system roots plus ours) and install refuses
       to proceed if it cannot
-- [ ] milestone: after install and a fresh login, Claude Code runs normally and its
-      prompts are captured; uninstall leaves the Mac clean
+- [x] MILESTONE: the owner reported it went as expected; uninstall left the Mac
+      clean (verified by `aiul status`)
+
+## Left — Phase 5
+
+- [ ] platform ProcessFinder (lsof on darwin) + linux/windows stubs
+- [ ] internal/tasks: git branch from a directory, task ID by regexp, cached
+- [ ] wired into the proxy so each event carries task, branch and repo
+- [ ] tests over temporary git repositories
+- [ ] milestone: a captured event carries the correct task ID
 
 ## Left — later phases
 
@@ -260,7 +290,17 @@ system settings. STOP until they confirm.
 
 ## Machine state — settings currently changed on this Mac
 
-No system proxy. No env vars. No launchd jobs. No /etc/zshenv block.
+**Verified clean on 2026-09-18 after the Phase 4 milestone**: no system proxy, no
+env vars, no launchd jobs, no /etc/zshenv block, no keychain trust, no installed
+binary. `aiul status` reports "This Mac has no aiul settings applied."
+
+Files that exist but change no setting and are trusted by nothing:
+
+| What | Where | Undo |
+| --- | --- | --- |
+| Dev root CA + combined bundle | `~/Library/Application Support/AIUL/dev-ca/` | `rm -rf ~/Library/Application\ Support/AIUL` |
+| Event spool (currently empty) | `~/Library/Application Support/AIUL/spool/` | same |
+
 
 **Keychain: the owner ran `aiul ca trust` and then `aiul ca untrust` during the
 Phase 1 milestone. Confirm with `aiul ca info` — expect "not trusted". If it says
