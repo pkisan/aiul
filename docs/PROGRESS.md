@@ -26,7 +26,7 @@ installed on this Mac. Waiting for the owner to verify the milestone.
 - Repo skeleton, `.gitignore` (blocks keys/certs/spool from day one), `CLAUDE.md`
 - `docs/PROGRESS.md`, `docs/DECISIONS.md` (D1-D4), `docs/SETUP-MAC.md`
 - Tooling check: Go 1.24.4, PHP 8.4.23 (Herd), Composer, mitmproxy 12.2.3, git present
-- Go module `github.com/aayatti/aiul`; `cmd/aiul/main.go` with `aiul version`; `go vet` clean
+- Go module `github.com/pkisan/aiul`; `cmd/aiul/main.go` with `aiul version`; `go vet` clean
 - `docker-compose.yml`: Postgres 16 (127.0.0.1:5433), Redis 7 (127.0.0.1:6380), MinIO (127.0.0.1:9000/9001)
 - git repository initialised, first commit `3e9c53c`
 
@@ -61,19 +61,17 @@ the owner confirms and asks for Phase 1.
 
 ## Blockers / open questions for the user
 
-- **Docker Desktop is not installed.** It is only needed for the backend data
-  services (Phase 6); Phases 1-5 do not need it. Install command shown in
-  SETUP-MAC.md, not run without approval.
 - PHP is 8.4.23 via Herd, not 8.3. Laravel 12 supports 8.4, so we use it (D4).
-- Go module path is `github.com/aayatti/aiul` — say so if you want a different one,
-  it is cheap to change now and annoying later.
-- Before Phase 2 starts: the stdlib vs goproxy vs go-mitmproxy comparison (rule 11)
-  must be written into DECISIONS.md and confirmed by the owner.
+- Go module path confirmed as `github.com/pkisan/aiul`.
+- **Before Phase 2 starts:** rule 11 requires a written comparison of stdlib-only
+  vs goproxy vs go-mitmproxy in DECISIONS.md, with a recommendation, confirmed by
+  the owner.
+- Phase 1 needs one approval from the owner: running `aiul ca trust`, which adds
+  our dev root CA to the System keychain. The exact command is shown before it runs.
 
 ## Things the user must run by hand
 
-- `brew install --cask docker` then `open -a Docker`, if and when Docker is wanted.
-- The Phase 0 milestone verification commands.
+- Phase 1 milestone verification (Safari test) — commands supplied at the end of the phase.
 
 ## Machine state — settings currently changed on this Mac
 
