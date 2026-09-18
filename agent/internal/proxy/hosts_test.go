@@ -1,0 +1,155 @@
+package proxy
+
+import (
+	"strings"
+	"sync"
+	"testing"
+)
+
+// TestMatchHostIsAnchored is the rule 3 test: patterns match whole hostnames, so a
+// lookalike domain can never trick us into decrypting traffic.
+func TestMatchHostIsAnchored(t *testing.T) {
+	cases := []struct {
+		pattern string
+		host    string
+		want    bool
+	}{
+		// exact patterns
+		{"api.openai.com", "api.openai.com", true},
+		{"api.openai.com", "API.OPENAI.COM", false}, // callers lower-case first
+		{"api.openai.com", "openai.com", false},
+		{"api.openai.com", "xapi.openai.com", false},
+		{"api.openai.com", "api.openai.com.evil.net", false},
+		{"api.openai.com", "api.openai.computer", false},
+
+		// wildcard patterns
+		{"*.claude.ai", "claude.ai", true},
+		{"*.claude.ai", "api.claude.ai", true},
+		{"*.claude.ai", "a.b.claude.ai", true},
+		{"*.claude.ai", "notclaude.ai", false},
+		{"*.claude.ai", "xclaude.ai", false},
+		{"*.claude.ai", "claude.ai.evil.net", false},
+		{"*.claude.ai", "evilclaude.ai.attacker.com", false},
+
+		// nothing matches nothing
+		{"", "api.openai.com", false},
+		{"api.openai.com", "", false},
+	}
+
+	for _, c := range cases {
+		if got := matchHost(c.pattern, c.host); got != c.want {
+			t.Errorf("matchHost(%q, %q) = %v, want %v", c.pattern, c.host, got, c.want)
+		}
+	}
+}
+
+func TestNormalizeHost(t *testing.T) {
+	cases := map[string]string{
+		"api.openai.com:443":  "api.openai.com",
+		"API.OpenAI.com":      "api.openai.com",
+		"api.openai.com.":     "api.openai.com",
+		"  claude.ai:443  ":   "claude.ai",
+		"[::1]:8443":          "::1",
+		"127.0.0.1:8899":      "127.0.0.1",
+		"":                    "",
+		"bad host:443":        "",
+		"api..openai.com":     "",
+		"api.openai.com:http": "api.openai.com:http", // non-numeric port is not stripped
+	}
+	for in, want := range cases {
+		if got := normalizeHost(in); got != want {
+			t.Errorf("normalizeHost(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestClassifyDefaultsToPass(t *testing.T) {
+	c := NewClassifier()
+
+	// Everything that is not an AI host must pass through sealed. These are the
+	// ones it would be most damaging to decrypt.
+	for _, host := range []string{
+		"www.google.com", "accounts.google.com", "googleapis.com",
+		"storage.googleapis.com", "github.com", "api.github.com",
+		"login.microsoftonline.com", "hdfcbank.com", "icloud.com",
+		"notopenai.com", "api.openai.com.evil.net", "openai.com.attacker.io",
+		"", "localhost", "127.0.0.1",
+	} {
+		if got := c.Classify(host); got != Pass {
+			t.Errorf("Classify(%q) = %v, want pass", host, got)
+		}
+	}
+}
+
+func TestClassifyCapturesAIHosts(t *testing.T) {
+	c := NewClassifier()
+	for _, host := range []string{
+		"api.openai.com", "api.openai.com:443", "API.OPENAI.COM:443",
+		"api.anthropic.com", "claude.ai", "api.claude.ai",
+		"generativelanguage.googleapis.com", "chatgpt.com", "cdn.chatgpt.com",
+	} {
+		if got := c.Classify(host); got != Capture {
+			t.Errorf("Classify(%q) = %v, want capture", host, got)
+		}
+	}
+}
+
+// TestAllowListHasNoBroadDomains guards rule 3 against a future careless edit.
+func TestAllowListHasNoBroadDomains(t *testing.T) {
+	forbidden := []string{
+		"google.com", "*.google.com", "googleapis.com", "*.googleapis.com",
+		"github.com", "*.github.com", "githubusercontent.com", "*.githubusercontent.com",
+		"amazonaws.com", "*.amazonaws.com", "microsoft.com", "*.microsoft.com",
+		"cloudflare.com", "*.cloudflare.com", "apple.com", "*.apple.com",
+	}
+	for _, entry := range allowList {
+		for _, bad := range forbidden {
+			if entry == bad {
+				t.Errorf("allow-list contains the broad shared domain %q; rule 3 forbids it", entry)
+			}
+		}
+		if entry == "*" || strings.HasPrefix(entry, "*.com") || !strings.Contains(entry, ".") {
+			t.Errorf("allow-list entry %q is not a specific hostname", entry)
+		}
+	}
+}
+
+func TestTunnelListWinsOverCapture(t *testing.T) {
+	c := NewClassifier()
+
+	if got := c.Classify("api.anthropic.com"); got != Capture {
+		t.Fatalf("precondition: want capture, got %v", got)
+	}
+
+	// A client rejected our certificate — rule 4 says never try again.
+	if !c.AddTunnel("api.anthropic.com:443") {
+		t.Error("AddTunnel should report the host as newly added")
+	}
+	if c.AddTunnel("api.anthropic.com") {
+		t.Error("AddTunnel should report false the second time")
+	}
+
+	if got := c.Classify("api.anthropic.com"); got != Tunnel {
+		t.Errorf("after AddTunnel, Classify = %v, want tunnel", got)
+	}
+	// Tunneling one host must not affect any other.
+	if got := c.Classify("api.openai.com"); got != Capture {
+		t.Errorf("unrelated host changed to %v", got)
+	}
+	if hosts := c.TunnelHosts(); len(hosts) != 1 || hosts[0] != "api.anthropic.com" {
+		t.Errorf("TunnelHosts = %v", hosts)
+	}
+}
+
+// TestClassifierIsConcurrencySafe: run with -race. The proxy classifies on every
+// connection while other connections may be adding tunnel entries.
+func TestClassifierIsConcurrencySafe(t *testing.T) {
+	c := NewClassifier()
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func() { defer wg.Done(); c.Classify("api.openai.com") }()
+		go func() { defer wg.Done(); c.AddTunnel("api.anthropic.com") }()
+	}
+	wg.Wait()
+}

@@ -6,11 +6,32 @@ Last updated: 2026-09-18
 
 ## Current phase
 
-**Phase 1 — Dev root CA in Go.**
+**Phase 2 — Proxy engine in Go (the core).**
 
-Task in progress right now: none. Phase 1 code is complete and committed. Waiting
-for the owner to run the Safari milestone, which requires their explicit "yes" to
-`aiul ca trust`.
+Task in progress right now: `internal/proxy/certs.go` — the bounded leaf cache.
+
+Phase 1 is DONE: the owner confirmed the Safari test passed (no warning while
+trusted, warning again after untrust).
+
+## Plan for Phase 2
+
+Written before starting, so an interruption loses nothing. In order:
+
+1. `internal/proxy/hosts.go` + tests — versioned allow-list of exact AI hostnames,
+   anchored matcher, tunnel list. Nothing else may decide what gets decrypted.
+2. `internal/proxy/certs.go` + tests — bounded in-memory leaf cache keyed by host,
+   respecting expiry.
+3. `internal/proxy/proxy.go` — listener on 127.0.0.1:8899, CONNECT handling,
+   classify, and raw pass-through for pass/tunnel. Milestone-able on its own.
+4. Capture path — dial upstream with full verification, copy the real certificate's
+   SAN names, mint, serve via `tls.Config.GetCertificate`, ALPN http/1.1.
+5. Streaming — forward chunk by chunk with `http.Flusher`, tee a copy for logging.
+   Test proves a chunk arrives before the response ends.
+6. Handshake-failure detection feeding the tunnel list (rule 4).
+7. Decompression (gzip/br/zstd) on our copy only; SSE reassembly.
+8. `internal/parsers` — interface + OpenAI, Anthropic, Gemini against fixtures.
+9. `internal/forward` spool — one JSON event per interaction.
+10. `aiul proxy` command, then the milestone run.
 
 ## Plan for Phase 0
 
@@ -57,9 +78,8 @@ for the owner to run the Safari milestone, which requires their explicit "yes" t
 
 ## Next step
 
-The owner runs the Phase 1 milestone: `aiul ca trust`, load
-https://localhost:8443/ in Safari (no warning), then `aiul ca untrust` and reload
-(warning returns). STOP until the owner confirms and asks for Phase 2.
+Write `internal/proxy/certs.go` and `certs_test.go` (bounded in-memory leaf cache,
+keyed by host, evicting expired entries).
 
 ## Left — Phase 1
 
@@ -69,7 +89,22 @@ https://localhost:8443/ in Safari (no warning), then `aiul ca untrust` and reloa
 - [x] internal/platform TrustInstaller + darwin impl + linux/windows stubs
 - [x] `aiul ca init|info|trust|untrust` commands (trust shows the command and asks first)
 - [x] `aiul ca demo-server` — tiny local HTTPS server on a minted leaf, for the Safari test
-- [ ] Milestone: Safari loads the demo server with no warning after trust, warns again after untrust (owner runs this)
+- [x] Milestone CONFIRMED by the owner: Safari showed no warning while trusted and
+      warned again after untrust
+
+## Left — Phase 2
+
+- [x] D5 recorded: standard library only, no proxy framework (`5cc3022`)
+- [x] hosts.go: allow-list v1 + anchored matcher + tunnel list, 6 tests passing with -race
+- [ ] certs.go: bounded leaf cache respecting expiry, with tests
+- [ ] proxy.go: CONNECT, classify, pass/tunnel raw pass-through
+- [ ] capture path: verified upstream dial, SAN copy, mint, GetCertificate, ALPN http/1.1
+- [ ] streaming with immediate flush + test proving it
+- [ ] handshake-failure detection feeds the tunnel list
+- [ ] gzip/br/zstd decompression on our copy; SSE reassembly
+- [ ] parsers: interface + OpenAI, Anthropic, Gemini against testdata fixtures
+- [ ] forward: JSON event spool
+- [ ] `aiul proxy` command + milestone run
 
 ## Left — Phase 0
 
@@ -106,8 +141,11 @@ https://localhost:8443/ in Safari (no warning), then `aiul ca untrust` and reloa
 
 ## Machine state — settings currently changed on this Mac
 
-No system proxy. **No keychain trust.** No env vars. No launchd jobs. No
-/etc/zshenv block.
+No system proxy. No env vars. No launchd jobs. No /etc/zshenv block.
+
+**Keychain: the owner ran `aiul ca trust` and then `aiul ca untrust` during the
+Phase 1 milestone. Confirm with `aiul ca info` — expect "not trusted". If it says
+TRUSTED, the untrust step did not complete; run `sudo ./scripts/killswitch.sh`.**
 
 One thing now exists on disk, but changes no setting and is trusted by nothing:
 
