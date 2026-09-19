@@ -40,8 +40,26 @@ func TestForPicksTheRightParser(t *testing.T) {
 		{"api.anthropic.com", "/v1/messages", "anthropic"},
 		{"api.anthropic.com", "/v1/messages?beta=true", "anthropic"},
 		{"generativelanguage.googleapis.com", "/v1beta/models/gemini-2.5-pro:streamGenerateContent", "gemini"},
-		{"api.openai.com", "/v1/models", ""},           // not a conversation
-		{"api.mistral.ai", "/v1/chat/completions", ""}, // no parser yet: metadata only
+		{"api.openai.com", "/v1/models", ""}, // not a conversation
+
+		// The OpenAI-compatible providers: same wire format, same parser.
+		{"api.mistral.ai", "/v1/chat/completions", "openai"},
+		{"api.groq.com", "/v1/chat/completions", "openai"},
+		{"api.deepseek.com", "/v1/chat/completions", "openai"},
+		{"api.x.ai", "/v1/chat/completions", "openai"},
+		{"api.together.xyz", "/v1/chat/completions", "openai"},
+		{"api.perplexity.ai", "/chat/completions", "openai"},
+		{"openrouter.ai", "/api/v1/chat/completions", "openai"},
+		{"api.githubcopilot.com", "/chat/completions", "openai"},
+
+		// Still no parser: a different format, and one nobody has captured yet.
+		{"api.cohere.com", "/v1/chat", ""},
+		{"chatgpt.com", "/backend-api/conversation", ""},
+
+		// A host must match whole, never as a suffix. Rule 3 in the allow-list, and
+		// the same rule here, since a parser decides what gets stored.
+		{"api.groq.com.evil.net", "/v1/chat/completions", ""},
+		{"notapi.x.ai", "/v1/chat/completions", ""},
 	}
 	for _, c := range cases {
 		p := For(c.host, c.path)
@@ -261,5 +279,97 @@ func TestToolFromHeaders(t *testing.T) {
 	h := http.Header{"X-App": {"cli"}, "User-Agent": {"anthropic-sdk-go"}}
 	if got := toolFromHeaders(h); got != "cli" {
 		t.Errorf("X-App should win, got %q", got)
+	}
+}
+
+// The OpenAI-compatible providers, parsed end to end.
+//
+// These fixtures are written from each provider's published API shape rather than
+// captured from live traffic, which is an honest limitation: the owner has no
+// account on most of them. What they prove is that the format those providers
+// document is parsed correctly, including the streamed form. A live capture through
+// mitmweb should still be taken before anyone claims a provider is supported —
+// that is the research workflow in CLAUDE.md.
+func TestOpenAICompatibleProviders(t *testing.T) {
+	// Groq, not streamed. The shape is Chat Completions exactly, plus timing fields
+	// of its own that we ignore.
+	res, err := OpenAI{}.Parse(Exchange{
+		Host: "api.groq.com",
+		Path: "/v1/chat/completions",
+		ReqBody: []byte(`{
+			"model": "llama-3.3-70b-versatile",
+			"messages": [
+				{"role": "system", "content": "You are terse."},
+				{"role": "user", "content": "name three sorting algorithms"}
+			]
+		}`),
+		RespBody: []byte(`{
+			"model": "llama-3.3-70b-versatile",
+			"choices": [{"message": {"role": "assistant", "content": "quicksort, mergesort, heapsort"}}],
+			"usage": {"prompt_tokens": 18, "completion_tokens": 9, "queue_time": 0.02}
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("groq: %v", err)
+	}
+	if res.Prompt != "name three sorting algorithms" {
+		t.Errorf("prompt = %q", res.Prompt)
+	}
+	if res.System != "You are terse." {
+		t.Errorf("system = %q", res.System)
+	}
+	if res.Answer != "quicksort, mergesort, heapsort" {
+		t.Errorf("answer = %q", res.Answer)
+	}
+	if res.Model != "llama-3.3-70b-versatile" {
+		t.Errorf("model = %q", res.Model)
+	}
+	if res.PromptTokens != 18 || res.ResponseTokens != 9 {
+		t.Errorf("tokens = %d/%d, want 18/9", res.PromptTokens, res.ResponseTokens)
+	}
+
+	// DeepSeek, streamed. Reassembly has to join the deltas and pick up the usage
+	// block that arrives with the final chunk.
+	res, err = OpenAI{}.Parse(Exchange{
+		Host:    "api.deepseek.com",
+		Path:    "/v1/chat/completions",
+		ReqBody: []byte(`{"model":"deepseek-chat","stream":true,"messages":[{"role":"user","content":"why is the sky blue"}]}`),
+		SSE: []string{
+			`{"choices":[{"delta":{"content":"Rayleigh "}}]}`,
+			`{"choices":[{"delta":{"content":"scattering"}}]}`,
+			`{"choices":[{"delta":{}}],"usage":{"prompt_tokens":7,"completion_tokens":3}}`,
+			`[DONE]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("deepseek: %v", err)
+	}
+	if res.Answer != "Rayleigh scattering" {
+		t.Errorf("streamed answer = %q", res.Answer)
+	}
+	if !res.Streamed {
+		t.Error("the event must record that it was streamed")
+	}
+	if res.PromptTokens != 7 || res.ResponseTokens != 3 {
+		t.Errorf("tokens = %d/%d, want 7/3", res.PromptTokens, res.ResponseTokens)
+	}
+
+	// OpenRouter, under its own path prefix, and an agent's own follow-up rather
+	// than a person typing: a tool result must not count as a new prompt.
+	res, err = OpenAI{}.Parse(Exchange{
+		Host:    "openrouter.ai",
+		Path:    "/api/v1/chat/completions",
+		ReqBody: []byte(`{"model":"anthropic/claude-3.5-sonnet","messages":[{"role":"user","content":"run the tests"},{"role":"tool","content":"3 passed"}]}`),
+		RespBody: []byte(`{"choices":[{"message":{"content":"All green."}}],
+			"usage":{"prompt_tokens":40,"completion_tokens":3}}`),
+	})
+	if err != nil {
+		t.Fatalf("openrouter: %v", err)
+	}
+	if !res.Automated {
+		t.Error("a tool result means the agent continued by itself; this must be marked automated")
+	}
+	if res.Answer != "All green." {
+		t.Errorf("answer = %q", res.Answer)
 	}
 }

@@ -5,16 +5,65 @@ import (
 	"strings"
 )
 
-// OpenAI parses the Chat Completions and Responses APIs at api.openai.com.
+// OpenAI parses the Chat Completions and Responses APIs — at api.openai.com and at
+// the many providers that copied that wire format exactly.
+//
+// Reusing this parser for them is not laziness about correctness: they accept the
+// same request fields and return the same `choices[].message.content`,
+// `choices[].delta.content` and `usage` shapes, because being a drop-in for
+// OpenAI's client libraries is the point of their APIs. Anything they add on top is
+// ignored, the same way an unknown OpenAI field is.
+//
+// Each of these hosts is on the proxy allow-list, so until now their traffic was
+// decrypted and then dropped with "no parser for this endpoint".
+//
+// NOT here, because their formats genuinely differ and need real captures first:
+// api.cohere.com (a single `message` field, not `messages`), and the web
+// applications chatgpt.com, claude.ai, gemini.google.com and aistudio.google.com,
+// whose internal endpoints are private and change without notice.
 type OpenAI struct{}
 
 func (OpenAI) Name() string { return "openai" }
 
+// openAICompatibleHosts are the hosts that speak the Chat Completions format.
+// Exact hostnames, matched whole, never as a suffix — the same rule the allow-list
+// follows.
+var openAICompatibleHosts = map[string]bool{
+	"api.openai.com": true,
+
+	// OpenAI-compatible providers, all documented as drop-in for OpenAI clients.
+	"api.deepseek.com":  true,
+	"api.groq.com":      true,
+	"api.mistral.ai":    true,
+	"api.perplexity.ai": true,
+	"api.together.xyz":  true,
+	"api.x.ai":          true,
+	"openrouter.ai":     true,
+
+	// GitHub Copilot's chat endpoint is the same format.
+	"api.githubcopilot.com": true,
+}
+
 func (OpenAI) Handles(host, path string) bool {
-	return host == "api.openai.com" &&
-		(strings.HasPrefix(path, "/v1/chat/completions") ||
-			strings.HasPrefix(path, "/v1/responses") ||
-			strings.HasPrefix(path, "/v1/completions"))
+	if !openAICompatibleHosts[strings.ToLower(host)] {
+		return false
+	}
+
+	// Some of these providers serve the endpoint without the /v1 prefix, and
+	// OpenRouter serves it under /api/v1.
+	for _, prefix := range []string{
+		"/v1/chat/completions",
+		"/v1/responses",
+		"/v1/completions",
+		"/api/v1/chat/completions",
+		"/chat/completions",
+	} {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // openAIRequest is the part of the request we care about. Unknown fields are
