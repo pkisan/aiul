@@ -72,8 +72,10 @@ func cmdProxy(args []string) int {
 	}
 
 	p, err := proxy.New(proxy.Config{
-		Addr:   addr,
-		Root:   root,
+		Addr: addr,
+		// By hand, the root signs directly: this path is for development and for
+		// `aiul ca demo-server`, and it never runs as an installed daemon.
+		Issuer: root,
 		Logger: logger,
 		Sink:   sinkFunc(spool.Record),
 		// Task tagging: the source port identifies the client process, its working

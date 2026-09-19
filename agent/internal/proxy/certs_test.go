@@ -71,7 +71,7 @@ func TestCertCacheReplacesExpiringCertificates(t *testing.T) {
 
 	// Put a certificate that expires in a minute into the cache by hand, which is
 	// inside the renewal window.
-	expiring, err := c.root.MintLeaf(ca.LeafRequest{
+	expiring, err := c.issuer.MintLeaf(ca.LeafRequest{
 		Hosts:     []string{"api.openai.com"},
 		NotBefore: time.Now().Add(-2 * time.Hour),
 		NotAfter:  time.Now().Add(1 * time.Minute),

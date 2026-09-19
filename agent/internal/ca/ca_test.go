@@ -34,8 +34,13 @@ func TestRootIsAUsableCA(t *testing.T) {
 		t.Errorf("common name %q does not start with %q; killswitch.sh finds the certificate by this prefix",
 			root.Cert.Subject.CommonName, CommonNamePrefix)
 	}
-	if !root.Cert.MaxPathLenZero {
-		t.Error("root should not be allowed to issue further CAs")
+	// Exactly one CA level below the root: the device intermediate of D3, which
+	// may then sign only leaves. This was MaxPathLenZero until the intermediate
+	// existed; a root with a path length of 0 cannot issue one at all, and every
+	// verifier rejects the chain.
+	if root.Cert.MaxPathLen != 1 || root.Cert.MaxPathLenZero {
+		t.Errorf("root path length is %d (zero=%v), want 1: one intermediate below the root and no more",
+			root.Cert.MaxPathLen, root.Cert.MaxPathLenZero)
 	}
 	if got := root.Cert.NotAfter.Sub(root.Cert.NotBefore); got < 300*24*time.Hour {
 		t.Errorf("root validity %v is suspiciously short", got)

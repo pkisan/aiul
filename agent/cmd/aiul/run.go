@@ -100,6 +100,16 @@ func cmdRun(args []string) int {
 		return 1
 	}
 
+	// This device's own signing certificate (D3). Leaves are minted from this, not
+	// from the root, so what signs our certificates is name-constrained to the
+	// allow-list and expires within days. Renewed here on every start, and again by
+	// the health loop while the agent runs.
+	issuer, err := provisionIssuer(log, root)
+	if err != nil {
+		log.Error("cannot provision this device's signing certificate", "err", err)
+		return 1
+	}
+
 	spool, err := forward.NewSpool("")
 	if err != nil {
 		log.Error("cannot open the spool", "err", err)
@@ -126,7 +136,7 @@ func cmdRun(args []string) int {
 
 	p, err := proxy.New(proxy.Config{
 		Addr:   proxyAddr,
-		Root:   root,
+		Issuer: issuer,
 		Logger: log,
 		Sink:   sinkFunc(spool.Record),
 		// Task tagging: the source port identifies the client process, its working
@@ -161,7 +171,7 @@ func cmdRun(args []string) int {
 		os.Exit(0)
 	}()
 
-	go agentLoop(ctx, log, forwarder, manageProxy, privileged)
+	go agentLoop(ctx, log, forwarder, manageProxy, privileged, root, issuer)
 
 	log.Info("agent running",
 		"proxy", proxyAddr,
@@ -180,7 +190,7 @@ func cmdRun(args []string) int {
 }
 
 // agentLoop is the housekeeping that runs alongside the proxy.
-func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forwarder, manageProxy bool, privileged privilegedSource) {
+func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forwarder, manageProxy bool, privileged privilegedSource, root *ca.Root, issuer *deviceIssuer) {
 	ticker := time.NewTicker(healthInterval)
 	defer ticker.Stop()
 
@@ -192,6 +202,17 @@ func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forward
 			if manageProxy {
 				healthCheck(log, privileged)
 			}
+
+			// The device's signing certificate is short-lived on purpose, so
+			// something has to renew it while the agent runs. A long-running daemon
+			// that let it expire would stop being able to mint anything, and every
+			// AI tool on the machine would fall back to a tunnel.
+			if issuer.current().NeedsRenewal() {
+				if err := renewIfNeeded(log, root, issuer); err != nil {
+					log.Error("could not renew this device's signing certificate", "err", err)
+				}
+			}
+
 			drainSpool(ctx, log, forwarder)
 		}
 	}

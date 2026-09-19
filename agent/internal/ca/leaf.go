@@ -30,12 +30,35 @@ type LeafRequest struct {
 	NotAfter  time.Time
 }
 
-// MintLeaf signs a new server certificate for the given hosts with the root CA.
+// MintLeaf signs a server certificate with the root itself.
 //
-// A "leaf" is an ordinary end-entity certificate: it may identify a server, but it
-// may not sign anything else. Each call generates a fresh key pair, so the private
-// key of one minted certificate is useless against another.
+// This is the development path — `aiul ca demo-server`, and running by hand before
+// a device has an intermediate. The installed agent mints from its device
+// intermediate instead (D3), so that what signs its certificates is name
+// constrained and expires within days.
 func (r *Root) MintLeaf(req LeafRequest) (*tls.Certificate, error) {
+	return mintLeaf(req, r.Cert, r.Key, [][]byte{r.Cert.Raw})
+}
+
+// MintLeaf signs a server certificate with this device's intermediate.
+//
+// The chain served is leaf, intermediate, root: a client holding only the root can
+// still build a path, and the intermediate's name constraints travel with it, so
+// the client itself enforces which hosts we are allowed to impersonate.
+func (i *Intermediate) MintLeaf(req LeafRequest) (*tls.Certificate, error) {
+	chain := [][]byte{i.Cert.Raw}
+	if len(i.RootDER) > 0 {
+		chain = append(chain, i.RootDER)
+	}
+
+	return mintLeaf(req, i.Cert, i.Key, chain)
+}
+
+// mintLeaf is the shared body. A "leaf" is an ordinary end-entity certificate: it
+// may identify a server, but it may not sign anything else. Each call generates a
+// fresh key pair, so the private key of one minted certificate is useless against
+// another.
+func mintLeaf(req LeafRequest, issuerCert *x509.Certificate, issuerKey *ecdsa.PrivateKey, issuerChain [][]byte) (*tls.Certificate, error) {
 	if len(req.Hosts) == 0 {
 		return nil, fmt.Errorf("mint leaf: no hosts given")
 	}
@@ -89,9 +112,10 @@ func (r *Root) MintLeaf(req LeafRequest) (*tls.Certificate, error) {
 	}
 	tmpl.SubjectKeyId = skid
 
-	// Signed by the root: template, issuer certificate, the leaf's public key, the
-	// root's private key.
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, r.Cert, &key.PublicKey, r.Key)
+	// Template, issuer certificate, the leaf's public key, the issuer's private
+	// key. The issuer is the root in development and the device intermediate once
+	// one exists.
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, issuerCert, &key.PublicKey, issuerKey)
 	if err != nil {
 		return nil, fmt.Errorf("mint leaf: sign: %w", err)
 	}
@@ -101,10 +125,10 @@ func (r *Root) MintLeaf(req LeafRequest) (*tls.Certificate, error) {
 	}
 
 	return &tls.Certificate{
-		// The chain we serve: our leaf first, then the root, so a client that has
-		// the root but has not been handed it in this connection can still build a
-		// path to it.
-		Certificate: [][]byte{der, r.Cert.Raw},
+		// The chain we serve: our leaf first, then whatever signed it, so a client
+		// that has the root but has not been handed the rest in this connection can
+		// still build a path to it.
+		Certificate: append([][]byte{der}, issuerChain...),
 		PrivateKey:  key,
 		Leaf:        leaf,
 	}, nil

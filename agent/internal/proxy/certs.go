@@ -24,8 +24,8 @@ const renewBefore = 1 * time.Hour
 // happens inside the TLS handshake, on the path of every request, so caching keeps
 // repeat connections to the same host fast.
 type CertCache struct {
-	root *ca.Root
-	max  int
+	issuer Issuer
+	max    int
 
 	mu      sync.Mutex
 	entries map[string]*cacheEntry
@@ -36,9 +36,16 @@ type cacheEntry struct {
 	lastUsed time.Time
 }
 
-// NewCertCache returns a cache that signs with the given root.
-func NewCertCache(root *ca.Root) *CertCache {
-	return &CertCache{root: root, max: defaultCacheSize, entries: make(map[string]*cacheEntry)}
+// Issuer is anything that can mint a leaf: the root CA when running by hand, or
+// this device's name-constrained intermediate once the agent is installed (D3).
+// Two implementations, both in internal/ca.
+type Issuer interface {
+	MintLeaf(ca.LeafRequest) (*tls.Certificate, error)
+}
+
+// NewCertCache returns a cache that signs with the given issuer.
+func NewCertCache(issuer Issuer) *CertCache {
+	return &CertCache{issuer: issuer, max: defaultCacheSize, entries: make(map[string]*cacheEntry)}
 }
 
 // Get returns a certificate valid for host, minting one if needed.
@@ -69,7 +76,7 @@ func (c *CertCache) Get(host string, sanNames []string) (*tls.Certificate, error
 		hosts = []string{key}
 	}
 
-	cert, err := c.root.MintLeaf(ca.LeafRequest{Hosts: hosts})
+	cert, err := c.issuer.MintLeaf(ca.LeafRequest{Hosts: hosts})
 	if err != nil {
 		return nil, fmt.Errorf("cert cache: %w", err)
 	}

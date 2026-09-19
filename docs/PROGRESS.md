@@ -423,7 +423,7 @@ Two bugs found by doing it, both fixed:
 
 Verified afterwards: no AIUL certificate in the System keychain at all.
 
-## D3 — the production CA chain. IN PROGRESS, started 2026-09-19
+## D3 — the production CA chain. CODE COMPLETE 2026-09-19 (D14)
 
 The owner deferred the Apple and AWS accounts to the end, so this is the next
 piece of real work that needs neither. Only the root's home needs KMS; the chain
@@ -464,7 +464,23 @@ Plan, in order:
    key at 0600, next to `dev-ca/`.
 4. `aiul ca device` to provision, renew and inspect; `aiul run` renews on start
    and in the health loop, so an intermediate never expires under a running agent.
-5. Tests, the load-bearing two first:
+All five done. What was built, and what it was verified against, is D14 in
+DECISIONS.md. On this Mac: `aiul ca device` shows the chain, and `openssl` on the
+real certificate confirms `CA:TRUE, pathlen:0`, `Name Constraints: critical` with
+19 permitted domains, and the key at mode 0600.
+
+Two things found while building it:
+
+- the dev root carried `MaxPathLen 0` — "may sign leaves, no further CAs" — so it
+  could not issue an intermediate at all, and every verifier would have rejected
+  the chain. New roots carry `MaxPathLen 1`; `SignIntermediate` detects an old one
+  and says how to fix it. The owner's root was regenerated (backed up to
+  `dev-ca.pre-d3-backup`, trusted nowhere at the time).
+- an existing test asserted the root must never issue a CA, which was correct
+  before D3 and wrong after it. Now it asserts the real rule: one level below the
+  root, none below the intermediate.
+
+Tests, the load-bearing two first:
    - a leaf for `api.openai.com` from the intermediate VERIFIES against the root
    - a leaf for `evil.example.com` from the same intermediate is REJECTED by
      verification, with the name-constraint error. This is the whole point.

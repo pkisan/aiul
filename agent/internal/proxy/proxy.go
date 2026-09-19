@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkisan/aiul/internal/ca"
 	"github.com/pkisan/aiul/internal/platform"
 	"github.com/pkisan/aiul/internal/redact"
 	"github.com/pkisan/aiul/internal/tasks"
@@ -45,8 +44,13 @@ type Config struct {
 	// network can use us as an open proxy.
 	Addr string
 
-	// Root signs the certificates we mint. Required only for capture.
-	Root *ca.Root
+	// Issuer signs the certificates we mint. Required only for capture.
+	//
+	// By hand this is the root itself. Installed, it is this device's
+	// short-lived, name-constrained intermediate (D3), so that what signs our
+	// certificates cannot be used for any host outside the allow-list even if the
+	// device's key is stolen.
+	Issuer Issuer
 
 	// Classifier decides capture / tunnel / pass.
 	Classifier *Classifier
@@ -113,13 +117,13 @@ func New(cfg Config) (*Proxy, error) {
 	if cfg.DialTimeout == 0 {
 		cfg.DialTimeout = 30 * time.Second
 	}
-	if cfg.Root == nil {
+	if cfg.Issuer == nil {
 		return nil, errors.New("proxy: no CA root; run 'aiul ca init' first")
 	}
 
 	p := &Proxy{
 		cfg:   cfg,
-		certs: NewCertCache(cfg.Root),
+		certs: NewCertCache(cfg.Issuer),
 		log:   cfg.Logger,
 		// Redaction is not optional and has no switch to turn it off. Rule 8.
 		redactor: redact.New(),

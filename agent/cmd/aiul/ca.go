@@ -27,6 +27,8 @@ func cmdCA(args []string) int {
 		return caTrust(args[1:])
 	case "untrust":
 		return caUntrust(args[1:])
+	case "device":
+		return cmdCADevice(args[1:])
 	case "demo-server":
 		return caDemoServer(args[1:])
 	default:
@@ -40,6 +42,7 @@ const caUsage = `Usage:
   aiul ca info             show where it lives, its name, fingerprint and expiry
   aiul ca trust [--yes]    add it to the macOS System keychain (asks first)
   aiul ca untrust [--yes]  remove it from the System keychain
+  aiul ca device [--renew] show this device's own signing certificate (D3)
   aiul ca demo-server      serve https://localhost:8443 with a certificate we mint
 `
 

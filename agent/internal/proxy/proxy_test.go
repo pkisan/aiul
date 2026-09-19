@@ -177,7 +177,7 @@ func TestPassThroughIsSealed(t *testing.T) {
 	defer origin.close()
 
 	sink := &collector{}
-	proxyAddr, _ := startProxy(t, Config{Root: root, Sink: sink}, origin.addr)
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Sink: sink}, origin.addr)
 
 	// The client trusts ONLY the origin's CA. If the proxy had intercepted, the
 	// handshake would fail — which is exactly the proof we want.
@@ -210,7 +210,7 @@ func TestCaptureReadsTheConversation(t *testing.T) {
 	defer origin.close()
 
 	sink := &collector{}
-	proxyAddr, _ := startProxy(t, Config{Root: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
 
 	// Now the client trusts OUR root instead of the origin's: that is what an
 	// endpoint with our CA installed looks like.
@@ -262,7 +262,7 @@ func TestStreamingFlushesEachChunk(t *testing.T) {
 	}))
 	defer origin.close()
 
-	proxyAddr, _ := startProxy(t, Config{Root: root, Sink: &collector{}, UpstreamRootCAs: origin.rootPool}, origin.addr)
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Sink: &collector{}, UpstreamRootCAs: origin.rootPool}, origin.addr)
 	ourPool := x509.NewCertPool()
 	ourPool.AddCert(root.Cert)
 
@@ -309,7 +309,7 @@ func TestClientRejectingOurCertIsTunneled(t *testing.T) {
 	defer origin.close()
 
 	classifier := NewClassifier()
-	proxyAddr, _ := startProxy(t, Config{Root: root, Classifier: classifier, Sink: &collector{}, UpstreamRootCAs: origin.rootPool}, origin.addr)
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Classifier: classifier, Sink: &collector{}, UpstreamRootCAs: origin.rootPool}, origin.addr)
 
 	// This client trusts only the ORIGIN's CA, so it rejects our minted
 	// certificate — exactly what a pinning client does.
@@ -349,7 +349,7 @@ func TestUpstreamVerificationIsNotWeakened(t *testing.T) {
 	}))
 	defer origin.close()
 
-	proxyAddr, _ := startProxy(t, Config{Root: root, Sink: &collector{}}, origin.addr)
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Sink: &collector{}}, origin.addr)
 	ourPool := x509.NewCertPool()
 	ourPool.AddCert(root.Cert)
 
@@ -361,7 +361,7 @@ func TestUpstreamVerificationIsNotWeakened(t *testing.T) {
 
 func TestPlainHTTPIsRefused(t *testing.T) {
 	root := newTestRoot(t)
-	proxyAddr, _ := startProxy(t, Config{Root: root}, "")
+	proxyAddr, _ := startProxy(t, Config{Issuer: root}, "")
 
 	resp, err := http.Get("http://" + proxyAddr + "/")
 	if err != nil {
@@ -387,7 +387,7 @@ func TestStreamedResponseTerminatesPromptly(t *testing.T) {
 	}))
 	defer origin.close()
 
-	proxyAddr, _ := startProxy(t, Config{Root: root, Sink: &collector{}, UpstreamRootCAs: origin.rootPool}, origin.addr)
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Sink: &collector{}, UpstreamRootCAs: origin.rootPool}, origin.addr)
 	ourPool := x509.NewCertPool()
 	ourPool.AddCert(root.Cert)
 
@@ -445,7 +445,7 @@ func TestCapturedStreamIsReassembledIntoOneAnswer(t *testing.T) {
 	defer origin.close()
 
 	sink := &collector{}
-	proxyAddr, _ := startProxy(t, Config{Root: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
 	ourPool := x509.NewCertPool()
 	ourPool.AddCert(root.Cert)
 
@@ -501,7 +501,7 @@ func TestHousekeepingCallsAreNotStored(t *testing.T) {
 	defer origin.close()
 
 	sink := &collector{}
-	proxyAddr, _ := startProxy(t, Config{Root: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
 	ourPool := x509.NewCertPool()
 	ourPool.AddCert(root.Cert)
 
@@ -540,7 +540,7 @@ func TestSecretsAreMaskedButTheProviderGetsTheOriginal(t *testing.T) {
 	defer origin.close()
 
 	sink := &collector{}
-	proxyAddr, _ := startProxy(t, Config{Root: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
 	ourPool := x509.NewCertPool()
 	ourPool.AddCert(root.Cert)
 
@@ -642,7 +642,7 @@ func TestCapturedEventCarriesTheTaskID(t *testing.T) {
 
 	sink := &collector{}
 	proxyAddr, _ := startProxy(t, Config{
-		Root:            root,
+		Issuer:          root,
 		Sink:            sink,
 		UpstreamRootCAs: origin.rootPool,
 		Tasks:           tasks.NewResolver(),
@@ -688,7 +688,7 @@ func TestCaptureWorksWhenTheTaskIsUnknown(t *testing.T) {
 
 	sink := &collector{}
 	proxyAddr, _ := startProxy(t, Config{
-		Root:            root,
+		Issuer:          root,
 		Sink:            sink,
 		UpstreamRootCAs: origin.rootPool,
 		Tasks:           tasks.NewResolver(),
@@ -718,5 +718,72 @@ func runGit(t *testing.T, dir string, args ...string) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+}
+
+// TestCaptureThroughTheDeviceIntermediate is the D3 test at the proxy level: a real
+// client, a real handshake, and a certificate minted by this device's short-lived,
+// name-constrained intermediate rather than by the root.
+//
+// The client trusts only the ROOT. It has never seen the intermediate, so this also
+// proves the chain we serve is complete enough for a client to build a path.
+func TestCaptureThroughTheDeviceIntermediate(t *testing.T) {
+	root := newTestRoot(t)
+	origin := newOriginServer(t, "api.openai.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"a proxy sits in the middle"}}]}`)
+	}))
+	defer origin.close()
+
+	key, err := ca.NewDeviceKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := root.SignIntermediate(ca.IntermediateRequest{
+		PublicKey:           &key.PublicKey,
+		DeviceName:          "test-mac",
+		PermittedDNSDomains: ca.PermittedDomainsFrom(AllowListEntries()),
+	})
+	if err != nil {
+		t.Fatalf("sign intermediate: %v", err)
+	}
+	intermediate := &ca.Intermediate{Cert: cert, Key: key, RootDER: root.Cert.Raw}
+
+	sink := &collector{}
+	proxyAddr, _ := startProxy(t, Config{
+		Issuer:          intermediate,
+		Sink:            sink,
+		UpstreamRootCAs: origin.rootPool,
+	}, origin.addr)
+
+	ourPool := x509.NewCertPool()
+	ourPool.AddCert(root.Cert) // the root only: the intermediate must arrive in the chain
+
+	// A real conversation, not a housekeeping call: only parsed conversations are
+	// recorded, so /v1/models would produce no event and prove nothing here.
+	resp, err := clientThrough(proxyAddr, ourPool).Post(
+		"https://api.openai.com/v1/chat/completions", "application/json",
+		strings.NewReader(`{"model":"gpt-4","messages":[{"role":"user","content":"what is a proxy"}]}`))
+	if err != nil {
+		t.Fatalf("a request for an allow-listed host must work: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// The certificate the client accepted was signed by the intermediate, not by
+	// the root, and it carried the name constraints with it.
+	served := resp.TLS.PeerCertificates
+	if len(served) < 2 {
+		t.Fatalf("the served chain has %d certificates, want at least leaf and intermediate", len(served))
+	}
+	if served[0].Issuer.CommonName != cert.Subject.CommonName {
+		t.Errorf("the leaf was issued by %q, want the device intermediate %q",
+			served[0].Issuer.CommonName, cert.Subject.CommonName)
+	}
+	if len(served[1].PermittedDNSDomains) == 0 {
+		t.Error("the intermediate in the served chain carries no name constraints")
+	}
+
+	if !eventually(2*time.Second, func() bool { return len(sink.all()) == 1 }) {
+		t.Fatalf("got %d events, want 1", len(sink.all()))
 	}
 }

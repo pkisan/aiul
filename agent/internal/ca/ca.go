@@ -7,10 +7,12 @@
 // trusts. So we create our own CA ("the root"), trust it on this Mac, and use it
 // to sign short-lived "leaf" certificates for the hostnames we intercept.
 //
-// This is the DEVELOPMENT CA only: one self-signed root, its key in a file on this
-// laptop. The production chain (per-tenant root in a KMS/HSM signing a short-lived,
-// name-constrained intermediate per device) is designed in docs/DECISIONS.md and
-// deliberately not built here.
+// The root here is still the DEVELOPMENT one: self-signed, its key in a file on
+// this laptop. What is built on top of it is the production SHAPE (D3): the root
+// signs a short-lived, name-constrained intermediate per device (see
+// intermediate.go), and leaves are minted from that intermediate rather than from
+// the root. Moving the root itself into a KMS changes one signing call and nothing
+// else in this package.
 package ca
 
 import (
@@ -108,20 +110,14 @@ func Init(force bool) (*Root, error) {
 		return nil, err
 	}
 
-	keyDER, err := x509.MarshalECPrivateKey(root.Key)
-	if err != nil {
-		return nil, fmt.Errorf("encode private key: %w", err)
+	// Permissions live in pemfiles.go: the key 0600, the certificate 0644.
+	if err := writeKeyPEM(keyPath, root.Key); err != nil {
+		return nil, err
 	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	if err := writeCertPEM(certPath, root.Cert.Raw); err != nil {
+		return nil, err
+	}
 
-	// The private key is written 0600 — readable only by its owner. Rule 9.
-	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
-		return nil, fmt.Errorf("write %s: %w", keyPath, err)
-	}
-	// The certificate is public by design, so 0644 is fine and other tools can read it.
-	if err := os.WriteFile(certPath, root.CertPEM, 0o644); err != nil {
-		return nil, fmt.Errorf("write %s: %w", certPath, err)
-	}
 	return root, nil
 }
 
@@ -168,9 +164,13 @@ func generateRoot() (*Root, error) {
 		// authority rather than an ordinary server certificate.
 		IsCA:                  true,
 		BasicConstraintsValid: true,
-		// MaxPathLenZero: this root may sign leaf certificates but no further CAs.
-		MaxPathLen:     0,
-		MaxPathLenZero: true,
+		// MaxPathLen 1: this root may sign ONE level of CA beneath it — the device
+		// intermediate of D3 — and that intermediate may sign only leaves. A root
+		// with MaxPathLen 0 (as this was until 2026-09-19) cannot issue an
+		// intermediate at all: verifiers reject the chain for exceeding the path
+		// length, which is exactly the check doing its job.
+		MaxPathLen:     1,
+		MaxPathLenZero: false,
 
 		// A CA key is only ever used to sign certificates and revocation lists.
 		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
@@ -213,39 +213,21 @@ func Load() (*Root, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w (run 'aiul ca init' first)", certPath, err)
 	}
-	keyPEM, err := os.ReadFile(keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w (run 'aiul ca init' first)", keyPath, err)
-	}
 
-	// Refuse to use a private key that other users on this Mac can read.
-	if info, err := os.Stat(keyPath); err == nil {
-		if mode := info.Mode().Perm(); mode&0o077 != 0 {
-			return nil, fmt.Errorf("%s has permissions %#o; it must be 0600. Fix with: chmod 600 %s", keyPath, mode, keyPath)
-		}
-	}
-
-	certBlock, _ := pem.Decode(certPEM)
-	if certBlock == nil || certBlock.Type != "CERTIFICATE" {
-		return nil, fmt.Errorf("%s does not contain a PEM certificate", certPath)
-	}
-	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	cert, err := readCertPEM(certPath)
 	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", certPath, err)
+		return nil, err
 	}
-
-	keyBlock, _ := pem.Decode(keyPEM)
-	if keyBlock == nil {
-		return nil, fmt.Errorf("%s does not contain a PEM private key", keyPath)
-	}
-	key, err := x509.ParseECPrivateKey(keyBlock.Bytes)
+	// readKeyPEM refuses a key other users on this Mac can read.
+	key, err := readKeyPEM(keyPath)
 	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", keyPath, err)
+		return nil, err
 	}
 
 	if !cert.IsCA {
 		return nil, fmt.Errorf("%s is not a CA certificate", certPath)
 	}
+
 	return &Root{Cert: cert, Key: key, CertPEM: certPEM}, nil
 }
 

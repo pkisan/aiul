@@ -86,6 +86,18 @@ var allowList = []string{
 	"api.together.xyz",
 }
 
+// AllowListEntries returns a copy of the allow-list.
+//
+// It exists so the device intermediate can be name-constrained to exactly the
+// hosts we are allowed to decrypt and no others (D3). A copy, because a caller
+// must not be able to widen what this proxy will intercept.
+func AllowListEntries() []string {
+	out := make([]string, len(allowList))
+	copy(out, allowList)
+
+	return out
+}
+
 // Classifier decides what to do with a hostname. It is safe for concurrent use:
 // the proxy handles many connections at once, and any of them may discover a host
 // that has to be tunneled.

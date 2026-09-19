@@ -487,3 +487,57 @@ should, but because nobody could say where it came from.
 
 The three passwords were rotated to a random one when the seeder was written, so
 no account on this machine still answers to `password`.
+
+---
+
+## D14 — The device chain is built: how D3 looks in code (2026-09-19)
+
+D3 designed the production chain. This is what was built, with the dev root
+standing in for KMS.
+
+```
+root CA                  dev root today, KMS per tenant in production
+   │ signs               MaxPathLen 1 — exactly one CA below it
+device intermediate      key generated ON the device, never leaves it
+   │ signs               7 days, MaxPathLen 0, NAME CONSTRAINTS (critical)
+leaf certificates        24 hours, minted per host as before
+```
+
+**What the name constraints buy.** The intermediate lists the allow-listed domains
+in a critical `nameConstraints` extension. A client rejects any certificate from it
+for a name outside that list — verified by the client, not by our code. So a stolen
+laptop, with the device key in hand, cannot impersonate a bank. It can impersonate
+`api.openai.com`, which the fleet's own proxy was already doing on purpose.
+
+The test that carries this is
+`TestTheIntermediateCannotBeUsedForAnythingButTheAllowList`: it mints certificates
+for `bank.example.com`, `login.microsoftonline.com`, `notopenai.com` and
+`api.openai.com.evil.net` and asserts every one is rejected on verification.
+
+**What the short life buys.** Seven days, renewed with two left — enough that a
+laptop asleep over a weekend comes back working. A device that leaves the fleet
+stops being able to mint anything within a week without anyone revoking it. The
+agent renews on start and in its health loop.
+
+**Why the private key never moves.** `Root.SignIntermediate` takes a
+`*ecdsa.PublicKey`. There is no field on the request, and no function in the
+package, that can carry a private key off the device.
+
+**The KMS seam.** One call: `x509.CreateCertificate` with the root's key becomes an
+asymmetric Sign against a KMS key. The template, the constraints and the renewal
+are unchanged.
+
+**A root made before today cannot do this.** The dev root carried `MaxPathLen 0`,
+meaning "may sign leaves, no further CAs", and an intermediate under it is rejected
+by every verifier. `SignIntermediate` detects that and says to run
+`aiul ca untrust` then `aiul ca init --force`. The owner's root was regenerated on
+2026-09-19 for exactly this reason; the old one was backed up to
+`dev-ca.pre-d3-backup` and was trusted nowhere at the time.
+
+**Reissued when the allow-list changes.** A new provider added to the allow-list is
+not capturable under an old intermediate — the client would reject our certificate
+for it, correctly. `ProvisionDevice` compares the constraints with the current list
+and reissues when they differ.
+
+**Still to come, and it needs AWS:** the root itself in KMS, one per tenant, and a
+CRL so "revoke this device now" does not mean "wait up to seven days".
