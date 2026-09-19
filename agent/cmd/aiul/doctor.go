@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -283,6 +284,14 @@ func cmdStatus(args []string) int {
 	certPath, _, _ := ca.Paths()
 	trusted, _ := platform.Trust().IsTrusted(ca.CommonNamePrefix)
 	running, _ := platform.Service().Running()
+
+	// When the agent is installed, report ITS CA rather than this user's. They are
+	// different certificates — the installed one is provisioned into
+	// /var/db/aiul, which the worker's account can read — and showing the wrong
+	// one sent an uninstall looking in the wrong place once already.
+	if running {
+		certPath = filepath.Join(paths.CADirIn(paths.SystemStateDir), "root.crt")
+	}
 	current, _ := platform.Proxy().Current()
 	vars, _ := platform.Env().Current()
 

@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/pkisan/aiul/internal/ca"
 )
 
 // systemKeychain is the machine-wide keychain. A certificate trusted here is
@@ -31,10 +33,11 @@ func (DarwinTrust) InstallCommands(certPath string) []string {
 	}
 }
 
-func (DarwinTrust) UninstallCommands(certPath string) []string {
+func (DarwinTrust) UninstallCommands(string) []string {
 	return []string{
-		fmt.Sprintf("sudo security remove-trusted-cert -d %s", shellQuote(certPath)),
-		fmt.Sprintf("sudo security delete-certificate -c %q %s", "AIUL Dev Root", systemKeychain),
+		fmt.Sprintf("sudo security find-certificate -a -c %q -p %s > /tmp/aiul-roots.pem", ca.CommonNamePrefix, systemKeychain),
+		"sudo security remove-trusted-cert -d /tmp/aiul-roots.pem",
+		fmt.Sprintf("sudo security delete-certificate -c %q %s   # repeated until none remain", ca.CommonNamePrefix, systemKeychain),
 	}
 }
 
@@ -49,22 +52,60 @@ func (DarwinTrust) Install(certPath string) error {
 	return runVisible(cmd)
 }
 
-func (DarwinTrust) Uninstall(certPath string) error {
-	// remove-trusted-cert drops the trust setting; delete-certificate removes the
-	// certificate itself. Either may legitimately fail if it was never installed,
-	// so a failure here is reported but not fatal to the caller's intent.
-	if _, err := os.Stat(certPath); err == nil {
-		_ = runVisible(exec.Command("sudo", "security", "remove-trusted-cert", "-d", certPath))
-	}
-	_ = runVisible(exec.Command("sudo", "security", "delete-certificate", "-c", "AIUL Dev Root", systemKeychain))
+// Uninstall removes every certificate of ours from the System keychain.
+//
+// The argument is ignored, deliberately. Removal used to be by file path, and the
+// path was wrong in the case that matters: the installed agent trusts the CA under
+// /var/db/aiul, while `sudo aiul uninstall` resolves paths for the person who
+// typed it and found their own CA instead. `security` then reported
+// "The specified item could not be found in the keychain" and the real one was
+// untouched by that step.
+//
+// So this works from identity, not from a path: whatever is in the keychain under
+// our common-name prefix is what gets removed, however it got there. A Mac can end
+// up with more than one — a developer's own CA and the one the package provisioned
+// — so it loops until none are left.
+func (DarwinTrust) Uninstall(string) error {
+	for attempt := 0; attempt < 10; attempt++ {
+		trusted, err := DarwinTrust{}.IsTrusted(ca.CommonNamePrefix)
+		if err != nil {
+			return err
+		}
+		if !trusted {
+			return nil
+		}
 
-	trusted, err := DarwinTrust{}.IsTrusted("AIUL Dev Root")
+		// remove-trusted-cert needs the certificate in a file, so export first.
+		// Exporting them all at once means one call whatever the count.
+		pem, err := os.CreateTemp("", "aiul-roots-*.pem")
+		if err != nil {
+			return fmt.Errorf("could not write the certificates out to remove them: %w", err)
+		}
+		exported, err := exec.Command("security", "find-certificate",
+			"-a", "-c", ca.CommonNamePrefix, "-p", systemKeychain).Output()
+		if err == nil && len(exported) > 0 {
+			_, _ = pem.Write(exported)
+		}
+		_ = pem.Close()
+
+		_ = runVisible(exec.Command("sudo", "security", "remove-trusted-cert", "-d", pem.Name()))
+		_ = os.Remove(pem.Name())
+
+		// delete-certificate removes one match per call, hence the loop.
+		if err := runVisible(exec.Command("sudo", "security", "delete-certificate",
+			"-c", ca.CommonNamePrefix, systemKeychain)); err != nil {
+			break
+		}
+	}
+
+	trusted, err := DarwinTrust{}.IsTrusted(ca.CommonNamePrefix)
 	if err != nil {
 		return err
 	}
 	if trusted {
-		return fmt.Errorf("the certificate is still in %s; remove it by hand in Keychain Access, or run scripts/killswitch.sh", systemKeychain)
+		return fmt.Errorf("a certificate is still in %s; remove it by hand in Keychain Access, or run scripts/killswitch.sh", systemKeychain)
 	}
+
 	return nil
 }
 

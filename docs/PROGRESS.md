@@ -398,9 +398,45 @@ What is deliberately NOT in this phase, and why:
   a double-clicked package, and `installer` from the command line still works.
   Recorded as the one blocker for a real pilot.
 
+### Phase 8 MILESTONE PASSED on this Mac, 2026-09-19
+
+`sudo installer -pkg dist/aiul-0.8.0.pkg -target /` reported "The install was
+successful", and `aiul status` afterwards showed the proxy listening, both jobs
+loaded, the CA trusted, 4 of 4 network services pointing at 127.0.0.1:8899 and 9
+environment variables written. `sudo aiul uninstall` put the Mac back.
+
+Two bugs found by doing it, both fixed:
+
+1. **The first attempt failed at the MDM gate.** `installer` does not pass its
+   environment to package scripts, so `sudo AIUL_DEV_ALLOW_UNMANAGED=1 installer`
+   had no effect. The override is now the root-owned marker file
+   `/etc/aiul-dev-unmanaged`, which the kill switch removes (`dba660c`). The
+   failure itself was clean: install rolled back and the Mac kept working.
+2. **Uninstall removed the CA trust by file path, and the path was wrong.** The
+   installed agent trusts the CA under `/var/db/aiul`, while `sudo aiul uninstall`
+   resolved paths for the person who typed it and found their own CA, so
+   `security` said "The specified item could not be found in the keychain". The
+   delete-by-name step saved it, but the trust removal had been aimed at the wrong
+   certificate. Removal now works from identity — every certificate under the
+   common-name prefix, in a loop, since a Mac can hold two. `aiul status` reports
+   the installed CA path too, rather than this user's.
+
+Verified afterwards: no AIUL certificate in the System keychain at all.
+
 ## Next step
 
-Finish the four items above, then STOP for the owner to verify (rule 13).
+Phase 8 has no more work that can be done without an Apple Developer account. What
+remains in it is signing, notarization and MDM delivery, all of which need the
+account — `docs/PACKAGING.md` has the exact commands ready.
+
+The owner decides what comes next:
+
+- start the Apple Developer membership (a company account needs a D-U-N-S number,
+  which takes longer than the membership; worth starting early)
+- D3 — the production CA chain, which is what a real pilot needs more than a
+  signature does
+- D9's production half — `wrap`/`unwrap` in `BodyStore` become KMS calls
+- the small ones: brotli/zstd decoding, the dev seed password
 
 Smaller things that could go first, none of them blocking: the production KMS half
 of D9, brotli/zstd decoding, and the dev seed password (`password` on three
@@ -676,7 +712,8 @@ Files that exist but change no setting and are trusted by nothing:
 Docker containers now running (`aiul-postgres`, `aiul-redis`, `aiul-minio`). Stop
 them with `docker compose down`; add `-v` to delete their data too.
 
-**Re-verified clean on 2026-09-19** after three installs and one kill switch. One
+**Re-verified clean on 2026-09-19** after four installs (one from the package),
+one kill switch and two uninstalls. One
 new leftover that no earlier session had: `/var/db/aiul`, owned by uid 448 (the
 deleted `_aiul`), holding the worker's CA copy and two spooled events whose prompt
 text is in plaintext. `sudo rm -rf /var/db/aiul` removes it. Uninstall leaves it

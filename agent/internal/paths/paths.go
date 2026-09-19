@@ -85,6 +85,12 @@ func SpoolDir() (string, error) {
 	return SpoolDirIn(base), nil
 }
 
+// CADirIn is the CA directory inside a given state directory, for asking about a
+// directory that is not this process's own.
+func CADirIn(stateDir string) string {
+	return filepath.Join(stateDir, "dev-ca")
+}
+
 // SpoolDirIn is the spool inside a given state directory, for asking about a
 // directory that is not this process's own — `aiul status` asking about the
 // installed worker's spool, for instance.
