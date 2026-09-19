@@ -20,11 +20,40 @@ cd ~/Desktop/Aayatti/agent
 sudo AIUL_DEV_ALLOW_UNMANAGED=1 ./aiul install --apply
 ```
 
-Found and fixed first, on exactly that path (`386ac83`): install read the CA and
-wrote its path into the environment variables from `$HOME`, which under `sudo`
-may be root's home. `paths.State` now prefers the account named in `SUDO_USER`,
-and the launchd CA copy goes through `paths.CADir`. Three tests in
-`internal/paths`.
+### First attempt, 2026-09-19 07:39 — FAILED, and it broke HTTPS on this Mac
+
+The owner ran `install --apply`. The helper came up as root; the worker never
+started; install had already set the system proxy, so nothing on the Mac could
+reach the internet until `sudo ./scripts/killswitch.sh` ran. The kill switch
+restored it in one command and `aiul status` then reported the Mac clean.
+
+Three causes, all fixed in `9fef921`:
+
+1. launchd opens a job's log files as the account the job runs as, and
+   `agent.log` / `agent.err.log` were root-owned. launchd could not start the
+   worker at all — and because it never ran, it wrote nothing saying why, which
+   is what made this confusing. Install now creates those two files and gives
+   them to `_aiul`.
+2. `AIUL_DEV_ALLOW_UNMANAGED=1` was set in the owner's shell. A launchd job does
+   not inherit that, so the worker hit the MDM gate and exited. The job
+   definition now carries the environment the worker needs.
+3. Install set the system proxy without checking anything was listening. It now
+   waits up to 20s for the port to accept a connection and otherwise rolls back
+   the proxy, the environment variables and both jobs, naming
+   `/var/log/aiul/agent.err.log`.
+
+What worked: the helper removed the system proxy on unload (rule 7), the socket
+was `root:_aiul` mode `srw-rw----`, `/var/db/aiul` was owned by the service
+account, and the kill switch reverted everything including the `_aiul` account.
+
+Fixed before that attempt (`386ac83`): install read the CA and wrote its path
+into the environment variables from `$HOME`, which under `sudo` may be root's
+home. `paths.State` now prefers the account named in `SUDO_USER`, and the launchd
+CA copy goes through `paths.CADir`. Three tests in `internal/paths`.
+
+Still leftover on the Mac: `/var/db/aiul` (the worker's CA copy, owned by uid
+448, which no longer exists). Harmless, and the next install overwrites it.
+Remove with `sudo rm -rf /var/db/aiul`.
 
 ## Plan for the privilege split
 
@@ -273,7 +302,10 @@ Mac working:
    trust, the proxy, the `/etc/zshenv` block, the device token). It only *reports*
    `/var/db/aiul` rather than deleting it, which is deliberate.
 2. `sudo AIUL_DEV_ALLOW_UNMANAGED=1 ./aiul install --apply` — the owner runs this;
-   it prompts for a password so it cannot be run from the session.
+   it prompts for a password so it cannot be run from the session. Attempt 1
+   failed and is written up above; attempt 2 is pending. Install now refuses to
+   set the system proxy unless the worker is actually listening, so a repeat of
+   that failure leaves the Mac working.
 3. Check the split actually happened:
    - `ps -o user,command -p "$(pgrep -f 'aiul run')"` — must say `_aiul`, NOT root
    - `ps -o user,command -p "$(pgrep -f 'aiul helper')"` — must say `root`
