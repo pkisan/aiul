@@ -77,7 +77,10 @@ type ServiceManager interface {
 	InstallCommands() []string
 	UninstallCommands() []string
 
-	Install(binaryPath string) error
+	// Install writes and loads the jobs. extraEnv is written into the job
+	// definition: a variable set in the installing shell does not reach a service,
+	// so anything the installed processes need must be passed here.
+	Install(binaryPath string, extraEnv map[string]string) error
 	Uninstall() error
 
 	// Running reports whether our jobs are loaded.

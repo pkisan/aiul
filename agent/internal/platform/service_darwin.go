@@ -45,6 +45,10 @@ const (
 	InstalledBinaryPath = "/usr/local/bin/aiul"
 
 	logDir = "/var/log/aiul"
+
+	// WorkerLogPath is where the worker says why it would not start. Worth naming
+	// in error messages: an install that fails is nearly always answered here.
+	WorkerLogPath = logDir + "/agent.err.log"
 )
 
 // DarwinService installs and removes our launchd jobs.
@@ -75,7 +79,7 @@ func (DarwinService) UninstallCommands() []string {
 	}
 }
 
-func (s DarwinService) Install(binaryPath string) error {
+func (s DarwinService) Install(binaryPath string, extraEnv map[string]string) error {
 	// The service account the worker runs as. Created first: the directories it
 	// owns and the socket group both refer to it.
 	uid, gid, err := CreateServiceAccount()
@@ -88,6 +92,23 @@ func (s DarwinService) Install(binaryPath string) error {
 			return fmt.Errorf("create %s: %w", dir, err)
 		}
 	}
+	// launchd opens a job's log files as the account that job runs as, so the
+	// worker's two files must belong to that account. Without this, launchd cannot
+	// start the worker at all — and because it never runs, it writes no log line
+	// saying why. Create them here and hand them over.
+	for _, name := range []string{"agent.log", "agent.err.log"} {
+		path := filepath.Join(logDir, name)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
+		if err != nil {
+			return fmt.Errorf("create %s: %w", path, err)
+		}
+		_ = f.Close()
+
+		if err := os.Chown(path, uid, gid); err != nil {
+			return fmt.Errorf("give %s to %s: %w", path, ServiceUserName, err)
+		}
+	}
+
 	// The worker writes its spool here and must own it. The log directory stays
 	// root-owned; both processes append to files launchd opens for them.
 	if err := chownTree(WorkerStateDir, uid, gid); err != nil {
@@ -116,7 +137,7 @@ func (s DarwinService) Install(binaryPath string) error {
 	// 1. the root helper
 	helper := daemonPlistXML(helperLabel, "", []string{
 		InstalledBinaryPath, "helper", "--group", strconv.Itoa(gid),
-	}, logDir+"/helper.log", logDir+"/helper.err.log")
+	}, logDir+"/helper.log", logDir+"/helper.err.log", extraEnv)
 
 	if err := os.WriteFile(helperPlist, []byte(helper), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", helperPlist, err)
@@ -126,7 +147,7 @@ func (s DarwinService) Install(binaryPath string) error {
 	// parses network traffic out of root.
 	worker := daemonPlistXML(daemonLabel, ServiceUserName, []string{
 		InstalledBinaryPath, "run", "--manage-proxy",
-	}, logDir+"/agent.log", logDir+"/agent.err.log")
+	}, logDir+"/agent.log", logDir+"/agent.err.log", extraEnv)
 
 	if err := os.WriteFile(daemonPlist, []byte(worker), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", daemonPlist, err)
@@ -145,7 +166,7 @@ func (s DarwinService) Install(binaryPath string) error {
 }
 
 // daemonPlistXML builds a launchd job. An empty user means it runs as root.
-func daemonPlistXML(label, user string, argv []string, stdout, stderr string) string {
+func daemonPlistXML(label, user string, argv []string, stdout, stderr string, extraEnv map[string]string) string {
 	var args strings.Builder
 	for _, a := range argv {
 		fmt.Fprintf(&args, "\t\t<string>%s</string>\n", a)
@@ -158,12 +179,22 @@ func daemonPlistXML(label, user string, argv []string, stdout, stderr string) st
 
 	// Both halves must agree where the CA and the spool are. The service account
 	// has no home directory, so this cannot be left to a default.
-	env := fmt.Sprintf(`	<key>EnvironmentVariables</key>
-	<dict>
-		<key>AIUL_STATE_DIR</key>
-		<string>%s</string>
-	</dict>
-`, WorkerStateDir)
+	//
+	// A variable set in the shell that ran `install` does NOT reach a launchd job:
+	// anything the installed processes need has to be written in here. That
+	// includes the development MDM override, without which the worker refuses to
+	// start on an unmanaged Mac while the install has already pointed the system
+	// proxy at it.
+	vars := map[string]string{paths.StateDirEnv: WorkerStateDir}
+	for key, value := range extraEnv {
+		vars[key] = value
+	}
+
+	var entries strings.Builder
+	for _, key := range sortedKeys(vars) {
+		fmt.Fprintf(&entries, "\t\t<key>%s</key>\n\t\t<string>%s</string>\n", key, vars[key])
+	}
+	env := fmt.Sprintf("\t<key>EnvironmentVariables</key>\n\t<dict>\n%s\t</dict>\n", entries.String())
 
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

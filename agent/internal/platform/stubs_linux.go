@@ -48,13 +48,18 @@ func (LinuxTools) Detect() []Tool { return nil }
 // LinuxService: a systemd unit.
 type LinuxService struct{}
 
+// WorkerLogPath: the journal, once there is a unit to read it from.
+const WorkerLogPath = "journalctl -u aiul"
+
 func Service() ServiceManager { return LinuxService{} }
 
 func (LinuxService) InstallCommands() []string   { return nil }
 func (LinuxService) UninstallCommands() []string { return nil }
-func (LinuxService) Install(string) error        { return ErrUnsupported }
-func (LinuxService) Uninstall() error            { return ErrUnsupported }
-func (LinuxService) Running() (bool, error)      { return false, ErrUnsupported }
+func (LinuxService) Install(string, map[string]string) error {
+	return ErrUnsupported
+}
+func (LinuxService) Uninstall() error       { return ErrUnsupported }
+func (LinuxService) Running() (bool, error) { return false, ErrUnsupported }
 
 // AllManagedVars is shared with darwin so callers need no build tags.
 var AllManagedVars = []string{

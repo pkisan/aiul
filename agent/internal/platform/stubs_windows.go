@@ -48,13 +48,18 @@ func (WindowsTools) Detect() []Tool { return nil }
 // WindowsService: a Windows Service.
 type WindowsService struct{}
 
+// WorkerLogPath: the Windows event log, once there is a service to write to it.
+const WorkerLogPath = "Event Viewer > Application > aiul"
+
 func Service() ServiceManager { return WindowsService{} }
 
 func (WindowsService) InstallCommands() []string   { return nil }
 func (WindowsService) UninstallCommands() []string { return nil }
-func (WindowsService) Install(string) error        { return ErrUnsupported }
-func (WindowsService) Uninstall() error            { return ErrUnsupported }
-func (WindowsService) Running() (bool, error)      { return false, ErrUnsupported }
+func (WindowsService) Install(string, map[string]string) error {
+	return ErrUnsupported
+}
+func (WindowsService) Uninstall() error       { return ErrUnsupported }
+func (WindowsService) Running() (bool, error) { return false, ErrUnsupported }
 
 // AllManagedVars is shared with darwin so callers need no build tags.
 var AllManagedVars = []string{

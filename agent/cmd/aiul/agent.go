@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/pkisan/aiul/internal/ca"
 	"github.com/pkisan/aiul/internal/platform"
@@ -118,11 +120,24 @@ func cmdInstall(args []string) int {
 	// Order matters: trust and the background job first, then the proxy setting.
 	// If the machine is left half-configured, it must be left in the state where
 	// traffic still flows normally.
+	// Anything the installed jobs need must be written into the job definition:
+	// launchd does not inherit the shell that ran install. The MDM override is the
+	// one that matters, because without it the worker refuses to start on a
+	// development machine.
+	daemonEnv := map[string]string{}
+	if os.Getenv(platform.DevAllowUnmanagedVar) != "" {
+		daemonEnv[platform.DevAllowUnmanagedVar] = os.Getenv(platform.DevAllowUnmanagedVar)
+	}
+
 	steps := []struct {
 		name string
 		do   func() error
 	}{
-		{"create the service account and the background jobs", func() error { return platform.Service().Install(self) }},
+		{"create the service account and the background jobs", func() error { return platform.Service().Install(self, daemonEnv) }},
+		// Nothing points traffic at the proxy until the proxy answers. This check
+		// is the difference between a failed install and a Mac with no working
+		// HTTPS, because the proxy setting outlives the process that set it.
+		{"wait for the worker to start listening", waitForProxy},
 		{"trust the CA", func() error { return platform.Trust().Install(certPath) }},
 		{"write environment variables", func() error { return platform.Env().Write(vars) }},
 		{"set the system proxy", func() error { return platform.Proxy().Set(proxyAddr) }},
@@ -132,7 +147,13 @@ func cmdInstall(args []string) int {
 		if err := step.do(); err != nil {
 			fmt.Fprintf(os.Stderr, "\nFailed to %s: %v\n", step.name, err)
 			fmt.Fprintln(os.Stderr, "Rolling back so this Mac is left working.")
+			// In this order, so traffic is flowing normally before anything else is
+			// touched. A half-finished install must never leave a proxy setting
+			// behind: the setting outlives the process that wrote it.
 			_ = platform.Proxy().Unset()
+			_ = platform.Env().Remove()
+			_ = platform.Service().Uninstall()
+			fmt.Fprintf(os.Stderr, "Rolled back. The worker's log is %s.\n", platform.WorkerLogPath)
 			return 1
 		}
 	}
@@ -202,6 +223,30 @@ func cmdUninstall(args []string) int {
 	}
 	fmt.Println("Done. Verify with: aiul status")
 	return 0
+}
+
+// waitForProxy blocks until the worker accepts a connection on the proxy port, or
+// gives up. launchd starts the job in the background, so "the job loaded" is not
+// the same as "the proxy works" — and the difference is a Mac whose HTTPS traffic
+// is pointed at nothing.
+func waitForProxy() error {
+	deadline := time.Now().Add(20 * time.Second)
+
+	for {
+		conn, err := net.DialTimeout("tcp", proxyAddr, 2*time.Second)
+		if err == nil {
+			_ = conn.Close()
+
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("nothing is listening on %s after 20s: %w\n"+
+				"  The worker did not start. Its log says why: %s",
+				proxyAddr, err, platform.WorkerLogPath)
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func printCommands(cmds []string) {
