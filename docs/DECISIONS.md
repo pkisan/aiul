@@ -450,3 +450,40 @@ The lesson worth keeping: "re-apply settings that have drifted" sounds like
 housekeeping, but on a machine that was never configured, every setting looks like
 drift. A reconciliation loop needs to know whether it owns the thing it is
 reconciling.
+
+---
+
+## D12 — Brotli and zstd stay undecoded, on evidence (2026-09-19)
+
+**Decision.** Do not add `andybalholm/brotli` or `klauspost/compress`. Bodies in
+those formats are still recorded as metadata only.
+
+**Why now.** The condition D-for-revisiting set was "if the logs show real
+captures being lost". A full day of real traffic through the installed agent on
+the owner's Mac — the Codex and ChatGPT web apps included, which are exactly where
+brotli would be expected — produced **zero** `body was compressed in a format we
+do not decode yet` lines in 179 KB of debug log. gzip covers what the AI APIs
+actually send.
+
+Two dependencies to solve a problem that has not happened once is a cost with no
+return. The debug line that would prove otherwise is already in place, so the
+evidence will arrive by itself if this is ever wrong.
+
+**Revisit when** that line appears in a real capture, or a new tool's parser needs
+a body we cannot read.
+
+---
+
+## D13 — Development users come from a seeder that cannot run in production (2026-09-19)
+
+**Decision.** `database/seeders/DevUsersSeeder.php` is the only thing that creates
+the three dashboard users. It refuses to run outside `local` and `testing`, and
+the password is random unless `AIUL_SEED_PASSWORD` is given.
+
+**Why.** The three users existed with the password `password`, typed in by hand
+during Phase 7. No file created them, so nothing could audit or recreate them.
+That is how a demo account reaches production — not because anyone decided it
+should, but because nobody could say where it came from.
+
+The three passwords were rotated to a random one when the seeder was written, so
+no account on this machine still answers to `password`.

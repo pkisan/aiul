@@ -436,7 +436,8 @@ The owner decides what comes next:
 - D3 — the production CA chain, which is what a real pilot needs more than a
   signature does
 - D9's production half — `wrap`/`unwrap` in `BodyStore` become KMS calls
-- the small ones: brotli/zstd decoding, the dev seed password
+- D3 is the largest remaining piece of real engineering that does not need an
+  account for its design, only for its deployment
 
 Smaller things that could go first, none of them blocking: the production KMS half
 of D9, brotli/zstd decoding, and the dev seed password (`password` on three
@@ -658,11 +659,17 @@ real prompt in plaintext**. Remove with `sudo rm -rf /var/db/aiul`.
   left of D9 is the production half: `wrap`/`unwrap` in `BodyStore` become KMS
   calls. Bodies written before the change stay readable under the application key
   until retention deletes them.
-- Brotli and zstd response bodies are recorded as metadata only.
+- Brotli and zstd response bodies are recorded as metadata only. CLOSED as a debt
+  on 2026-09-19 (D12): a full day of real traffic produced zero undecoded bodies,
+  so the two dependencies are not worth their cost. The debug line that would
+  prove otherwise is in place.
 - ~~Retention~~ DONE 2026-09-19: `aiul:purge-bodies`, scheduled nightly. Note that
   nothing runs the Laravel scheduler on this Mac, so it purges only when run by
   hand here.
-- Local dev seeds three users with the password "password".
+- ~~Local dev seeds three users with the password "password"~~ FIXED 2026-09-19
+  (D13): `DevUsersSeeder` refuses to run outside local/testing, generates a random
+  password unless `AIUL_SEED_PASSWORD` is set, and the three existing accounts
+  were rotated off `password`.
 
 ## Left — later phases
 
