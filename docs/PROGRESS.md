@@ -10,7 +10,7 @@ Last updated: 2026-09-19
 
 Task in progress right now: none. **The privilege split is VERIFIED on real
 hardware** — all five steps done on 2026-09-19, including the uninstall, and this
-Mac is clean again.
+Mac is clean again. **The retention job is DONE** the same day (see below).
 
 ### VERIFIED on this Mac, 2026-09-19
 
@@ -325,11 +325,36 @@ Written before starting, so an interruption loses nothing. In order:
 
 - Nothing.
 
+## Retention — DONE 2026-09-19
+
+`php artisan aiul:purge-bodies` deletes prompt and answer bodies once they are
+older than that tenant's `retention_days`, and keeps everything derived from them.
+The schema already allowed it (a null `prompt_object` means purged) and
+`retention_days` was already on `tenants`, so this is one command, one scheduled
+entry and a test file — no migration, no new model, no new service.
+
+- object first, row second, so an interruption leaves a key pointing at a missing
+  object, which `BodyStore::get` already reads as purged — never a row claiming
+  nothing is stored while the text sits in the bucket
+- `--dry-run` and `--tenant=<slug>`; `chunkById(200)` so a backlog cannot exhaust
+  memory or skip rows
+- scheduled nightly at 03:30 in `routes/console.php`. **Nothing runs it on this
+  Mac**: that needs `php artisan schedule:work`, or cron in production
+- 6 tests in `tests/Feature/RetentionTest.php`: the bodies go and the score, task,
+  tokens and timings stay; recent bodies are untouched; each tenant gets its own
+  window; a dry run changes nothing; running twice is safe; reading a purged body
+  returns null rather than failing. 65 backend tests in total
+- VERIFIED against real MinIO, not just the fake disk: a body was written, read
+  back as `this text must not survive retention`, purged, and confirmed gone from
+  the bucket while `task_id`, tokens and duration remained
+
 ## Next step
 
-The owner decides, as before: the retention job, per-tenant encryption keys (D9),
-or Phase 8 (signing, packaging, MDM, EDR). Phase 8 is the one that needs an Apple
-Developer account.
+The owner decides: per-tenant encryption keys (D9) or Phase 8 (signing, packaging,
+MDM, EDR). Phase 8 is the one that needs an Apple Developer account. D9 needs a
+decision from the owner first: where the per-tenant key comes from (AWS KMS, or a
+local keyring for development) and what happens to bodies already encrypted with
+the application key.
 
 Worth carrying into Phase 8 and into the Linux and Windows ports: every bug found
 on 2026-09-19 was invisible to the unit tests, because the tests run as the
@@ -545,8 +570,9 @@ real prompt in plaintext**. Remove with `sudo rm -rf /var/db/aiul`.
 - Prompt bodies use one application-wide encryption key. D9 has the plan: a
   per-tenant key from KMS. `BodyStore` is the only class to change.
 - Brotli and zstd response bodies are recorded as metadata only.
-- Retention (purge bodies after N days, keep the scores) is designed into the
-  schema but there is no job that does it yet.
+- ~~Retention~~ DONE 2026-09-19: `aiul:purge-bodies`, scheduled nightly. Note that
+  nothing runs the Laravel scheduler on this Mac, so it purges only when run by
+  hand here.
 - Local dev seeds three users with the password "password".
 
 ## Left — later phases
