@@ -145,6 +145,13 @@ HTTPS_PROXY=http://127.0.0.1:8899 NODE_EXTRA_CA_CERTS="$HOME/Library/Application
 
 Issue a token with `php artisan aiul:provision-device "$(hostname)" --tenant=dev`.
 
+### How to test the whole thing
+
+`docs/TESTING.md` is the step-by-step runbook: services up, token issued, package
+built and installed, a tagged and redacted capture, the dashboard's gate and audit
+log, fail-open, retention, and putting the Mac back. It also states plainly what
+the test does not cover.
+
 ### Before doing anything in a new session
 
 The backend needs its data services running:
