@@ -117,20 +117,25 @@ func cmdInstall(args []string) int {
 		return 1
 	}
 
-	// Order matters: trust and the background job first, then the proxy setting.
-	// If the machine is left half-configured, it must be left in the state where
-	// traffic still flows normally.
 	// Anything the installed jobs need must be written into the job definition:
-	// launchd does not inherit the shell that ran install. The MDM override is the
-	// one that matters, because without it the worker refuses to start on a
-	// development machine.
+	// launchd does not inherit the shell that ran install.
 	daemonEnv := map[string]string{}
-	for _, name := range []string{platform.DevAllowUnmanagedVar, "AIUL_DEBUG"} {
+	for _, name := range []string{
+		platform.DevAllowUnmanagedVar,
+		"AIUL_DEBUG",
+		// Where to forward events, and what to authenticate with. Without these in
+		// the job definition the installed worker spools for ever and sends nothing.
+		"AIUL_ENDPOINT",
+		"AIUL_DEVICE_TOKEN",
+	} {
 		if value := os.Getenv(name); value != "" {
 			daemonEnv[name] = value
 		}
 	}
 
+	// Order matters: the jobs and the trust first, the proxy setting last. If the
+	// machine is left half-configured, it must be left in the state where traffic
+	// still flows normally.
 	steps := []struct {
 		name string
 		do   func() error

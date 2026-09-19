@@ -33,6 +33,9 @@ on, because it is the only command that asked you first.
 
 The device token normally comes from the keychain. --token, or AIUL_DEVICE_TOKEN,
 overrides it for development so nothing has to be stored to try the backend.
+
+AIUL_ENDPOINT does the same for --endpoint. The installed worker is started with a
+fixed argument list, so that is how 'aiul install' passes the backend address on.
 `
 
 // healthInterval is how often the agent loop checks itself. Short enough that a
@@ -114,6 +117,14 @@ func cmdRun(args []string) int {
 	if err != nil {
 		log.Error("cannot open the spool", "err", err)
 		return 1
+	}
+
+	// The installed worker is started by launchd with a fixed argument list, so
+	// where it forwards to has to come from the job's environment. Without this the
+	// packaged agent captures and spools correctly and never sends anything, which
+	// looks like a broken backend rather than a missing setting.
+	if endpoint == "" {
+		endpoint = os.Getenv("AIUL_ENDPOINT")
 	}
 
 	// Precedence: the flag, then the environment, then the keychain. The first two
