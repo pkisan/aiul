@@ -365,11 +365,42 @@ Verified against real MinIO and Postgres: a legacy body and a new body were read
 back correctly side by side, `tenants.data_key` unwraps to 32 bytes, and the
 stored object contains none of the plaintext. 73 backend tests.
 
+## Phase 8 — IN PROGRESS, without signing (2026-09-19)
+
+The owner has no Apple Developer account yet and asked for Phase 8 without
+signing. So everything up to the signature is built now, and signing is one
+export away rather than a rewrite.
+
+Plan, in order:
+
+1. `scripts/build.sh` — universal binary (arm64 + x86_64 via `lipo`), version
+   stamped with `-ldflags -X main.version`, output in `dist/`. `main.version`
+   becomes a `var` so the linker can set it.
+2. `scripts/package.sh` — `pkgbuild` component package with `/usr/local/bin/aiul`
+   as its payload and a `postinstall` script. Signs ONLY when
+   `AIUL_INSTALLER_IDENTITY` is set, so the same script produces the signed
+   package later with no edit.
+3. `packaging/scripts/postinstall` — provision a CA if none exists, then
+   `aiul install --apply --yes`. `ca init` refuses to overwrite, so the check is
+   `aiul ca info || aiul ca init`. Both run with `AIUL_STATE_DIR=/var/db/aiul`, so
+   the CA is created where the worker will look rather than in root's home.
+4. `docs/PACKAGING.md` — how to build and install the package, how to deploy it
+   from an MDM, what to allow-list in an EDR, and the exact signing and
+   notarization commands to run once there is an account.
+
+What is deliberately NOT in this phase, and why:
+
+- **No `.mobileconfig` carrying the CA.** Each device provisions its own CA, so a
+  single profile cannot carry the certificate to trust. The production answer is
+  D3's per-tenant root and per-device name-constrained intermediate, which is
+  designed and not built. A profile written now would have an empty payload.
+- **No signature, no notarization.** No account. Gatekeeper will therefore warn on
+  a double-clicked package, and `installer` from the command line still works.
+  Recorded as the one blocker for a real pilot.
+
 ## Next step
 
-Phase 8 — signing, notarization, `.pkg` installer, MDM profile, EDR allow-listing.
-Needs an Apple Developer account; ask the owner before starting whether they have
-one, because without it the phase stops at an unsigned package.
+Finish the four items above, then STOP for the owner to verify (rule 13).
 
 Smaller things that could go first, none of them blocking: the production KMS half
 of D9, brotli/zstd decoding, and the dev seed password (`password` on three
