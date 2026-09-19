@@ -1,0 +1,54 @@
+#!/bin/bash
+# postinstall — runs as root after the package has placed /usr/local/bin/aiul.
+#
+# It does the least it can: make sure a CA exists, then hand over to
+# `aiul install --apply --yes`, which is the same code path a person runs by hand
+# and the same one `aiul uninstall` reverses. Nothing about deployment gets its own
+# second implementation that can drift.
+#
+# On failure it exits non-zero so the installer reports a failed install rather
+# than leaving a half-configured Mac looking successful.
+
+set -uo pipefail
+
+BINARY="/usr/local/bin/aiul"
+LOG="/var/log/aiul-install.log"
+
+# Everything the installed agent owns lives here, and the worker account cannot
+# use a home directory. Setting this makes `ca init` create the CA where the worker
+# will look for it, instead of in root's home.
+export AIUL_STATE_DIR="/var/db/aiul"
+
+exec >>"$LOG" 2>&1
+echo "=== $(date '+%Y-%m-%d %H:%M:%S') postinstall $("$BINARY" version 2>/dev/null)"
+
+if [ ! -x "$BINARY" ]; then
+  echo "FAILED: $BINARY is missing or not executable"
+  exit 1
+fi
+
+# `aiul ca init` refuses to overwrite an existing CA, which is what we want on a
+# reinstall: the certificates already trusted on this device keep working.
+if "$BINARY" ca info >/dev/null 2>&1; then
+  echo "a CA already exists; keeping it"
+else
+  echo "provisioning a CA"
+  if ! "$BINARY" ca init; then
+    echo "FAILED: could not provision a CA"
+    exit 1
+  fi
+fi
+
+# --yes answers the confirmation; there is no terminal here. install refuses on a
+# device with no MDM enrollment, which is deliberate: this package is for managed
+# devices. For a test on an unmanaged Mac, set AIUL_DEV_ALLOW_UNMANAGED=1 in the
+# environment the installer runs in.
+if ! "$BINARY" install --apply --yes; then
+  echo "FAILED: aiul install --apply did not complete"
+  echo "The install rolls itself back, so this Mac's traffic is unaffected."
+  exit 1
+fi
+
+"$BINARY" status
+echo "postinstall finished"
+exit 0

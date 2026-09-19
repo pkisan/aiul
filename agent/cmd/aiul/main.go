@@ -8,9 +8,10 @@ import (
 	"runtime"
 )
 
-// version is the build version. Later phases will stamp this at build time with
-// -ldflags; a constant is enough for now.
-const version = "0.0.1-dev"
+// version is the build version. A var, not a const, because scripts/build.sh
+// stamps it with -ldflags "-X main.version=..." so a package can be identified
+// from the binary it installed. A plain `go build` leaves the development value.
+var version = "0.0.1-dev"
 
 func main() {
 	if len(os.Args) < 2 {

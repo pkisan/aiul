@@ -28,3 +28,7 @@ spool/
 /backend/storage/framework/cache/data/
 /backend/storage/logs/*.log
 /backend/public/build/
+
+# Build output: binaries and installer packages are built from source, never committed.
+/dist/
+*.pkg
