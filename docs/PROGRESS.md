@@ -8,10 +8,25 @@ Last updated: 2026-09-19
 
 **Phase 7 — Minimal dashboard (Inertia + Vue).**
 
-Task in progress right now: **verifying the privilege split on this Mac**. The
-code is written, unit-tested and committed; `install --apply` has not yet been run
-since the split. The owner chose this as the next step on 2026-09-19, ahead of
-the retention job, per-tenant keys (D9) and Phase 8.
+Task in progress right now: **verifying the privilege split on this Mac** —
+steps 1-4 of five are DONE and the split is proven working; step 5 (uninstall and
+confirm the Mac is clean) is pending. The owner chose this as the next step on
+2026-09-19, ahead of the retention job, per-tenant keys (D9) and Phase 8.
+
+### VERIFIED on this Mac, 2026-09-19
+
+| What | Evidence |
+| --- | --- |
+| worker is NOT root | `ps`: `_aiul  /usr/local/bin/aiul run --manage-proxy` |
+| helper IS root | `ps`: `root  /usr/local/bin/aiul helper --group 448` |
+| socket locked down | `srw-rw---- root _aiul /var/run/aiul-helper.sock` |
+| worker uses the helper | log: `using the privileged helper` |
+| only AI hosts decrypted | log: `decision=pass` for google, icloud, deepseek; `no parser for this endpoint` for chatgpt.com housekeeping |
+| task tagging works through the helper | event: `task_id AIUL-99`, `branch feature/AIUL-99-privilege-split`, `process curl` |
+| kill switch | ran once for real, restored HTTPS in one command |
+
+Four bugs were found by doing this, none of which any unit test could have found
+(`386ac83`, `9fef921`, `0f3b53e`, `e903faa`) — see the write-up below.
 
 Ready for the owner to run (nothing has been applied yet):
 
@@ -19,6 +34,24 @@ Ready for the owner to run (nothing has been applied yet):
 cd ~/Desktop/Aayatti/agent
 sudo AIUL_DEV_ALLOW_UNMANAGED=1 ./aiul install --apply
 ```
+
+### What the three installed runs found
+
+Attempt 1 (07:39) failed and broke HTTPS. Attempt 2 (09:05) came up correctly but
+task tagging was silently untagged. Attempt 3 (09:55, with `AIUL_DEBUG=1`) proved
+the classification and, after `e903faa`, the tagging.
+
+Two further fixes came out of attempts 2 and 3:
+
+- `AIUL_DEBUG=1` now does what `--debug` does, and install writes it into the job
+  definition. Two failures in a row had an empty log because every line that
+  explains a non-recorded request is at debug level and launchd starts the worker
+  with a fixed argument list (`0f3b53e`).
+- `aiul status` was reporting two untruths: `background job no` while both halves
+  ran (`launchctl list` as an ordinary user lists only that user's jobs, never
+  system daemons — it asks `ps` now), and `events waiting 0` from the owner's
+  spool while the worker writes to `/var/db/aiul/spool`. It now reports the
+  worker's spool and says plainly when counting it needs root (`0f3b53e`).
 
 ### First attempt, 2026-09-19 07:39 — FAILED, and it broke HTTPS on this Mac
 
@@ -313,10 +346,11 @@ Mac working:
    - `sudo ls -l /var/db/aiul/dev-ca/root.key` — owned `_aiul`, mode `-rw-------`
    - `./aiul status` — proxy listening, both jobs loaded, CA trusted, 4 of 4
      network services pointing at 127.0.0.1:8899
-4. Prove task tagging still works now that the finder goes through the helper: a
-   request from a checkout on a ticket branch must still produce an event carrying
-   its task ID. This is the part the split could quietly break, because the worker
-   can no longer run `lsof` itself.
+4. DONE, and it HAD broken: the event carried the process and working directory
+   but no task, because `_aiul` cannot traverse `/Users/vws18` (`drwxr-x---`) or a
+   temporary directory (`drwx------`) and so cannot read `.git/HEAD`. `PROCESS`
+   now answers with the repo and branch too (D6, `e903faa`). Verified live:
+   `task_id AIUL-99`.
 5. `sudo ./aiul uninstall`, then `./aiul status` must report the Mac clean again.
 
 Then update the machine-state table below with whatever is still applied.

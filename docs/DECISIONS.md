@@ -222,7 +222,32 @@ verbs plus a health check:
 | `PING` | health check | none |
 | `PROXY-ON` | `networksetup` needs root | **none** — the address is compiled in |
 | `PROXY-OFF` | same | none |
-| `PROCESS <port>` | `lsof` cannot see another user's processes | one integer, range-checked |
+| `PROCESS <port>` | `lsof` cannot see another user's processes, and `_aiul` cannot read anyone's `.git/HEAD` | one integer, range-checked |
+
+### Why PROCESS also reads the checkout (2026-09-19)
+
+The first installed run on the owner's Mac produced an event with the right
+process and working directory, and `task_id`, `branch` and `repo` all null. The
+cause is ordinary Unix permissions: `/Users/vws18` is `drwxr-x--- vws18:staff`
+and a temporary directory is `drwx------`, and `_aiul` is in neither group. The
+worker can be told where a process is working and still not be able to look
+inside it.
+
+So the privileged half reads it, and `PROCESS` answers `pid`, `name`,
+`working dir`, `repo` and `branch` in one reply — one round trip, and the worker
+was going to ask for the directory anyway.
+
+This does not widen the helper's surface in the way a path argument would: the
+directory is one the helper itself just obtained from `lsof`, never a string the
+worker chose. What the helper does with it is `os.Stat` and `os.ReadFile` on
+`.git/HEAD`, walking up at most forty levels, executing nothing. Turning a branch
+name into a task ID stays in the worker, where the configurable pattern lives, so
+the privileged half holds no policy.
+
+The general lesson, worth remembering for Linux and Windows: **unit tests run as
+the developer and cannot see this class of bug.** Anything the worker reads from a
+person's filesystem has to be checked against the service account's actual
+permissions, on a real installed run.
 
 **No verb takes a path, a command, or a hostname.** `PROXY-ON` deliberately takes
 no argument: if it accepted an address, anything that could talk to the socket
