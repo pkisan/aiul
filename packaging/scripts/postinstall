@@ -22,6 +22,19 @@ export AIUL_STATE_DIR="/var/db/aiul"
 exec >>"$LOG" 2>&1
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') postinstall $("$BINARY" version 2>/dev/null)"
 
+# The development override, for testing the package on an unmanaged Mac.
+#
+# It is a file and not an environment variable because `installer` does not pass
+# its environment to package scripts — running `sudo AIUL_DEV_ALLOW_UNMANAGED=1
+# installer ...` silently has no effect here. A root-owned file in /etc cannot be
+# created by accident, and the kill switch removes it.
+DEV_MARKER="/etc/aiul-dev-unmanaged"
+if [ -f "$DEV_MARKER" ]; then
+  export AIUL_DEV_ALLOW_UNMANAGED=1
+  echo "!! $DEV_MARKER exists: the MDM check will be SKIPPED."
+  echo "!! Development only. Delete that file on any real device."
+fi
+
 if [ ! -x "$BINARY" ]; then
   echo "FAILED: $BINARY is missing or not executable"
   exit 1

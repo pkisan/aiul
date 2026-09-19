@@ -57,11 +57,24 @@ signing buys.
 ### On an unmanaged Mac
 
 `aiul install` refuses to run on a device with no MDM enrollment, by design, and
-the postinstall inherits that. To test the package on your own machine:
+the postinstall inherits that. **`installer` does not pass its environment to
+package scripts**, so putting the override on the command line does nothing:
 
 ```sh
+# THIS DOES NOT WORK — the variable never reaches the postinstall
 sudo AIUL_DEV_ALLOW_UNMANAGED=1 installer -pkg dist/aiul-0.8.0.pkg -target /
 ```
+
+Use the marker file instead. It is in `/etc`, so it needs root and cannot appear
+by accident on a fleet, and `scripts/killswitch.sh` removes it:
+
+```sh
+sudo touch /etc/aiul-dev-unmanaged
+sudo installer -pkg dist/aiul-0.8.0.pkg -target /
+sudo rm /etc/aiul-dev-unmanaged        # when finished testing
+```
+
+The postinstall log records loudly that the check was skipped.
 
 ## Deploying from an MDM
 

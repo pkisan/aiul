@@ -186,6 +186,12 @@ else
   say "   not present: /usr/local/bin/aiul"
 fi
 
+if [ -f /etc/aiul-dev-unmanaged ]; then
+  run "remove the development MDM override" rm -f /etc/aiul-dev-unmanaged
+else
+  say "   not present: /etc/aiul-dev-unmanaged"
+fi
+
 if dscl . -read /Users/$SERVICE_USER >/dev/null 2>&1; then
   run "remove the $SERVICE_USER service account" dscl . -delete /Users/$SERVICE_USER
   run "remove the $SERVICE_USER group" dscl . -delete /Groups/$SERVICE_USER
