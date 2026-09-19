@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/pkisan/aiul/internal/paths"
 )
 
 // launchd is the macOS service manager. Two kinds of job matter here:
@@ -192,11 +194,10 @@ func daemonPlistXML(label, user string, argv []string, stdout, stderr string) st
 // The key keeps mode 0600 and changes owner rather than becoming readable by
 // everyone: exactly one account on the machine can mint certificates with it.
 func copyCAForWorker(uid, gid int) error {
-	home, err := os.UserHomeDir()
+	source, err := paths.CADir()
 	if err != nil {
 		return err
 	}
-	source := filepath.Join(home, "Library", "Application Support", "AIUL", "dev-ca")
 	target := filepath.Join(WorkerStateDir, "dev-ca")
 
 	if err := os.MkdirAll(target, 0o700); err != nil {

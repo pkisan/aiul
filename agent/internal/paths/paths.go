@@ -41,13 +41,28 @@ func State() (string, error) {
 		return SystemStateDir, nil
 	}
 
-	home, err := os.UserHomeDir()
+	home, err := userHome()
 	if err != nil {
 		// No home either: fall back to the system location rather than failing.
 		return SystemStateDir, nil
 	}
 
 	return filepath.Join(home, "Library", "Application Support", "AIUL"), nil
+}
+
+// userHome is the home directory of the person running the command, which is not
+// always what $HOME says: under `sudo aiul install`, $HOME may still be the
+// installing user's or may have become root's, depending on the sudoers file. The
+// CA lives in the person's home, never root's, so ask the directory service for
+// the account named in SUDO_USER instead of trusting the variable.
+func userHome() (string, error) {
+	if name := os.Getenv("SUDO_USER"); name != "" && name != "root" {
+		if u, err := user.Lookup(name); err == nil && u.HomeDir != "" {
+			return u.HomeDir, nil
+		}
+	}
+
+	return os.UserHomeDir()
 }
 
 // CADir is where the development CA lives.
