@@ -82,5 +82,12 @@ func SpoolDir() (string, error) {
 		return "", err
 	}
 
-	return filepath.Join(base, "spool"), nil
+	return SpoolDirIn(base), nil
+}
+
+// SpoolDirIn is the spool inside a given state directory, for asking about a
+// directory that is not this process's own — `aiul status` asking about the
+// installed worker's spool, for instance.
+func SpoolDirIn(stateDir string) string {
+	return filepath.Join(stateDir, "spool")
 }

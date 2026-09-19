@@ -294,13 +294,19 @@ func (DarwinService) Uninstall() error {
 	return firstErr
 }
 
+// Running reports whether BOTH halves are up.
+//
+// It asks about processes rather than about launchd: `launchctl list` run by an
+// ordinary user shows only that user's own jobs, not system daemons, so it
+// answered "no" while both halves were in fact running. `ps` shows every process
+// on the machine to everyone, so this answer is the same whoever asks.
 func (DarwinService) Running() (bool, error) {
-	out, err := exec.Command("launchctl", "list").Output()
+	out, err := exec.Command("ps", "-axo", "command").Output()
 	if err != nil {
-		return false, fmt.Errorf("launchctl list: %w", err)
+		return false, fmt.Errorf("ps: %w", err)
 	}
+	listing := string(out)
 
-	// Both halves have to be there for the agent to work.
-	return strings.Contains(string(out), daemonLabel) &&
-		strings.Contains(string(out), helperLabel), nil
+	return strings.Contains(listing, InstalledBinaryPath+" run") &&
+		strings.Contains(listing, InstalledBinaryPath+" helper"), nil
 }

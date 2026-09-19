@@ -125,8 +125,10 @@ func cmdInstall(args []string) int {
 	// one that matters, because without it the worker refuses to start on a
 	// development machine.
 	daemonEnv := map[string]string{}
-	if os.Getenv(platform.DevAllowUnmanagedVar) != "" {
-		daemonEnv[platform.DevAllowUnmanagedVar] = os.Getenv(platform.DevAllowUnmanagedVar)
+	for _, name := range []string{platform.DevAllowUnmanagedVar, "AIUL_DEBUG"} {
+		if value := os.Getenv(name); value != "" {
+			daemonEnv[name] = value
+		}
 	}
 
 	steps := []struct {

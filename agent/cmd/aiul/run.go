@@ -43,7 +43,15 @@ func cmdRun(args []string) int {
 	endpoint := ""
 	token := ""
 	manageProxy := false
+
+	// AIUL_DEBUG=1 does the same as --debug. The installed worker is started by
+	// launchd with a fixed argument list, so an environment variable is the only
+	// way to turn debug logging on without editing the job definition — and the
+	// debug lines are the ones that say why a request was not recorded.
 	level := slog.LevelInfo
+	if os.Getenv("AIUL_DEBUG") != "" {
+		level = slog.LevelDebug
+	}
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {

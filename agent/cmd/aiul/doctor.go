@@ -9,6 +9,7 @@ import (
 	"github.com/pkisan/aiul/internal/ca"
 	"github.com/pkisan/aiul/internal/forward"
 	"github.com/pkisan/aiul/internal/helper"
+	"github.com/pkisan/aiul/internal/paths"
 	"github.com/pkisan/aiul/internal/platform"
 )
 
@@ -299,10 +300,26 @@ func cmdStatus(args []string) int {
 	fmt.Printf("env vars written  %d\n", len(vars))
 	fmt.Printf("CA file           %s\n", certPath)
 
-	if dir, err := forward.DefaultDir(); err == nil {
-		if spool, err := forward.NewSpool(dir); err == nil {
-			pending, _ := spool.Pending()
-			fmt.Printf("events waiting    %d in %s\n", len(pending), dir)
+	// When the agent is installed, the spool that matters is the worker's, not
+	// this user's: the worker runs as the service account and writes under
+	// /var/db/aiul. Reporting our own empty directory in that case says "nothing
+	// captured" when the truth is "we are looking in the wrong place".
+	dir, err := forward.DefaultDir()
+	if running {
+		dir, err = paths.SpoolDirIn(paths.SystemStateDir), nil
+	}
+	if err == nil {
+		if spool, spoolErr := forward.NewSpool(dir); spoolErr == nil {
+			pending, pendingErr := spool.Pending()
+			if pendingErr != nil {
+				// Owned by the service account and not readable by us. Say so,
+				// rather than printing a zero that looks like an answer.
+				fmt.Printf("events waiting    %s (run as root to count them)\n", dir)
+			} else {
+				fmt.Printf("events waiting    %d in %s\n", len(pending), dir)
+			}
+		} else {
+			fmt.Printf("events waiting    %s (run as root to count them)\n", dir)
 		}
 	}
 
