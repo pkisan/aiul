@@ -225,14 +225,32 @@ func DeviceDir() (string, error) {
 	return filepath.Join(base, "device"), nil
 }
 
-// DevicePaths returns the certificate and key paths.
+// DevicePaths returns the certificate and key paths for this process.
 func DevicePaths() (certPath, keyPath string, err error) {
 	dir, err := DeviceDir()
 	if err != nil {
 		return "", "", err
 	}
 
+	return DevicePathsIn(dir)
+}
+
+// DevicePathsIn returns the paths inside a given device directory, for asking
+// about a directory that is not this process's own — a person running
+// `aiul ca device` while the installed agent keeps its certificate under
+// /var/db/aiul.
+func DevicePathsIn(dir string) (certPath, keyPath string, err error) {
 	return filepath.Join(dir, "intermediate.crt"), filepath.Join(dir, "intermediate.key"), nil
+}
+
+// ReadIntermediateCert reads just the certificate.
+//
+// Displaying what a device's signing certificate allows needs no private key, and
+// the installed agent's key belongs to the service account and is unreadable by
+// the person asking. Reading only the certificate is both sufficient and the only
+// thing that works.
+func ReadIntermediateCert(path string) (*x509.Certificate, error) {
+	return readCertPEM(path)
 }
 
 // Save writes the intermediate and its key, the key readable only by its owner.
@@ -241,8 +259,19 @@ func (i *Intermediate) Save() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	// 0755: the certificate in here is public — it says which hosts this device
+	// may sign for, which anyone on the machine is entitled to check — while the
+	// key beside it stays 0600. A 0700 directory hid the certificate too, and
+	// `aiul ca device` could then only report "no certificate" for an agent that
+	// plainly had one.
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", dir, err)
+	}
+	// MkdirAll leaves an existing directory's permissions alone, and the first
+	// version of this code created it 0700. Set them explicitly so a device
+	// provisioned by the older build becomes readable on its next renewal.
+	if err := os.Chmod(dir, 0o755); err != nil {
+		return fmt.Errorf("set permissions on %s: %w", dir, err)
 	}
 
 	certPath, keyPath, err := DevicePaths()

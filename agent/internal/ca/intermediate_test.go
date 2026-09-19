@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -325,5 +326,38 @@ func TestCanIssueIntermediate(t *testing.T) {
 	root.Cert.MaxPathLenZero = true
 	if root.CanIssueIntermediate() {
 		t.Error("a root with a path length of 0 must report that it cannot issue one")
+	}
+}
+
+// The certificate says which hosts this device may sign for, which anyone on the
+// machine is entitled to check. The key beside it is nobody else's business.
+func TestTheCertificateIsReadableAndTheKeyIsNot(t *testing.T) {
+	t.Setenv("AIUL_STATE_DIR", t.TempDir())
+	root := testRoot(t)
+
+	if _, _, err := ProvisionDevice(root, "test-mac", testPermitted); err != nil {
+		t.Fatal(err)
+	}
+
+	dir, _ := DeviceDir()
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o055 == 0 {
+		t.Errorf("the device directory is %#o; the certificate in it must be readable", info.Mode().Perm())
+	}
+
+	certPath, keyPath, _ := DevicePaths()
+	if _, err := ReadIntermediateCert(certPath); err != nil {
+		t.Errorf("the certificate must be readable: %v", err)
+	}
+
+	keyInfo, err := os.Stat(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keyInfo.Mode().Perm()&0o077 != 0 {
+		t.Errorf("the private key is %#o, must be 0600", keyInfo.Mode().Perm())
 	}
 }

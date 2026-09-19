@@ -2,13 +2,17 @@ package main
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"sync"
 	"time"
 
+	"path/filepath"
+
 	"github.com/pkisan/aiul/internal/ca"
+	"github.com/pkisan/aiul/internal/paths"
 	"github.com/pkisan/aiul/internal/platform"
 	"github.com/pkisan/aiul/internal/proxy"
 )
@@ -132,14 +136,35 @@ func cmdCADevice(args []string) int {
 		fmt.Println()
 	}
 
-	inter, err := ca.LoadIntermediate(root)
-	if err != nil {
-		fmt.Println("This device has no signing certificate yet.")
-		fmt.Println("The agent provisions one when it starts, or run: aiul ca device --renew")
-		return 0
+	// Show the INSTALLED agent's certificate when one is running. It lives under
+	// /var/db/aiul and is a different certificate from this user's; reporting the
+	// wrong one is how an uninstall once went looking in the wrong place.
+	certPath, keyPath, _ := ca.DevicePaths()
+	if running, _ := platform.Service().Running(); running {
+		dir := filepath.Join(paths.SystemStateDir, "device")
+		certPath, keyPath, _ = ca.DevicePathsIn(dir)
 	}
 
-	certPath, keyPath, _ := ca.DevicePaths()
+	// Only the certificate is read: the key of an installed agent belongs to the
+	// service account, and nothing here needs it.
+	cert, err := ca.ReadIntermediateCert(certPath)
+	if err != nil {
+		// "not there" and "there but not readable by you" are different answers,
+		// and reporting the second as the first sends people looking for a problem
+		// that does not exist.
+		if os.IsPermission(errors.Unwrap(err)) || os.IsPermission(err) {
+			fmt.Printf("This device has a signing certificate at %s,\n", certPath)
+			fmt.Println("but this account cannot read it. Try: sudo aiul ca device")
+
+			return 1
+		}
+
+		fmt.Println("This device has no signing certificate yet.")
+		fmt.Println("The agent provisions one when it starts, or run: aiul ca device --renew")
+
+		return 0
+	}
+	inter := &ca.Intermediate{Cert: cert}
 
 	fmt.Println("This device's signing certificate")
 	fmt.Println("================================")
