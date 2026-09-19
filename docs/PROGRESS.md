@@ -348,13 +348,32 @@ entry and a test file — no migration, no new model, no new service.
   back as `this text must not survive retention`, purged, and confirmed gone from
   the bucket while `task_id`, tokens and duration remained
 
+## Per-tenant encryption keys — DONE 2026-09-19 (D9, local half)
+
+Each tenant now has its own 32-byte data key, stored wrapped in
+`tenants.data_key`; bodies are AES-256-GCM under that key. Two defaults were taken
+without asking, both reversible and recorded in D9:
+
+- wrapping uses the application key locally, behind `BodyStore::wrap`/`unwrap` —
+  the only two methods a KMS move touches
+- bodies written before the change are left alone and stay readable under the
+  application key until retention deletes them. The `AIULv2:` prefix on new
+  ciphertext is what lets a body say which key it needs, so no column was added to
+  `ai_interactions` and no re-encryption pass exists
+
+Verified against real MinIO and Postgres: a legacy body and a new body were read
+back correctly side by side, `tenants.data_key` unwraps to 32 bytes, and the
+stored object contains none of the plaintext. 73 backend tests.
+
 ## Next step
 
-The owner decides: per-tenant encryption keys (D9) or Phase 8 (signing, packaging,
-MDM, EDR). Phase 8 is the one that needs an Apple Developer account. D9 needs a
-decision from the owner first: where the per-tenant key comes from (AWS KMS, or a
-local keyring for development) and what happens to bodies already encrypted with
-the application key.
+Phase 8 — signing, notarization, `.pkg` installer, MDM profile, EDR allow-listing.
+Needs an Apple Developer account; ask the owner before starting whether they have
+one, because without it the phase stops at an unsigned package.
+
+Smaller things that could go first, none of them blocking: the production KMS half
+of D9, brotli/zstd decoding, and the dev seed password (`password` on three
+seeded users) which must not reach a pilot.
 
 Worth carrying into Phase 8 and into the Linux and Windows ports: every bug found
 on 2026-09-19 was invisible to the unit tests, because the tests run as the
@@ -567,8 +586,11 @@ real prompt in plaintext**. Remove with `sudo rm -rf /var/db/aiul`.
 
 ## Known debts, recorded rather than hidden
 
-- Prompt bodies use one application-wide encryption key. D9 has the plan: a
-  per-tenant key from KMS. `BodyStore` is the only class to change.
+- ~~Prompt bodies use one application-wide encryption key~~ DONE 2026-09-19:
+  per-tenant data keys, wrapped in `tenants.data_key`, AES-256-GCM bodies. What is
+  left of D9 is the production half: `wrap`/`unwrap` in `BodyStore` become KMS
+  calls. Bodies written before the change stay readable under the application key
+  until retention deletes them.
 - Brotli and zstd response bodies are recorded as metadata only.
 - ~~Retention~~ DONE 2026-09-19: `aiul:purge-bodies`, scheduled nightly. Note that
   nothing runs the Laravel scheduler on this Mac, so it purges only when run by

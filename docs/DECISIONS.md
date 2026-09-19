@@ -329,12 +329,34 @@ that is a delete of an object, and the metrics and scores survive untouched.
 becomes a prefix operation, which is what offboarding and a per-tenant lifecycle
 rule both need.
 
-**What changes before a pilot.** One application key for every tenant is not good
-enough: it is a single secret whose compromise exposes every customer. Production
-uses a per-tenant data key from KMS, decrypted per request and cached briefly in
-memory, with the ciphertext key stored on the `tenants` row. `App\Services\BodyStore`
-is the only class that touches encryption, so this change is confined to it — that
-is why it exists as a class rather than two calls in the controller.
+**What changed, 2026-09-19 — per-tenant keys are BUILT.** One application key for
+every tenant was a single secret whose compromise exposed every customer. Now each
+tenant has a random 32-byte data key; bodies are encrypted with it using
+AES-256-GCM, and the data key itself is stored wrapped in `tenants.data_key`, so
+the database never holds a usable key. It is created on first write under a row
+lock — two workers writing a first body for the same new tenant would otherwise
+each generate a key, and the second write would make the first body unreadable
+forever.
+
+`BodyStore` remained the only class to change, which is why it exists as a class
+rather than two calls in a controller.
+
+**The KMS seam.** Wrapping is two private methods, `wrap` and `unwrap`. Locally
+they use the application key. In production they become a KMS Encrypt and Decrypt
+against the tenant's key, and nothing else in the class knows the difference. The
+unwrapped key is cached for the life of the process only — a body write and the
+scoring job that follows it both need it, and in production each unwrap is a
+network call.
+
+**Bodies written before this.** They used the application key with no marker.
+Stored ciphertext now starts with `AIULv2:`, so a body says for itself which key
+it needs: the old ones stay readable until retention deletes them, and no
+re-encryption pass has to run over object storage. Reading an old body does not
+create a key for that tenant.
+
+Eight tests in `tests/Feature/BodyEncryptionTest.php`, the load-bearing one being
+that one tenant's data key raises `DecryptException` against another tenant's
+body. Verified against real MinIO and Postgres as well as the fake disk.
 
 ---
 

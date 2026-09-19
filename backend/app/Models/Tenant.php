@@ -12,6 +12,13 @@ class Tenant extends Model
 
     protected $fillable = ['name', 'slug', 'retention_days'];
 
+    /**
+     * The wrapped data key is deliberately not fillable and never serialised: it
+     * is written by BodyStore alone and has no business reaching a JSON response
+     * or an Inertia prop.
+     */
+    protected $hidden = ['data_key'];
+
     public function devices(): HasMany
     {
         return $this->hasMany(Device::class);
