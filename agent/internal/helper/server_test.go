@@ -39,6 +39,9 @@ func (f *fakeOps) ProxyOff() error {
 	return f.failWith
 }
 
+// The fake stands in for the real lsof lookup. It knows nothing about checkouts:
+// the server reads those itself, which is the whole point of doing it in the
+// privileged half.
 func (f *fakeOps) ProcessOnPort(port int) (int, string, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -108,7 +111,7 @@ func TestClientAndServerSpeakToEachOther(t *testing.T) {
 		t.Errorf("ProxyOff: %v", err)
 	}
 
-	pid, name, dir, err := client.ProcessOnPort(54321)
+	pid, name, dir, _, _, err := client.ProcessOnPort(54321)
 	if err != nil {
 		t.Fatalf("ProcessOnPort: %v", err)
 	}
@@ -138,8 +141,38 @@ func TestAnErrorFromThePrivilegedSideReachesTheClient(t *testing.T) {
 func TestMissingProcessIsAnOrdinaryError(t *testing.T) {
 	client := startServer(t, &fakeOps{processes: map[int][3]string{}})
 
-	if _, _, _, err := client.ProcessOnPort(9999); err == nil {
+	if _, _, _, _, _, err := client.ProcessOnPort(9999); err == nil {
 		t.Error("a port with no process must be an error, not a silent zero")
+	}
+}
+
+// The reason the checkout is read in the privileged half: the worker runs as a
+// service account, and a person's home directory and temporary directories are
+// not readable by it, so it cannot read .git/HEAD itself. The helper answers with
+// the repository and branch in the same reply.
+func TestTheHelperReadsTheCheckoutTheWorkerCannot(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	head := filepath.Join(repo, ".git", "HEAD")
+	if err := os.WriteFile(head, []byte("ref: refs/heads/feature/AIUL-99-split\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	client := startServer(t, &fakeOps{processes: map[int][3]string{
+		4321: {"777", "claude", repo},
+	}})
+
+	_, _, dir, gotRepo, gotBranch, err := client.ProcessOnPort(4321)
+	if err != nil {
+		t.Fatalf("ProcessOnPort: %v", err)
+	}
+	if dir != repo || gotRepo != repo {
+		t.Errorf("dir = %q, repo = %q, wanted both %q", dir, gotRepo, repo)
+	}
+	if gotBranch != "feature/AIUL-99-split" {
+		t.Errorf("branch = %q, wanted feature/AIUL-99-split", gotBranch)
 	}
 }
 

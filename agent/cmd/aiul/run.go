@@ -133,6 +133,9 @@ func cmdRun(args []string) int {
 		// directory gives the checkout, and the branch there gives the task ID.
 		Tasks:     tasks.NewResolver(),
 		Processes: sourceFinder{source: privileged},
+		// The checkout comes back with the process lookup, because the worker's own
+		// account cannot read anyone's .git/HEAD.
+		Checkout: rememberedCheckout,
 	})
 	if err != nil {
 		log.Error("cannot start the proxy", "err", err)

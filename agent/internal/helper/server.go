@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 	"time"
+
+	"github.com/pkisan/aiul/internal/tasks"
 )
 
 // Privileged is the small set of operations the helper is willing to perform.
@@ -137,7 +139,14 @@ func (s *Server) answer(line string) string {
 			return FormatErr(err)
 		}
 
-		return FormatOK(fmt.Sprintf("%d", pid), name, dir)
+		// The checkout is read here because only root can: the worker's account
+		// cannot traverse into a person's home directory, so it cannot read
+		// .git/HEAD itself. This is a file read of a path the worker did not
+		// choose — the directory came from the process that opened the connection
+		// — and the task ID is still worked out in the worker.
+		repo, branch := tasks.CheckoutAt(dir)
+
+		return FormatOK(fmt.Sprintf("%d", pid), name, dir, repo, branch)
 
 	default:
 		// Unreachable: ParseRequest only returns verbs listed above. Kept so that

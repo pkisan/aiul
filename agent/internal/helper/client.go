@@ -56,22 +56,25 @@ func (c *Client) ProxyOff() error {
 	return err
 }
 
-// ProcessOnPort asks who owns a connection from this local port.
-func (c *Client) ProcessOnPort(port int) (pid int, name, workingDir string, err error) {
+// ProcessOnPort asks who owns a connection from this local port, and what is
+// checked out where that process is working. The repository and branch come back
+// in the same answer because the worker cannot read them itself — see the note in
+// the server.
+func (c *Client) ProcessOnPort(port int) (pid int, name, workingDir, repo, branch string, err error) {
 	fields, err := c.send(VerbProcess + " " + strconv.Itoa(port))
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", "", "", err
 	}
-	if len(fields) != 3 {
-		return 0, "", "", fmt.Errorf("helper: expected three fields, got %d", len(fields))
+	if len(fields) != 5 {
+		return 0, "", "", "", "", fmt.Errorf("helper: expected five fields, got %d", len(fields))
 	}
 
 	pid, err = strconv.Atoi(fields[0])
 	if err != nil {
-		return 0, "", "", fmt.Errorf("helper: unreadable pid %q", fields[0])
+		return 0, "", "", "", "", fmt.Errorf("helper: unreadable pid %q", fields[0])
 	}
 
-	return pid, fields[1], fields[2], nil
+	return pid, fields[1], fields[2], fields[3], fields[4], nil
 }
 
 // send writes one line and reads one line. A new connection per request keeps this

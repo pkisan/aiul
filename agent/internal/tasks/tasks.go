@@ -84,6 +84,16 @@ func NewResolverWith(pattern *regexp.Regexp) *Resolver {
 // Resolve reads the git state of dir. An empty or unreadable directory gives an
 // empty Info rather than an error: not knowing the task is normal, not a failure.
 func (r *Resolver) Resolve(dir string) Info {
+	return r.ResolveWith(dir, CheckoutAt)
+}
+
+// ResolveWith is Resolve with the checkout read by somebody else.
+//
+// The installed worker cannot read a person's checkout — it runs as a service
+// account with no access to their home directory — so it passes a reader that asks
+// the root helper. Applying the pattern and caching the answer stay here either
+// way, so both ways of running produce the same Info.
+func (r *Resolver) ResolveWith(dir string, checkout func(string) (repo, branch string)) Info {
 	if dir == "" {
 		return Info{}
 	}
@@ -96,16 +106,38 @@ func (r *Resolver) Resolve(dir string) Info {
 	r.mu.Unlock()
 
 	info := Info{Dir: dir}
-	if repo, ok := findRepo(dir); ok {
+	if repo, branch := checkout(dir); repo != "" {
 		info.Repo = repo
-		info.Branch = branchOf(repo)
-		info.TaskID = r.TaskIDFrom(info.Branch)
+		info.Branch = branch
+		info.TaskID = r.TaskIDFrom(branch)
 	}
 
 	r.mu.Lock()
 	r.cache[dir] = cached{info: info, at: time.Now()}
 	r.mu.Unlock()
 	return info
+}
+
+// CheckoutAt reports the repository root and checked-out branch for a directory,
+// with no pattern matching and no cache.
+//
+// It exists because of the privilege split: the worker runs as _aiul and cannot
+// traverse into a person's home or temporary directory, so it cannot read
+// .git/HEAD itself. The root helper reads it on the worker's behalf and hands back
+// these two strings. Extracting the task ID from the branch stays in the worker,
+// where the configurable pattern lives — the privileged half does the file read
+// and nothing more.
+func CheckoutAt(dir string) (repo, branch string) {
+	if dir == "" {
+		return "", ""
+	}
+
+	repo, ok := findRepo(dir)
+	if !ok {
+		return "", ""
+	}
+
+	return repo, branchOf(repo)
 }
 
 // TaskIDFrom pulls the ticket out of a branch name.

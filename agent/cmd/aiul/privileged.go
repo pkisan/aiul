@@ -5,6 +5,7 @@ import (
 
 	"github.com/pkisan/aiul/internal/helper"
 	"github.com/pkisan/aiul/internal/platform"
+	"github.com/pkisan/aiul/internal/tasks"
 )
 
 // The worker needs three privileged things. Where they come from depends on how
@@ -22,7 +23,11 @@ import (
 type privilegedSource interface {
 	ProxyOn() error
 	ProxyOff() error
-	ProcessOnPort(port int) (pid int, name, workingDir string, err error)
+
+	// ProcessOnPort also answers what is checked out where that process is
+	// working: the worker's account cannot read a person's .git/HEAD, so the
+	// privileged side reads it in the same reply.
+	ProcessOnPort(port int) (pid int, name, workingDir, repo, branch string, err error)
 }
 
 // chooseSource prefers the helper and says plainly which one it picked, because
@@ -51,18 +56,22 @@ type directOps struct{}
 func (directOps) ProxyOn() error  { return platform.Proxy().Set(proxyAddr) }
 func (directOps) ProxyOff() error { return platform.Proxy().Unset() }
 
-func (directOps) ProcessOnPort(port int) (int, string, string, error) {
+func (directOps) ProcessOnPort(port int) (int, string, string, string, string, error) {
 	process, err := platform.Processes().ByLocalPort(port)
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", "", "", err
 	}
 
 	dir, err := platform.Processes().WorkingDir(process.PID)
 	if err != nil {
-		return process.PID, process.Name, "", nil
+		return process.PID, process.Name, "", "", "", nil
 	}
 
-	return process.PID, process.Name, dir, nil
+	// Running by hand, this process is the person using the machine, so it can
+	// read the checkout itself.
+	repo, branch := tasks.CheckoutAt(dir)
+
+	return process.PID, process.Name, dir, repo, branch, nil
 }
 
 // sourceFinder adapts a privilegedSource to the interface the proxy wants for
@@ -72,14 +81,14 @@ type sourceFinder struct {
 }
 
 func (f sourceFinder) ByLocalPort(port int) (platform.Process, error) {
-	pid, name, dir, err := f.source.ProcessOnPort(port)
+	pid, name, dir, repo, branch, err := f.source.ProcessOnPort(port)
 	if err != nil {
 		return platform.Process{}, err
 	}
 
-	// The working directory came back in the same answer, so remember it rather
-	// than asking again.
-	f.remember(pid, dir)
+	// The working directory and its checkout came back in the same answer, so
+	// remember them rather than asking again.
+	f.remember(pid, dir, repo, branch)
 
 	return platform.Process{PID: pid, Name: name}, nil
 }

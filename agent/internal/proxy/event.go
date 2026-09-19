@@ -246,7 +246,18 @@ func (p *Proxy) contextOf(clientConn net.Conn) tasks.Info {
 		return tasks.Info{Process: proc.Name}
 	}
 
-	info := p.cfg.Tasks.Resolve(dir)
+	read := p.cfg.Checkout
+	if read == nil {
+		read = tasks.CheckoutAt
+	}
+
+	info := p.cfg.Tasks.ResolveWith(dir, read)
 	info.Process = proc.Name
+
+	if info.TaskID == "" {
+		p.log.Debug("no task for this connection",
+			"process", proc.Name, "dir", dir, "repo", info.Repo, "branch", info.Branch)
+	}
+
 	return info
 }
