@@ -423,7 +423,25 @@ Two bugs found by doing it, both fixed:
 
 Verified afterwards: no AIUL certificate in the System keychain at all.
 
-## D3 — the production CA chain. CODE COMPLETE 2026-09-19 (D14)
+## D3 — the device chain. DONE and VERIFIED ON REAL TRAFFIC 2026-09-19 (D14)
+
+Installed from the 0.9.0 package and proven live:
+
+```
+$ echo | openssl s_client -connect api.openai.com:443 -proxy 127.0.0.1:8899 \
+    | openssl x509 -noout -issuer
+issuer=O=AI Usage Logger (development), CN=AIUL Dev Root Device - VWS18s-MacBook-Air.local
+```
+
+The certificate the client accepted was signed by the DEVICE certificate, not the
+root. `aiul status` showed the proxy listening, both jobs loaded, the CA trusted
+and 4 of 4 services proxied.
+
+Two more reporting bugs fixed after that run: `aiul ca device` showed this user's
+certificate rather than the running agent's, and the device directory was 0700 so
+the certificate — which is public, and says which hosts the device may sign for —
+could not be read by anyone but the service account. Directory is 0755 now, key
+still 0600, and "cannot read it" no longer reports as "does not exist".
 
 The owner deferred the Apple and AWS accounts to the end, so this is the next
 piece of real work that needs neither. Only the root's home needs KMS; the chain
