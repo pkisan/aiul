@@ -8,10 +8,9 @@ Last updated: 2026-09-19
 
 **Phase 7 — Minimal dashboard (Inertia + Vue).**
 
-Task in progress right now: **verifying the privilege split on this Mac** —
-steps 1-4 of five are DONE and the split is proven working; step 5 (uninstall and
-confirm the Mac is clean) is pending. The owner chose this as the next step on
-2026-09-19, ahead of the retention job, per-tenant keys (D9) and Phase 8.
+Task in progress right now: none. **The privilege split is VERIFIED on real
+hardware** — all five steps done on 2026-09-19, including the uninstall, and this
+Mac is clean again.
 
 ### VERIFIED on this Mac, 2026-09-19
 
@@ -24,6 +23,7 @@ confirm the Mac is clean) is pending. The owner chose this as the next step on
 | only AI hosts decrypted | log: `decision=pass` for google, icloud, deepseek; `no parser for this endpoint` for chatgpt.com housekeeping |
 | task tagging works through the helper | event: `task_id AIUL-99`, `branch feature/AIUL-99-privilege-split`, `process curl` |
 | kill switch | ran once for real, restored HTTPS in one command |
+| uninstall leaves nothing | no processes, no socket, no plists, no `_aiul` record, no `/etc/zshenv`, `aiul status` says "no aiul settings applied", internet works |
 
 Four bugs were found by doing this, none of which any unit test could have found
 (`386ac83`, `9fef921`, `0f3b53e`, `e903faa`) — see the write-up below.
@@ -327,8 +327,21 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-Verify the privilege split on this Mac. The order, so an interruption leaves the
-Mac working:
+The owner decides, as before: the retention job, per-tenant encryption keys (D9),
+or Phase 8 (signing, packaging, MDM, EDR). Phase 8 is the one that needs an Apple
+Developer account.
+
+Worth carrying into Phase 8 and into the Linux and Windows ports: every bug found
+on 2026-09-19 was invisible to the unit tests, because the tests run as the
+developer, in directories the developer owns, in a process that inherited the
+developer's environment. The installed agent runs as a service account with no
+home, no inherited environment and no access to anyone's files. Anything that
+reads a person's filesystem, or expects a variable, has to be checked on a real
+installed run.
+
+### DONE — how the privilege split was verified (2026-09-19)
+
+The order used, so an interruption left the Mac working:
 
 1. `./scripts/killswitch.sh --dry-run` — done 2026-09-19, clean, and it covers
    every item install creates (both plists, the `_aiul` account, the binary, the
@@ -351,9 +364,15 @@ Mac working:
    temporary directory (`drwx------`) and so cannot read `.git/HEAD`. `PROCESS`
    now answers with the repo and branch too (D6, `e903faa`). Verified live:
    `task_id AIUL-99`.
-5. `sudo ./aiul uninstall`, then `./aiul status` must report the Mac clean again.
+5. DONE. `aiul status`: "This Mac has no aiul settings applied." Verified by hand
+   afterwards: no `aiul` process, no `/var/run/aiul-helper.sock`, no plist in
+   `/Library/LaunchDaemons`, `dscl . -read /Users/_aiul` returns
+   `eDSRecordNotFound`, `/etc/zshenv` is gone, and `curl https://example.com`
+   works.
 
-Then update the machine-state table below with whatever is still applied.
+Left behind on purpose: `/var/db/aiul` (still `drwxr-x--- 448 448`, an owner that
+no longer exists) holding the worker's CA copy and **two spooled events with a
+real prompt in plaintext**. Remove with `sudo rm -rf /var/db/aiul`.
 
 ## Left — Phase 1
 
@@ -577,6 +596,12 @@ Files that exist but change no setting and are trusted by nothing:
 
 Docker containers now running (`aiul-postgres`, `aiul-redis`, `aiul-minio`). Stop
 them with `docker compose down`; add `-v` to delete their data too.
+
+**Re-verified clean on 2026-09-19** after three installs and one kill switch. One
+new leftover that no earlier session had: `/var/db/aiul`, owned by uid 448 (the
+deleted `_aiul`), holding the worker's CA copy and two spooled events whose prompt
+text is in plaintext. `sudo rm -rf /var/db/aiul` removes it. Uninstall leaves it
+deliberately, so a spool is never destroyed without being asked for.
 
 
 **Keychain: the owner ran `aiul ca trust` and then `aiul ca untrust` during the
