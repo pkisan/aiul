@@ -2,14 +2,29 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-18
+Last updated: 2026-09-19
 
 ## Current phase
 
 **Phase 7 — Minimal dashboard (Inertia + Vue).**
 
-Task in progress right now: none. **The privilege split is DONE** (D6 rewritten
-with what was actually built).
+Task in progress right now: **verifying the privilege split on this Mac**. The
+code is written, unit-tested and committed; `install --apply` has not yet been run
+since the split. The owner chose this as the next step on 2026-09-19, ahead of
+the retention job, per-tenant keys (D9) and Phase 8.
+
+Ready for the owner to run (nothing has been applied yet):
+
+```sh
+cd ~/Desktop/Aayatti/agent
+sudo AIUL_DEV_ALLOW_UNMANAGED=1 ./aiul install --apply
+```
+
+Found and fixed first, on exactly that path (`386ac83`): install read the CA and
+wrote its path into the environment variables from `$HOME`, which under `sudo`
+may be root's home. `paths.State` now prefers the account named in `SUDO_USER`,
+and the launchd CA copy goes through `paths.CADir`. Three tests in
+`internal/paths`.
 
 ## Plan for the privilege split
 
@@ -250,13 +265,29 @@ Written before starting, so an interruption loses nothing. In order:
 
 ## Next step
 
-The owner decides: per-tenant encryption keys (D9), the retention job, or Phase 8.
+Verify the privilege split on this Mac. The order, so an interruption leaves the
+Mac working:
 
-Note: the privilege split has been built and unit-tested, and the helper protocol
-was exercised over a real socket, but `install --apply` has NOT been run since the
-change. The next install on this Mac is the first one that creates the _aiul
-account and two launchd jobs — worth watching, and `sudo ./scripts/killswitch.sh`
-now also removes the service account.
+1. `./scripts/killswitch.sh --dry-run` — done 2026-09-19, clean, and it covers
+   every item install creates (both plists, the `_aiul` account, the binary, the
+   trust, the proxy, the `/etc/zshenv` block, the device token). It only *reports*
+   `/var/db/aiul` rather than deleting it, which is deliberate.
+2. `sudo AIUL_DEV_ALLOW_UNMANAGED=1 ./aiul install --apply` — the owner runs this;
+   it prompts for a password so it cannot be run from the session.
+3. Check the split actually happened:
+   - `ps -o user,command -p "$(pgrep -f 'aiul run')"` — must say `_aiul`, NOT root
+   - `ps -o user,command -p "$(pgrep -f 'aiul helper')"` — must say `root`
+   - `ls -l /var/run/aiul-helper.sock` — `root:_aiul`, mode `srw-rw----`
+   - `sudo ls -l /var/db/aiul/dev-ca/root.key` — owned `_aiul`, mode `-rw-------`
+   - `./aiul status` — proxy listening, both jobs loaded, CA trusted, 4 of 4
+     network services pointing at 127.0.0.1:8899
+4. Prove task tagging still works now that the finder goes through the helper: a
+   request from a checkout on a ticket branch must still produce an event carrying
+   its task ID. This is the part the split could quietly break, because the worker
+   can no longer run `lsof` itself.
+5. `sudo ./aiul uninstall`, then `./aiul status` must report the Mac clean again.
+
+Then update the machine-state table below with whatever is still applied.
 
 ## Left — Phase 1
 
