@@ -93,14 +93,18 @@ Two requirements are not negotiable:
 ### Why there is no configuration profile here
 
 A profile carrying the CA to trust would be the obvious companion, and it is
-deliberately absent: **each device provisions its own CA**, so no single profile
-can carry the right certificate. The production answer is D3 — a per-tenant root
-in KMS signing a short-lived, name-constrained intermediate per device — which is
-designed and not built. A `.mobileconfig` written now would have an empty payload
-and would have to be thrown away.
+deliberately absent: **each device still provisions its own root**, so no single
+profile can carry the right certificate to trust.
 
-Until D3 exists, the trust step is done locally by `aiul install`, which adds the
-device's own CA to that device's System keychain.
+The device half of D3 is built (D14): the root signs a short-lived,
+name-constrained intermediate per device, and every certificate the proxy mints
+comes from that intermediate. `aiul ca device` shows it. What is still missing is
+the other half — one root per tenant, its key in KMS — and that needs an AWS
+account. Once it exists, the profile becomes obvious and worth writing: it carries
+that tenant root, the same one on every device in the fleet.
+
+Until then the trust step is done locally by `aiul install`, which adds the
+device's own root to that device's System keychain.
 
 ## EDR and security tooling
 
@@ -171,7 +175,10 @@ membership itself. Start that early.
 ## What is not built
 
 - signing and notarization (no account)
-- the production CA chain, D3 — until then each device trusts only its own CA
+- the tenant half of the CA chain: one root per tenant with its key in KMS, and a
+  CRL so revoking a device does not mean waiting up to seven days for its
+  intermediate to expire (needs an AWS account). The device half is built — see
+  D14 and `aiul ca device`.
 - Linux and Windows packaging; both platforms are stubs that return
   `ErrUnsupported`
 - an uninstall package. Removal is `sudo aiul uninstall` or
