@@ -423,7 +423,59 @@ Two bugs found by doing it, both fixed:
 
 Verified afterwards: no AIUL certificate in the System keychain at all.
 
-## Next step
+## D3 — the production CA chain. IN PROGRESS, started 2026-09-19
+
+The owner deferred the Apple and AWS accounts to the end, so this is the next
+piece of real work that needs neither. Only the root's home needs KMS; the chain
+itself, the name constraints and the renewal can all be built and tested now, with
+the dev root standing in for KMS exactly as `BodyStore::wrap` stands in for it in
+D9.
+
+Today every device trusts a self-signed root whose key sits on that device. If the
+laptop is stolen, that key mints a certificate for any website in the world. D3
+fixes that, and the fix is the single most important security property in the
+product.
+
+The shape, from D3:
+
+```
+root CA            key in KMS in production, the dev root for now
+   │ signs         long-lived, one per tenant
+device intermediate  key generated ON the device and never leaving it
+   │ signs           SHORT-lived (7 days), NAME-CONSTRAINED to AI hosts
+leaf certificates    minted on demand, 24 hours, as today
+```
+
+Plan, in order:
+
+1. `internal/ca/intermediate.go` — generate a device key, have the root sign an
+   intermediate for its PUBLIC key only, with:
+   - `IsCA`, `MaxPathLen: 0` so it can sign leaves and never another CA
+   - `PermittedDNSDomains` from the allow-list, marked CRITICAL. This is the
+     control that matters: a correctly implemented client REJECTS a certificate
+     from this intermediate for any name not on the list, so a stolen laptop
+     cannot impersonate a bank even with the key in hand. It is enforced by the
+     verifier, not by our code.
+   - 7 days' validity, renewed when fewer than 2 days remain
+2. Leaf minting moves behind a small issuer type, so a leaf can be signed by the
+   root (development, `ca demo-server`) or by the intermediate (everything else),
+   and the served chain becomes leaf → intermediate → root.
+3. Storage under the state directory: `device/` holding the intermediate and its
+   key at 0600, next to `dev-ca/`.
+4. `aiul ca device` to provision, renew and inspect; `aiul run` renews on start
+   and in the health loop, so an intermediate never expires under a running agent.
+5. Tests, the load-bearing two first:
+   - a leaf for `api.openai.com` from the intermediate VERIFIES against the root
+   - a leaf for `evil.example.com` from the same intermediate is REJECTED by
+     verification, with the name-constraint error. This is the whole point.
+   - the intermediate cannot sign another CA
+   - renewal triggers at the right time and not before
+
+The allow-list lives in `internal/proxy` and the certificate code in `internal/ca`,
+which must not import each other. The permitted domains are therefore passed in by
+the caller, derived from the allow-list with any `*.` prefix stripped.
+
+## Next — after D3
 
 Phase 8 has no more work that can be done without an Apple Developer account. What
 remains in it is signing, notarization and MDM delivery, all of which need the
