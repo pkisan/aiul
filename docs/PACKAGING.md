@@ -35,8 +35,9 @@ Produces `dist/aiul-0.8.0.pkg`. The payload is one file, `/usr/local/bin/aiul`.
 Everything else is done by `packaging/scripts/postinstall`, which runs as root
 after the file is placed:
 
-1. provisions a CA if the device has none (`aiul ca init`; an existing CA is kept,
-   so a reinstall does not invalidate certificates already trusted here)
+1. makes sure the device has a CA the agent can use (`aiul ca ensure`): a usable
+   one is kept, so a reinstall does not invalidate certificates already trusted
+   here; one that cannot issue this device's signing certificate is replaced
 2. runs `aiul install --apply --yes` — the same code path a person runs by hand,
    and the same one `aiul uninstall` reverses
 

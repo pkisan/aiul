@@ -100,7 +100,7 @@ func (r *Root) SignIntermediate(req IntermediateRequest) (*x509.Certificate, err
 	// leaves, may not sign another CA". An intermediate under it would be rejected
 	// by every verifier, so say so here rather than issuing a chain that cannot
 	// work.
-	if r.Cert.MaxPathLen == 0 && r.Cert.MaxPathLenZero {
+	if !r.CanIssueIntermediate() {
 		return nil, fmt.Errorf("this root cannot issue an intermediate: it was created with a path length of 0. " +
 			"Run 'aiul ca untrust' then 'aiul ca init --force' to create one that can")
 	}
@@ -165,6 +165,15 @@ func (r *Root) SignIntermediate(req IntermediateRequest) (*x509.Certificate, err
 	}
 
 	return cert, nil
+}
+
+// CanIssueIntermediate reports whether this root may sign a CA beneath it.
+//
+// A root written before the device chain existed carries a path length of 0, which
+// means "leaves only". Certificates issued under such a root are rejected by every
+// verifier, so the agent has to know the difference before it tries.
+func (r *Root) CanIssueIntermediate() bool {
+	return !(r.Cert.MaxPathLen == 0 && r.Cert.MaxPathLenZero)
 }
 
 // NewDeviceKey generates the key that stays on this device.

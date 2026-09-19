@@ -40,16 +40,16 @@ if [ ! -x "$BINARY" ]; then
   exit 1
 fi
 
-# `aiul ca init` refuses to overwrite an existing CA, which is what we want on a
-# reinstall: the certificates already trusted on this device keep working.
-if "$BINARY" ca info >/dev/null 2>&1; then
-  echo "a CA already exists; keeping it"
-else
-  echo "provisioning a CA"
-  if ! "$BINARY" ca init; then
-    echo "FAILED: could not provision a CA"
-    exit 1
-  fi
+# "a CA is present" and "a CA that works" are different questions, and asking the
+# wrong one cost an install: a root created before the device chain existed has a
+# path length of 0, cannot issue this device's signing certificate, and the worker
+# then refuses to start with a perfectly good-looking CA sitting right there.
+#
+# `ca ensure` asks the right question. It keeps a usable CA, creates one when there
+# is none, and replaces one that cannot issue the intermediate.
+if ! "$BINARY" ca ensure; then
+  echo "FAILED: could not provision a usable CA"
+  exit 1
 fi
 
 # --yes answers the confirmation; there is no terminal here. install refuses on a

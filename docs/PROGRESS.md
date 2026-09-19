@@ -469,6 +469,34 @@ DECISIONS.md. On this Mac: `aiul ca device` shows the chain, and `openssl` on th
 real certificate confirms `CA:TRUE, pathlen:0`, `Name Constraints: critical` with
 19 permitted domains, and the key at mode 0600.
 
+### The first packaged install of the chain FAILED, and why (2026-09-19)
+
+`installer` reported "The upgrade failed". The worker log said:
+
+```
+cannot provision this device's signing certificate
+err="this root cannot issue an intermediate: it was created with a path length of 0"
+```
+
+`/var/db/aiul/dev-ca` still held the PRE-D3 root, left there by earlier uninstalls
+(they deliberately keep that directory so a spool is never destroyed unasked). The
+postinstall asked "is a CA present?", found one, and correctly declined to
+overwrite it — but that CA could not issue the device certificate, so the worker
+refused to start. Install waited its 20 seconds, rolled back, and the Mac kept
+working.
+
+The fix is a new command, `aiul ca ensure`, which asks the question deployment
+actually needs: keep a usable CA, create one when there is none, replace one that
+cannot issue the intermediate — removing the old certificate from the keychain
+first, since its key is about to be thrown away. The postinstall calls that
+instead of `ca info || ca init`. Proven against the real pre-D3 root: `pathlen:0`
+in, replaced, `pathlen:1` out, intermediate issued.
+
+Also silenced `pkgbuild`'s four `write: Permission denied` lines. They are it
+failing to copy `com.apple.provenance`, which macOS puts on every executable and
+nobody can remove; the package is correct, verified with `pkgutil --expand-full`.
+Only that exact line is filtered, and the exit status still decides.
+
 Two things found while building it:
 
 - the dev root carried `MaxPathLen 0` — "may sign leaves, no further CAs" — so it

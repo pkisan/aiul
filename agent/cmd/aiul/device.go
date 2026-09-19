@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pkisan/aiul/internal/ca"
+	"github.com/pkisan/aiul/internal/platform"
 	"github.com/pkisan/aiul/internal/proxy"
 )
 
@@ -190,4 +191,68 @@ func matchesAllowList(inter *ca.Intermediate, permitted []string) bool {
 	}
 
 	return true
+}
+
+const ensureUsage = `Usage:
+  aiul ca ensure
+
+Makes sure this device has a root CA the agent can actually use, creating one if
+there is none and replacing one that cannot issue this device's signing
+certificate. Prints what it did. Safe to run repeatedly.
+
+This is what the installer package runs. By hand, 'aiul ca init' is usually what
+you want.
+`
+
+// cmdCAEnsure is the deployment entry point: "give this device a working CA".
+//
+// It exists because "a CA is present" and "a CA that works" are different
+// questions, and the installer asked the wrong one. A root created before the
+// device chain existed has a path length of 0, so it cannot issue the intermediate
+// the agent mints from — the worker then refuses to start, and the install fails
+// with a CA sitting right there looking fine.
+func cmdCAEnsure(args []string) int {
+	if contains(args, "-h") || contains(args, "--help") {
+		fmt.Print(ensureUsage)
+		return 0
+	}
+
+	root, err := ca.Load()
+	if err != nil {
+		if _, err := ca.Init(false); err != nil {
+			fmt.Fprintf(os.Stderr, "aiul ca ensure: %v\n", err)
+			return 1
+		}
+		fmt.Println("Created a root CA for this device.")
+
+		return 0
+	}
+
+	if root.CanIssueIntermediate() {
+		fmt.Println("The existing root CA can issue this device's signing certificate; keeping it.")
+		return 0
+	}
+
+	fmt.Println("The existing root CA cannot issue this device's signing certificate")
+	fmt.Println("(it was created with a path length of 0). Replacing it.")
+
+	// Remove the old one from the trust store first. It is about to be replaced,
+	// and a trusted root whose key we have thrown away is nothing but confusion in
+	// Keychain Access. Removal works by name, so it finds whatever is there.
+	if trusted, _ := platform.Trust().IsTrusted(ca.CommonNamePrefix); trusted {
+		fmt.Println("Removing the old certificate from the System keychain first.")
+		if err := platform.Trust().Uninstall(""); err != nil {
+			fmt.Fprintf(os.Stderr, "aiul ca ensure: could not remove the old trust setting: %v\n", err)
+			return 1
+		}
+	}
+
+	if _, err := ca.Init(true); err != nil {
+		fmt.Fprintf(os.Stderr, "aiul ca ensure: %v\n", err)
+		return 1
+	}
+
+	fmt.Println("Created a replacement root CA. Anything that trusted the old one must trust this one.")
+
+	return 0
 }

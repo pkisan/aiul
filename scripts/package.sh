@@ -49,8 +49,16 @@ echo "Packaging $IDENTIFIER $VERSION"
 # how the payload encodes extended attributes; the installer restores them as
 # attributes on the real file. `pkgutil --expand-full` confirms the payload holds
 # exactly one file. Nothing to chase.
-xattr -cr "$ROOT" "$SCRIPTS" 2>/dev/null || true
+xattr -cr "$ROOT" "$SCRIPTS" >/dev/null 2>&1 || true
 
+# pkgbuild writes "write: Permission denied" to stderr once per file while copying
+# extended attributes it cannot copy — com.apple.provenance, which macOS adds to
+# every executable and will not let anyone remove. The package it produces is
+# correct (verified with `pkgutil --expand-full`: one file, right mode), so those
+# lines are filtered out rather than left looking like a failure. Anything else
+# pkgbuild says still comes through, and its exit status is still what decides.
+PKGBUILD_ERR="$(mktemp)"
+set +e
 pkgbuild \
   --root "$ROOT" \
   --scripts "$SCRIPTS" \
@@ -58,7 +66,16 @@ pkgbuild \
   --version "$VERSION" \
   --install-location / \
   --ownership recommended \
-  "$PKG"
+  "$PKG" 2>"$PKGBUILD_ERR"
+PKGBUILD_STATUS=$?
+set -e
+grep -v '^write: Permission denied$' "$PKGBUILD_ERR" >&2 || true
+rm -f "$PKGBUILD_ERR"
+
+if [ "$PKGBUILD_STATUS" -ne 0 ]; then
+  echo "pkgbuild failed with status $PKGBUILD_STATUS" >&2
+  exit "$PKGBUILD_STATUS"
+fi
 
 if [ -n "${AIUL_INSTALLER_IDENTITY:-}" ]; then
   echo "Signing with $AIUL_INSTALLER_IDENTITY"

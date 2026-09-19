@@ -311,3 +311,19 @@ func TestProvisionDeviceReissuesWhenTheAllowListChanges(t *testing.T) {
 		t.Errorf("the newly allowed host must verify: %v", err)
 	}
 }
+
+// The installer asked "is a CA present?" when the question it needed was "is a CA
+// present that works?". A root from before the device chain has a path length of 0,
+// so the worker cannot start, and an install fails with a good-looking CA in place.
+func TestCanIssueIntermediate(t *testing.T) {
+	root := testRoot(t)
+	if !root.CanIssueIntermediate() {
+		t.Error("a freshly created root must be able to issue this device's certificate")
+	}
+
+	root.Cert.MaxPathLen = 0
+	root.Cert.MaxPathLenZero = true
+	if root.CanIssueIntermediate() {
+		t.Error("a root with a path length of 0 must report that it cannot issue one")
+	}
+}
