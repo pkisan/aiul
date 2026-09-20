@@ -237,24 +237,35 @@ func cmdUninstall(args []string) int {
 	return 0
 }
 
-// waitForProxy blocks until the worker accepts a connection on the proxy port, or
-// gives up. launchd starts the job in the background, so "the job loaded" is not
-// the same as "the proxy works" — and the difference is a Mac whose HTTPS traffic
-// is pointed at nothing.
+// waitForProxy blocks until the agent is genuinely up, or gives up.
+//
+// Two conditions, and the second one is there because of a real failure: on an
+// upgrade, the OLD worker was still shutting down and still holding the port, so a
+// dial succeeded, install carried on, and the Mac was left pointing its traffic at
+// a process that was about to exit. A listening socket alone does not mean our
+// worker is running — anything could hold that port.
 func waitForProxy() error {
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 
+	var lastErr error
 	for {
-		conn, err := net.DialTimeout("tcp", proxyAddr, 2*time.Second)
-		if err == nil {
-			_ = conn.Close()
+		running, _ := platform.Service().Running()
+		if running {
+			conn, err := net.DialTimeout("tcp", proxyAddr, 2*time.Second)
+			if err == nil {
+				_ = conn.Close()
 
-			return nil
+				return nil
+			}
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("the worker process is not running")
 		}
+
 		if time.Now().After(deadline) {
-			return fmt.Errorf("nothing is listening on %s after 20s: %w\n"+
-				"  The worker did not start. Its log says why: %s",
-				proxyAddr, err, platform.WorkerLogPath)
+			return fmt.Errorf("the agent is not answering on %s after 30s: %w\n"+
+				"  Its log says why: %s",
+				proxyAddr, lastErr, platform.WorkerLogPath)
 		}
 
 		time.Sleep(500 * time.Millisecond)

@@ -63,9 +63,7 @@ func (DarwinService) InstallCommands() []string {
 		fmt.Sprintf("sudo chown -R %s:%s %s", ServiceUserName, ServiceGroupName, WorkerStateDir),
 		fmt.Sprintf("sudo tee %s   # root helper: '%s helper'", helperPlist, InstalledBinaryPath),
 		fmt.Sprintf("sudo tee %s   # worker as %s: '%s run --manage-proxy'", daemonPlist, ServiceUserName, InstalledBinaryPath),
-		fmt.Sprintf("sudo launchctl bootout system/%s   # stop the old one, if any", daemonLabel),
-		fmt.Sprintf("sudo launchctl bootout system/%s", helperLabel),
-		fmt.Sprintf("sudo launchctl load -w %s", helperPlist),
+		fmt.Sprintf("sudo launchctl load -w %s   # or kickstart -k, if it is already running", helperPlist),
 		fmt.Sprintf("sudo launchctl load -w %s", daemonPlist),
 	}
 }
@@ -155,26 +153,41 @@ func (s DarwinService) Install(binaryPath string, extraEnv map[string]string) er
 		return fmt.Errorf("write %s: %w", daemonPlist, err)
 	}
 
-	// Stop whatever is already running before starting the new one.
-	//
-	// Installing over a running agent replaces the binary on disk and leaves the
-	// OLD process running, which then keeps its old code and its old settings
-	// until something restarts it. An upgrade that silently does nothing is worse
-	// than one that fails, so the jobs are always booted out first. Removing a job
-	// that is not there is not an error.
-	//
-	// The worker first, then the helper: on its way out the worker asks the helper
-	// to remove the system proxy, which is what keeps traffic flowing in the gap.
-	_ = run("launchctl", "bootout", "system/"+daemonLabel)
-	_ = run("launchctl", "bootout", "system/"+helperLabel)
-
-	// The helper first on the way back up: the worker asks it for the system proxy
-	// as soon as it starts.
-	if err := run("launchctl", "load", "-w", helperPlist); err != nil {
-		return fmt.Errorf("load the helper: %w", err)
+	// The helper first: the worker asks it for the system proxy as soon as it
+	// starts.
+	if err := loadOrRestart(helperLabel, helperPlist); err != nil {
+		return err
 	}
-	if err := run("launchctl", "load", "-w", daemonPlist); err != nil {
-		return fmt.Errorf("load the worker: %w", err)
+	if err := loadOrRestart(daemonLabel, daemonPlist); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// loadOrRestart starts a job, or restarts it in place when it is already running.
+//
+// Installing over a running agent replaces the binary on disk and leaves the OLD
+// process running with its old code and old settings, so an upgrade has to restart
+// it. The obvious way — bootout, then load — does not work: bootout returns before
+// launchd has finished tearing the job down, the load that follows fails, and
+// NOTHING comes back. That is how an upgrade left this Mac with a system proxy
+// setting and no proxy behind it.
+//
+// `kickstart -k` asks launchd to stop and start the job itself, which has no gap
+// for a race to live in. It only works on a job launchd already knows about, so a
+// first install still goes through load.
+func loadOrRestart(label, plist string) error {
+	if err := exec.Command("launchctl", "print", "system/"+label).Run(); err == nil {
+		if err := run("launchctl", "kickstart", "-k", "system/"+label); err != nil {
+			return fmt.Errorf("restart %s: %w", label, err)
+		}
+
+		return nil
+	}
+
+	if err := run("launchctl", "load", "-w", plist); err != nil {
+		return fmt.Errorf("load %s: %w", label, err)
 	}
 
 	return nil
