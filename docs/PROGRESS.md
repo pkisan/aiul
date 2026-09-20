@@ -4,6 +4,50 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-19
 
+## MILESTONE: the whole pipeline proven through the INSTALLED package, 2026-09-20
+
+A real `claude -p` run, captured by the agent installed from `aiul-0.9.0.pkg`, is
+in the database as interaction #4:
+
+```
+host      api.anthropic.com     parser   anthropic     model  claude-opus-5
+task_id   AIUL-100              branch   feature/AIUL-100-first-capture
+repo      /private/tmp/aiul-test  tool   cli           score  86
+redacted  [email]               prompt_chars 1239
+```
+
+Nobody typed the task ID. It came from the connection's source port, through the
+root helper to the process, to its working directory, to `.git/HEAD`. The body in
+MinIO begins `AIULv2:eyJpdiI6...` and decrypts to the prompt with the email
+replaced by `[REDACTED:email]`, while the provider received the original bytes.
+`example.com` through the same proxy still showed `CN=Cloudflare TLS Issuing ECC
+CA 3` — its real issuer, sealed, nothing recorded.
+
+### Seven bugs found by doing it, none of which the tests could see
+
+All in deployment plumbing; the capture path was right the first time it was
+reached.
+
+| # | Bug | Commit |
+| --- | --- | --- |
+| 1 | CA path read from `$HOME` under `sudo` | `386ac83` |
+| 2 | worker log files root-owned, so launchd could not start the worker — and it therefore logged nothing | `9fef921` |
+| 3 | install set the system proxy without checking the worker was up | `9fef921` |
+| 4 | `_aiul` cannot read anyone's `.git/HEAD`, so every event was untagged | `e903faa` |
+| 5 | `installer` passes no environment to package scripts, so the endpoint never arrived | `223e3cf` |
+| 6 | installing over a running agent did not restart it; then `bootout`+`load` raced and left nothing running, while `waitForProxy` was fooled by the dying process's socket | `c8141fb`, `4322322` |
+| 7 | env vars pointed `SSL_CERT_FILE` into `/var/db/aiul`, which only `_aiul` can enter — `curl` broke for every user on the Mac | `ca01dd5` |
+
+The lesson, for Phase 9 and for the Linux and Windows ports: **unit tests run as
+the developer, in directories the developer owns, in a process that inherited the
+developer's environment.** The installed agent has none of those. Everything that
+touches launchd, `installer`, file ownership or the environment has to be proven
+on a real installed run.
+
+**Next thing to build:** an integration test for the deployment path — install,
+verify, upgrade, uninstall against real launchd — because the unit suite
+structurally cannot see any of the seven.
+
 ## Current phase
 
 **Phase 7 — Minimal dashboard (Inertia + Vue).**

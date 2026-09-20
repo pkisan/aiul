@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
 class Device extends Model
@@ -21,6 +22,16 @@ class Device extends Model
             'revoked' => 'boolean',
             'last_seen_at' => 'datetime',
         ];
+    }
+
+    /**
+     * The person this machine belongs to. Null means nobody has been named, and
+     * the dashboard then shows the interactions under "Unassigned device" rather
+     * than guessing.
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     /**
