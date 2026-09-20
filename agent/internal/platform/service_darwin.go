@@ -63,6 +63,8 @@ func (DarwinService) InstallCommands() []string {
 		fmt.Sprintf("sudo chown -R %s:%s %s", ServiceUserName, ServiceGroupName, WorkerStateDir),
 		fmt.Sprintf("sudo tee %s   # root helper: '%s helper'", helperPlist, InstalledBinaryPath),
 		fmt.Sprintf("sudo tee %s   # worker as %s: '%s run --manage-proxy'", daemonPlist, ServiceUserName, InstalledBinaryPath),
+		fmt.Sprintf("sudo launchctl bootout system/%s   # stop the old one, if any", daemonLabel),
+		fmt.Sprintf("sudo launchctl bootout system/%s", helperLabel),
 		fmt.Sprintf("sudo launchctl load -w %s", helperPlist),
 		fmt.Sprintf("sudo launchctl load -w %s", daemonPlist),
 	}
@@ -153,8 +155,21 @@ func (s DarwinService) Install(binaryPath string, extraEnv map[string]string) er
 		return fmt.Errorf("write %s: %w", daemonPlist, err)
 	}
 
-	// The helper first: the worker asks it for the system proxy as soon as it
-	// starts.
+	// Stop whatever is already running before starting the new one.
+	//
+	// Installing over a running agent replaces the binary on disk and leaves the
+	// OLD process running, which then keeps its old code and its old settings
+	// until something restarts it. An upgrade that silently does nothing is worse
+	// than one that fails, so the jobs are always booted out first. Removing a job
+	// that is not there is not an error.
+	//
+	// The worker first, then the helper: on its way out the worker asks the helper
+	// to remove the system proxy, which is what keeps traffic flowing in the gap.
+	_ = run("launchctl", "bootout", "system/"+daemonLabel)
+	_ = run("launchctl", "bootout", "system/"+helperLabel)
+
+	// The helper first on the way back up: the worker asks it for the system proxy
+	// as soon as it starts.
 	if err := run("launchctl", "load", "-w", helperPlist); err != nil {
 		return fmt.Errorf("load the helper: %w", err)
 	}
