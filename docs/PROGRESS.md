@@ -189,6 +189,18 @@ HTTPS_PROXY=http://127.0.0.1:8899 NODE_EXTRA_CA_CERTS="$HOME/Library/Application
 
 Issue a token with `php artisan aiul:provision-device "$(hostname)" --tenant=dev`.
 
+### Where the plan lives
+
+`docs/ROADMAP.md` answers the three questions the owner asked on 2026-09-20:
+putting the agent on another managed Mac, covering every AI surface rather than
+only the CLI, and what Windows and Linux need. It also lists what must exist
+before a pilot that is not code.
+
+The headline from it: **the CLI is proven, the web apps are metadata-only, and
+Cursor is not on the allow-list at all**, so its traffic is invisible. Closing
+that needs real captures through `mitmweb`, one tool at a time — which needs the
+owner, since it needs the tools.
+
 ### How to test the whole thing
 
 `docs/TESTING.md` is the step-by-step runbook: services up, token issued, package
