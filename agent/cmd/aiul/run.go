@@ -48,12 +48,17 @@ func cmdRun(args []string) int {
 	token := ""
 	manageProxy := false
 
-	// AIUL_DEBUG=1 does the same as --debug. The installed worker is started by
-	// launchd with a fixed argument list, so an environment variable is the only
-	// way to turn debug logging on without editing the job definition — and the
-	// debug lines are the ones that say why a request was not recorded.
+	// Settings the installed agent cannot be given on a command line, because
+	// launchd inherits no shell. Read before the flags are parsed so a flag still
+	// wins.
+	config := readAgentConfig(agentConfigPath)
+
+	// AIUL_DEBUG=1 does the same as --debug, from the environment when running by
+	// hand or from the config file when installed. The debug lines are the ones
+	// that say why a request was not recorded, so reaching them must not require a
+	// reinstall.
 	level := slog.LevelInfo
-	if os.Getenv("AIUL_DEBUG") != "" {
+	if firstSet(os.Getenv("AIUL_DEBUG"), config["AIUL_DEBUG"]) != "" {
 		level = slog.LevelDebug
 	}
 
@@ -129,8 +134,6 @@ func cmdRun(args []string) int {
 	// package scripts. Without the file the packaged agent captures and spools
 	// perfectly and sends nothing, which looks like a broken backend rather than a
 	// missing setting.
-	config := readAgentConfig(agentConfigPath)
-
 	if endpoint == "" {
 		endpoint = firstSet(os.Getenv("AIUL_ENDPOINT"), config["AIUL_ENDPOINT"])
 	}

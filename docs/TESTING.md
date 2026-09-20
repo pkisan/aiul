@@ -101,14 +101,22 @@ sudo mkdir -p /etc/aiul
 sudo tee /etc/aiul/agent.conf >/dev/null <<EOF
 AIUL_ENDPOINT=http://127.0.0.1:8088/api/aiul/events
 AIUL_DEVICE_TOKEN=$AIUL_DEVICE_TOKEN
+AIUL_DEBUG=1
 EOF
 sudo chmod 600 /etc/aiul/agent.conf    # it holds a credential
 
 sudo installer -pkg dist/aiul-0.9.0.pkg -target /
 ```
 
+`AIUL_DEBUG=1` is worth having for a first run: without it the worker logs only
+that it started, and the lines saying why a particular request was or was not
+recorded are invisible.
+
 The install prints `Forwarding events to http://127.0.0.1:8088/...` when it has
 somewhere to send them, and says so loudly when it does not.
+
+**Installing is not capturing.** The agent is now running and watching, but
+nothing has been sent through it. That is step 7.
 
 Expect `The install was successful.` If it fails, it has already rolled itself
 back and your Mac still works; the reason is in `/var/log/aiul-install.log`.
