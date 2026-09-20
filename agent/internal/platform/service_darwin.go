@@ -87,6 +87,15 @@ func (s DarwinService) Install(binaryPath string, extraEnv map[string]string) er
 		return err
 	}
 
+	// The config file holds the endpoint and the device token, and the WORKER
+	// reads it — not root. A file written 0600 by root is invisible to the service
+	// account, which then starts with no endpoint and silently forwards nothing.
+	// Give it to root:_aiul 0640: the worker can read it, and no ordinary user on
+	// the machine can see the token.
+	if err := secureAgentConfig(gid); err != nil {
+		return err
+	}
+
 	for _, dir := range []string{logDir, WorkerStateDir} {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return fmt.Errorf("create %s: %w", dir, err)
@@ -188,6 +197,24 @@ func loadOrRestart(label, plist string) error {
 
 	if err := run("launchctl", "load", "-w", plist); err != nil {
 		return fmt.Errorf("load %s: %w", label, err)
+	}
+
+	return nil
+}
+
+// secureAgentConfig makes the agent's config file readable by the worker and by
+// nobody else. A missing file is normal: an agent with no backend configured
+// captures into its spool and waits.
+func secureAgentConfig(gid int) error {
+	if _, err := os.Stat(AgentConfigPath); err != nil {
+		return nil
+	}
+
+	if err := os.Chown(AgentConfigPath, 0, gid); err != nil {
+		return fmt.Errorf("give %s to %s: %w", AgentConfigPath, ServiceGroupName, err)
+	}
+	if err := os.Chmod(AgentConfigPath, 0o640); err != nil {
+		return fmt.Errorf("set permissions on %s: %w", AgentConfigPath, err)
 	}
 
 	return nil

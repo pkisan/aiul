@@ -295,11 +295,12 @@ func reportForwarding() {
 		fmt.Println("WARNING: no device token in " + agentConfigPath + "; the backend will refuse the events.")
 	}
 
-	// The file holds a credential.
+	// The file holds a credential. The worker's own group must be able to read it
+	// — install has just arranged that — but nobody else on the machine should.
 	if info, err := os.Stat(agentConfigPath); err == nil {
-		if mode := info.Mode().Perm(); mode&0o077 != 0 {
+		if mode := info.Mode().Perm(); mode&0o007 != 0 {
 			fmt.Printf("WARNING: %s is mode %#o and holds a device token.\n", agentConfigPath, mode)
-			fmt.Printf("         Fix with: sudo chmod 600 %s\n", agentConfigPath)
+			fmt.Printf("         Fix with: sudo chmod 640 %s\n", agentConfigPath)
 		}
 	}
 }

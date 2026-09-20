@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"os"
 	"strings"
+
+	"github.com/pkisan/aiul/internal/platform"
 )
 
 // Where the installed agent reads its settings from.
@@ -23,7 +25,9 @@ import (
 // An MDM writes this file when it deploys the package. It holds a credential, so
 // `aiul install` checks its permissions and complains if anyone but root can read
 // it.
-const agentConfigPath = "/etc/aiul/agent.conf"
+// The path itself lives in internal/platform, because `aiul install` has to fix
+// this file's ownership: the worker that reads it is not root.
+const agentConfigPath = platform.AgentConfigPath
 
 // readAgentConfig returns the settings in the config file, or an empty map when
 // there is none. A missing file is the normal case when running by hand and is

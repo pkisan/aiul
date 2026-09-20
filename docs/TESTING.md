@@ -103,7 +103,11 @@ AIUL_ENDPOINT=http://127.0.0.1:8088/api/aiul/events
 AIUL_DEVICE_TOKEN=$AIUL_DEVICE_TOKEN
 AIUL_DEBUG=1
 EOF
-sudo chmod 600 /etc/aiul/agent.conf    # it holds a credential
+sudo chmod 640 /etc/aiul/agent.conf    # it holds a credential
+
+# The WORKER reads this file and the worker is not root, so it must be readable by
+# the service account. `aiul install` sets root:_aiul 0640 for you; 0600 root-only
+# means the agent starts with no endpoint and forwards nothing.
 
 sudo installer -pkg dist/aiul-0.9.0.pkg -target /
 ```

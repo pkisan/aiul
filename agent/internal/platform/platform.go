@@ -10,6 +10,11 @@ package platform
 
 import "errors"
 
+// AgentConfigPath is where the installed agent reads its endpoint, device token
+// and debug setting. An MDM writes this file; `aiul install` makes sure the
+// service account can read it, because the worker is not root.
+const AgentConfigPath = "/etc/aiul/agent.conf"
+
 // ErrUnsupported is returned by stub implementations on operating systems we have
 // not built yet.
 var ErrUnsupported = errors.New("not implemented on this operating system yet")
