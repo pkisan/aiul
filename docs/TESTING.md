@@ -87,27 +87,48 @@ contents are the single file `./usr/local/bin/aiul`.
 
 ## 4. Install
 
-The marker file is how an unmanaged Mac is allowed to run the agent at all — the
-MDM check refuses otherwise, and `installer` does not pass environment variables
-to package scripts, so it cannot be done on the command line.
+Two files first. **`installer` does not pass its environment to package scripts**,
+so nothing here can be given on the command line — it is silently ignored.
 
 ```sh
 # TERMINAL 3
+
+# 1. Lets an unmanaged Mac run the agent at all. The MDM check refuses otherwise.
 sudo touch /etc/aiul-dev-unmanaged
-sudo AIUL_ENDPOINT='http://127.0.0.1:8088/api/aiul/events' \
-     AIUL_DEVICE_TOKEN="$AIUL_DEVICE_TOKEN" \
-     installer -pkg dist/aiul-0.9.0.pkg -target /
+
+# 2. Tells the agent where to send events, and what to authenticate with.
+sudo mkdir -p /etc/aiul
+sudo tee /etc/aiul/agent.conf >/dev/null <<EOF
+AIUL_ENDPOINT=http://127.0.0.1:8088/api/aiul/events
+AIUL_DEVICE_TOKEN=$AIUL_DEVICE_TOKEN
+EOF
+sudo chmod 600 /etc/aiul/agent.conf    # it holds a credential
+
+sudo installer -pkg dist/aiul-0.9.0.pkg -target /
 ```
+
+The install prints `Forwarding events to http://127.0.0.1:8088/...` when it has
+somewhere to send them, and says so loudly when it does not.
 
 Expect `The install was successful.` If it fails, it has already rolled itself
 back and your Mac still works; the reason is in `/var/log/aiul-install.log`.
 
 ```sh
 aiul status
+sudo grep forwarding /var/log/aiul/agent.err.log | tail -1
 ```
 
 Expect all of: `proxy listening yes`, `background job yes`, `CA trusted yes`,
-`4 of 4 network services`, `env vars written 9`.
+`4 of 4 network services`, `env vars written 9` — and the log line must say
+`forwarding=true`. If it says `forwarding=false`, the agent is capturing into its
+spool and sending nothing: the config file above is missing or unreadable.
+
+To change the endpoint later, edit `/etc/aiul/agent.conf` and restart the worker —
+no reinstall:
+
+```sh
+sudo launchctl kickstart -k system/com.aiul.agent
+```
 
 ## 5. Check the privilege split and the certificate chain
 
@@ -311,6 +332,7 @@ data too).
 | agent not capturing | `sudo tail -50 /var/log/aiul/agent.err.log` |
 | nothing in the log at all | the job may not have started: `sudo launchctl print system/com.aiul.agent` |
 | need more detail | reinstall with `AIUL_DEBUG=1` in the installer environment |
+| captures happen but nothing reaches the dashboard | `forwarding=false` in the worker log: `/etc/aiul/agent.conf` is missing, and events are waiting in `/var/db/aiul/spool` |
 | anything at all | `sudo ./scripts/killswitch.sh` reverts every system change in one command |
 
 ## What this test does NOT cover

@@ -34,8 +34,9 @@ on, because it is the only command that asked you first.
 The device token normally comes from the keychain. --token, or AIUL_DEVICE_TOKEN,
 overrides it for development so nothing has to be stored to try the backend.
 
-AIUL_ENDPOINT does the same for --endpoint. The installed worker is started with a
-fixed argument list, so that is how 'aiul install' passes the backend address on.
+AIUL_ENDPOINT does the same for --endpoint. The INSTALLED agent reads both from
+/etc/aiul/agent.conf instead, because launchd inherits no shell — see that file's
+format in docs/TESTING.md.
 `
 
 // healthInterval is how often the agent loop checks itself. Short enough that a
@@ -119,18 +120,22 @@ func cmdRun(args []string) int {
 		return 1
 	}
 
-	// The installed worker is started by launchd with a fixed argument list, so
-	// where it forwards to has to come from the job's environment. Without this the
-	// packaged agent captures and spools correctly and never sends anything, which
-	// looks like a broken backend rather than a missing setting.
-	if endpoint == "" {
-		endpoint = os.Getenv("AIUL_ENDPOINT")
-	}
+	// Where to forward, and what to authenticate with.
+	//
+	// Precedence: the flag, then the environment, then the config file, then the
+	// keychain. The flag and the environment are for running by hand; the config
+	// file is how the INSTALLED agent is told, because launchd does not inherit the
+	// shell that installed it and `installer` does not pass its environment to
+	// package scripts. Without the file the packaged agent captures and spools
+	// perfectly and sends nothing, which looks like a broken backend rather than a
+	// missing setting.
+	config := readAgentConfig(agentConfigPath)
 
-	// Precedence: the flag, then the environment, then the keychain. The first two
-	// exist so the backend can be tried without storing anything on the machine.
+	if endpoint == "" {
+		endpoint = firstSet(os.Getenv("AIUL_ENDPOINT"), config["AIUL_ENDPOINT"])
+	}
 	if token == "" {
-		token = os.Getenv("AIUL_DEVICE_TOKEN")
+		token = firstSet(os.Getenv("AIUL_DEVICE_TOKEN"), config["AIUL_DEVICE_TOKEN"])
 	}
 	if token == "" {
 		token, _ = platform.DeviceToken()
@@ -185,6 +190,7 @@ func cmdRun(args []string) int {
 	go agentLoop(ctx, log, forwarder, manageProxy, privileged, root, issuer)
 
 	log.Info("agent running",
+		"endpoint", endpoint,
 		"proxy", proxyAddr,
 		"spool", spool.Dir(),
 		"forwarding", forwarder.Enabled(),

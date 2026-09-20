@@ -186,6 +186,13 @@ else
   say "   not present: /usr/local/bin/aiul"
 fi
 
+if [ -f /etc/aiul/agent.conf ]; then
+  say "   NOTE: /etc/aiul/agent.conf holds this device's backend address and token."
+  run "remove the agent configuration" rm -rf /etc/aiul
+else
+  say "   not present: /etc/aiul/agent.conf"
+fi
+
 if [ -f /etc/aiul-dev-unmanaged ]; then
   run "remove the development MDM override" rm -f /etc/aiul-dev-unmanaged
 else
@@ -228,5 +235,6 @@ say "  grep -c AIUL /etc/zshenv 2>/dev/null           # 0 or no such file"
 say "  security find-certificate -c 'AIUL Dev Root' /Library/Keychains/System.keychain   # not found"
 say "  ls /usr/local/bin/aiul                        # no such file"
 say "  dscl . -read /Users/_aiul                      # record not found"
+say "  ls /etc/aiul/agent.conf                        # no such file"
 say "  curl -sI https://example.com >/dev/null && echo 'internet works'"
 exit 0

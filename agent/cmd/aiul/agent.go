@@ -119,14 +119,14 @@ func cmdInstall(args []string) int {
 
 	// Anything the installed jobs need must be written into the job definition:
 	// launchd does not inherit the shell that ran install.
+	//
+	// The endpoint and the token are NOT here. They live in /etc/aiul/agent.conf,
+	// which the agent reads for itself, so the backend address can be changed
+	// without reinstalling and a token never has to sit in a plist.
 	daemonEnv := map[string]string{}
 	for _, name := range []string{
 		platform.DevAllowUnmanagedVar,
 		"AIUL_DEBUG",
-		// Where to forward events, and what to authenticate with. Without these in
-		// the job definition the installed worker spools for ever and sends nothing.
-		"AIUL_ENDPOINT",
-		"AIUL_DEVICE_TOKEN",
 	} {
 		if value := os.Getenv(name); value != "" {
 			daemonEnv[name] = value
@@ -164,6 +164,11 @@ func cmdInstall(args []string) int {
 			return 1
 		}
 	}
+
+	// Say plainly whether this agent will forward anything. An agent that captures
+	// and spools for ever because nobody told it where the backend is looks like a
+	// broken backend, and that is a bad half-hour for whoever inherits it.
+	reportForwarding()
 
 	fmt.Println("\nDone. Check it with: aiul status")
 	fmt.Println("Open a NEW terminal window for the environment variables to apply,")
@@ -253,6 +258,38 @@ func waitForProxy() error {
 		}
 
 		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// reportForwarding tells the installer whether the agent has somewhere to send
+// events, and checks that the file holding the token is not world-readable.
+func reportForwarding() {
+	config := readAgentConfig(agentConfigPath)
+
+	if config["AIUL_ENDPOINT"] == "" {
+		fmt.Println()
+		fmt.Println("NOTE: no backend is configured, so events will be captured and kept on this")
+		fmt.Printf("      Mac rather than sent anywhere. To forward them, write %s:\n", agentConfigPath)
+		fmt.Println()
+		fmt.Println("        AIUL_ENDPOINT=https://your-backend/api/aiul/events")
+		fmt.Println("        AIUL_DEVICE_TOKEN=aiul_...")
+		fmt.Println()
+		fmt.Println("      then: sudo launchctl kickstart -k system/com.aiul.agent")
+
+		return
+	}
+
+	fmt.Printf("\nForwarding events to %s\n", config["AIUL_ENDPOINT"])
+	if config["AIUL_DEVICE_TOKEN"] == "" {
+		fmt.Println("WARNING: no device token in " + agentConfigPath + "; the backend will refuse the events.")
+	}
+
+	// The file holds a credential.
+	if info, err := os.Stat(agentConfigPath); err == nil {
+		if mode := info.Mode().Perm(); mode&0o077 != 0 {
+			fmt.Printf("WARNING: %s is mode %#o and holds a device token.\n", agentConfigPath, mode)
+			fmt.Printf("         Fix with: sudo chmod 600 %s\n", agentConfigPath)
+		}
 	}
 }
 
