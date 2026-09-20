@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -52,7 +53,14 @@ func cmdInstall(args []string) int {
 		fmt.Fprintln(os.Stderr, "SSL_CERT_FILE would then point at our root alone, which breaks ordinary HTTPS.")
 		return 1
 	}
-	vars := platform.DefaultEnvVars(proxyURL(), certPath, bundlePath)
+	// The variables must name files EVERY user can open: SSL_CERT_FILE and
+	// REQUESTS_CA_BUNDLE replace the trust store, so a path that cannot be read
+	// breaks TLS for that tool entirely. The agent's own copy lives in a directory
+	// only the service account may enter, so install publishes the certificates
+	// somewhere public and points the variables there.
+	publicCert := filepath.Join(platform.PublicCADir, filepath.Base(certPath))
+	publicBundle := filepath.Join(platform.PublicCADir, filepath.Base(bundlePath))
+	vars := platform.DefaultEnvVars(proxyURL(), publicCert, publicBundle)
 
 	// The MDM gate comes first: on an unmanaged machine we stop here, before
 	// printing anything that looks like a plan.
@@ -146,6 +154,9 @@ func cmdInstall(args []string) int {
 		// HTTPS, because the proxy setting outlives the process that set it.
 		{"wait for the worker to start listening", waitForProxy},
 		{"trust the CA", func() error { return platform.Trust().Install(certPath) }},
+		{"publish the CA where every user can read it", func() error {
+			return platform.PublishCA(certPath, bundlePath)
+		}},
 		{"write environment variables", func() error { return platform.Env().Write(vars) }},
 		{"set the system proxy", func() error { return platform.Proxy().Set(proxyAddr) }},
 	}

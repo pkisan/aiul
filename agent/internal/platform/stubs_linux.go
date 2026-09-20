@@ -101,3 +101,11 @@ func ServiceAccount() (int, int)              { return -1, -1 }
 func CreateServiceAccountCommands() []string  { return nil }
 func CreateServiceAccount() (int, int, error) { return -1, -1, ErrUnsupported }
 func DeleteServiceAccount() error             { return ErrUnsupported }
+
+// PublicCADir is where the certificates every user must be able to read will live.
+// The Linux equivalent is /usr/local/share/ca-certificates, which also needs
+// update-ca-certificates to be run; that is part of the port, not of this stub.
+const PublicCADir = "/usr/local/share/aiul"
+
+// PublishCA will copy the public certificates there.
+func PublishCA(string, string) error { return ErrUnsupported }

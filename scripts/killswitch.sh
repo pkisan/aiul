@@ -180,6 +180,12 @@ fi
 step "6/6  leftovers"
 # The binary installed for the launch daemon, and the device token used to
 # authenticate to the backend.
+if [ -d /usr/local/share/aiul ]; then
+  run "remove the published CA copies" rm -rf /usr/local/share/aiul
+else
+  say "   not present: /usr/local/share/aiul"
+fi
+
 if [ -f /usr/local/bin/aiul ]; then
   run "remove the installed binary" rm -f /usr/local/bin/aiul
 else

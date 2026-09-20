@@ -100,3 +100,11 @@ func ServiceAccount() (int, int)              { return -1, -1 }
 func CreateServiceAccountCommands() []string  { return nil }
 func CreateServiceAccount() (int, int, error) { return -1, -1, ErrUnsupported }
 func DeleteServiceAccount() error             { return ErrUnsupported }
+
+// PublicCADir is where the certificates every user must be able to read will live.
+// On Windows the trust store is the registry, so the port will add them there
+// rather than to a file; this constant keeps the shared code compiling.
+const PublicCADir = `C:\\ProgramData\\aiul`
+
+// PublishCA will add the public certificates to the machine store.
+func PublishCA(string, string) error { return ErrUnsupported }

@@ -46,6 +46,15 @@ const (
 
 	logDir = "/var/log/aiul"
 
+	// PublicCADir holds the copies of the CA that EVERY user needs to read.
+	//
+	// The worker's own copy lives under /var/db/aiul, which only the service
+	// account may enter — correct for a private key, wrong for a certificate.
+	// SSL_CERT_FILE and its friends point at these copies instead: pointing them
+	// into the worker's directory broke curl for every user on the machine, since
+	// those variables REPLACE the trust store and curl cannot read the file.
+	PublicCADir = "/usr/local/share/aiul"
+
 	// WorkerLogPath is where the worker says why it would not start. Worth naming
 	// in error messages: an install that fails is nearly always answered here.
 	WorkerLogPath = logDir + "/agent.err.log"
@@ -202,6 +211,36 @@ func loadOrRestart(label, plist string) error {
 	return nil
 }
 
+// PublishCA copies the public half of the CA where every user can read it.
+//
+// Only certificates: the private key stays where it is, owned by the service
+// account. A certificate is public by definition — it is what we ask the machine
+// to trust — and the environment variables the agent writes are useless if the
+// file they name cannot be opened.
+func PublishCA(certPath, bundlePath string) error {
+	if err := os.MkdirAll(PublicCADir, 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", PublicCADir, err)
+	}
+
+	for _, from := range []string{certPath, bundlePath} {
+		if from == "" {
+			continue
+		}
+
+		data, err := os.ReadFile(from)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", from, err)
+		}
+
+		to := filepath.Join(PublicCADir, filepath.Base(from))
+		if err := os.WriteFile(to, data, 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", to, err)
+		}
+	}
+
+	return nil
+}
+
 // secureAgentConfig makes the agent's config file readable by the worker and by
 // nobody else. A missing file is normal: an agent with no backend configured
 // captures into its spool and waits.
@@ -344,6 +383,12 @@ func (DarwinService) Uninstall() error {
 	}
 
 	if err := os.Remove(InstalledBinaryPath); err != nil && !os.IsNotExist(err) && firstErr == nil {
+		firstErr = err
+	}
+
+	// The public CA copies go too: they are only there for the environment
+	// variables, which are being removed alongside them.
+	if err := os.RemoveAll(PublicCADir); err != nil && !os.IsNotExist(err) && firstErr == nil {
 		firstErr = err
 	}
 	return firstErr

@@ -44,3 +44,28 @@ func TestTheHelperJobRunsAsRoot(t *testing.T) {
 		t.Errorf("both halves must agree where the state directory is:\n%s", plist)
 	}
 }
+
+// The environment variables the agent writes REPLACE the trust store, so the file
+// they name has to be readable by whoever runs the tool. Pointing them at the
+// worker's own copy — in a directory only the service account may enter — broke
+// curl for every user on the Mac with "error setting certificate verify
+// locations".
+func TestTheCAIsPublishedWhereEveryUserCanReadIt(t *testing.T) {
+	vars := DefaultEnvVars("http://127.0.0.1:8899",
+		PublicCADir+"/root.crt", PublicCADir+"/ca-bundle.pem")
+
+	for _, key := range []string{"SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS"} {
+		value := vars[key]
+		if value == "" {
+			t.Errorf("%s is not set", key)
+
+			continue
+		}
+		if strings.HasPrefix(value, WorkerStateDir) {
+			t.Errorf("%s points at %s, which only the service account can read", key, value)
+		}
+		if !strings.HasPrefix(value, PublicCADir) {
+			t.Errorf("%s = %q, want it under %s", key, value, PublicCADir)
+		}
+	}
+}
