@@ -253,9 +253,10 @@ Not technical, and not optional:
 - **An employee notice.** What is captured, what is masked, who can read raw
   prompts, how long it is kept, and how to see your own data. The audit log, the
   policy gate and the "my data" page exist so this can be written honestly.
-- **A named owner for raw-prompt access**, and a reason recorded on every read —
-  the product enforces the reason; the policy has to say who is allowed to have
-  one.
+- **A named owner for raw-prompt access.** Every view is audit-logged (who,
+  whose, when, IP); the reason is optional since 2026-09-21, so the log may say
+  "no reason given" — decide before a pilot whether that is acceptable, because
+  the employee notice has to describe it honestly.
 - **A retention decision per tenant.** The default is 90 days.
 - **An integration test for the deployment path.** Seven of seven bugs today were
   in install, upgrade and uninstall, and none were visible to the unit suite.

@@ -33,6 +33,10 @@ Follow-up `e43471e`: the "Open the prompt text" button sent no reason, so the
 server bounced it back with an error nobody displayed — it looked dead. The
 interaction page now has a reason field whose value travels in the link, and
 shows the server's error when it still bounces.
+One-click admin reads — DONE 2026-09-21 (demo request): a grant-holding admin
+opens anyone's prompt with no reason typed. Every view is still audit-logged,
+but the "why" may be "no reason given" — recorded in D11 as a deliberate
+weakening to revisit in the employee notice before a pilot.
 
 ## MILESTONE: the whole pipeline proven through the INSTALLED package, 2026-09-20
 

@@ -402,8 +402,11 @@ Three things reinforce it:
 
 - **Every raw view is written to the audit log before the text is returned.** If
   the log write fails, nobody reads anything.
-- **Reading someone else's prompt requires a typed reason**, stored with the
-  record. Reading your own does not.
+- **A grant-holding admin may open anyone's prompt with one click** (2026-09-21,
+  demo request). The reason field is optional and every view is still audit-logged
+  — who, whose, when, from which IP — but the "why" may read "no reason given".
+  That weakens the accountability story below: say so in the employee notice
+  before a pilot, or re-impose the requirement.
 - **The person can see who read their words**, on their own "my data" page. The
   audit log is not something only auditors see.
 

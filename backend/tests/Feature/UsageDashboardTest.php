@@ -168,16 +168,18 @@ class UsageDashboardTest extends TestCase
         $this->assertSame('investigating a leak', $record->reason);
     }
 
-    public function test_reading_someone_elses_prompt_requires_a_reason(): void
+    public function test_reading_anyones_prompt_needs_no_reason_but_is_still_recorded(): void
     {
         $subject = $this->user();
         $interaction = $this->interaction(['user_id' => $subject->id]);
+        $admin = $this->user(User::ROLE_ADMIN, raw: true);
 
-        $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
-            ->get("/usage/{$interaction->id}/raw")
-            ->assertSessionHasErrors('reason');
+        // A grant-holding admin opens with one click: no reason typed.
+        $this->actingAs($admin)->get("/usage/{$interaction->id}/raw")->assertOk();
 
-        $this->assertSame(0, ConsentRecord::withoutGlobalScope('tenant')->count());
+        $record = ConsentRecord::withoutGlobalScope('tenant')->first();
+        $this->assertNotNull($record, 'every raw view must be recorded');
+        $this->assertSame('no reason given', $record->reason);
     }
 
     public function test_anyone_may_read_their_own_prompt_and_it_is_still_recorded(): void

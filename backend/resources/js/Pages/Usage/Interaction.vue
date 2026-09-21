@@ -59,7 +59,7 @@ const rawUrl = computed(() => {
 
                 <div v-if="canViewRaw" class="space-y-2">
                     <label class="block text-sm text-gray-600" for="reason">
-                        Reason for opening — required for someone else's prompt, recorded in the audit log
+                        Reason for opening (optional) — recorded in the audit log either way
                     </label>
                     <input id="reason" v-model="reason" type="text" placeholder="e.g. support investigation"
                            class="w-full rounded border-gray-300 text-sm shadow-sm" />

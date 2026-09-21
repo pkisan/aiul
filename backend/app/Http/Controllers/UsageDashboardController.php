@@ -77,20 +77,13 @@ class UsageDashboardController extends Controller
 
         $reason = $request->string('reason')->trim()->toString();
 
-        // Looking at someone else's words requires saying why.
-        if ($request->user()->id !== $interaction->user_id && $reason === '') {
-            return back()->withErrors([
-                'reason' => 'A reason is required before opening someone else\'s prompt.',
-            ]);
-        }
-
         ConsentRecord::create([
             'tenant_id' => $interaction->tenant_id,
             'user_id' => $interaction->user_id ?? $request->user()->id,
             'kind' => ConsentRecord::KIND_RAW_VIEW,
             'actor_user_id' => $request->user()->id,
             'ai_interaction_id' => $interaction->id,
-            'reason' => $reason ?: 'own data',
+            'reason' => $reason ?: 'no reason given',
             'ip' => $request->ip(),
         ]);
 

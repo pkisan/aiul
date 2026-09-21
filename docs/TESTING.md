@@ -49,7 +49,7 @@ The seeder makes three users in tenant `dev`, all with that one password:
 | --- | --- | --- |
 | `dev@example.com` | member | no |
 | `manager@example.com` | manager | no |
-| `admin@example.com` | admin | yes, with a typed reason, and every read is logged |
+| `admin@example.com` | admin | yes, one click, and every read is logged |
 
 ```sh
 # TERMINAL 2 — the queue, which does the scoring
