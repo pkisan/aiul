@@ -151,6 +151,29 @@ func TestTunnelListWinsOverCapture(t *testing.T) {
 	}
 }
 
+// The bug behind this test: the Claude desktop app ships its own copy of Claude
+// Code, so macOS reports "claude" as the process name for both it and the
+// terminal CLI. Keyed by name, the desktop app's pinning silenced the CLI too.
+// The key is the executable path, which differs.
+func TestTunnelListSeparatesTwoProgramsWithTheSameName(t *testing.T) {
+	const (
+		desktop = "/Users/x/Library/Application Support/Claude/claude-code/2.1.275/claude.app/Contents/MacOS/claude"
+		cli     = "/opt/homebrew/bin/claude"
+	)
+	c := NewClassifier()
+
+	if !c.AddTunnel("api.anthropic.com", desktop) {
+		t.Fatal("AddTunnel should report the pair as newly added")
+	}
+
+	if got := c.Classify("api.anthropic.com", desktop); got != Tunnel {
+		t.Errorf("the program that rejected us = %v, want tunnel", got)
+	}
+	if got := c.Classify("api.anthropic.com", cli); got != Capture {
+		t.Errorf("the terminal CLI = %v, want capture", got)
+	}
+}
+
 // TestClassifierIsConcurrencySafe: run with -race. The proxy classifies on every
 // connection while other connections may be adding tunnel entries.
 func TestClassifierIsConcurrencySafe(t *testing.T) {

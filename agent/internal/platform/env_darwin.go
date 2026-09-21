@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -40,14 +42,15 @@ func (DarwinEnv) WriteCommands(vars EnvVars) []string {
 	return []string{
 		fmt.Sprintf("sudo tee -a %s   # adds a marked AIUL block setting %s", zshenvPath, strings.Join(sortedKeys(vars), ", ")),
 		fmt.Sprintf("sudo tee %s      # a LaunchAgent running 'launchctl setenv' at login", sessionAgentPlist),
-		fmt.Sprintf("sudo launchctl load -w %s", sessionAgentPlist),
+		fmt.Sprintf("sudo launchctl bootstrap gui/$(stat -f%%u /dev/console) %s", sessionAgentPlist),
+		fmt.Sprintf("sudo launchctl asuser $(stat -f%%u /dev/console) launchctl setenv %s ...   # the running GUI session", sortedKeys(vars)[0]),
 	}
 }
 
 func (DarwinEnv) RemoveCommands() []string {
 	return []string{
 		fmt.Sprintf("sudo sed -i '' '/AIUL BEGIN/,/AIUL END/d' %s", zshenvPath),
-		fmt.Sprintf("sudo launchctl unload -w %s", sessionAgentPlist),
+		fmt.Sprintf("sudo launchctl bootout gui/$(stat -f%%u /dev/console) %s", sessionAgentPlist),
 		fmt.Sprintf("sudo rm -f %s", sessionAgentPlist),
 		"launchctl unsetenv <each variable>",
 	}
@@ -63,9 +66,44 @@ func (e DarwinEnv) Write(vars EnvVars) error {
 	// Set them now as well, so the current GUI session picks them up without a
 	// logout. Applications already running keep their old copy until restarted.
 	for _, k := range sortedKeys(vars) {
-		_ = run("launchctl", "setenv", k, vars[k])
+		args := guiSetenvArgs(consoleUID(), k, vars[k])
+		_ = run(args[0], args[1:]...)
 	}
 	return nil
+}
+
+// guiSetenvArgs builds the command that sets one variable for the GUI session.
+//
+// This is not the same as running `launchctl setenv` and hoping. `install` runs
+// under sudo, and launchctl talks to the domain of whoever is asking — so a plain
+// `launchctl setenv` from root sets it for ROOT and the person's Dock, Spotlight
+// and apps see nothing. That is exactly why the Claude desktop app, which bundles
+// its own Claude Code, never received NODE_EXTRA_CA_CERTS: it saw the proxy, could
+// not verify our certificate, and had to be tunneled.
+//
+// `launchctl asuser <uid> launchctl setenv ...` runs it inside that user's GUI
+// domain instead. uid 0 or an empty console (no one logged in) means there is no
+// GUI session to write to, and the plain form is the best we can do.
+func guiSetenvArgs(uid int, key, value string) []string {
+	if uid <= 0 {
+		return []string{"launchctl", "setenv", key, value}
+	}
+	return []string{"launchctl", "asuser", strconv.Itoa(uid), "launchctl", "setenv", key, value}
+}
+
+// consoleUID is the user logged in at the screen, read from the owner of
+// /dev/console — the standard way to find the GUI session from a root daemon.
+// Returns 0 when nobody is logged in, or when the owner cannot be read.
+func consoleUID() int {
+	info, err := os.Stat("/dev/console")
+	if err != nil {
+		return 0
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0
+	}
+	return int(st.Uid)
 }
 
 // writeZshenv replaces our marked block, leaving anything else in the file alone.
@@ -129,8 +167,15 @@ func (DarwinEnv) writeSessionAgent(vars EnvVars) error {
 	if err := os.WriteFile(sessionAgentPlist, []byte(plist), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", sessionAgentPlist, err)
 	}
-	// Loading may fail when there is no GUI session (during an MDM install, say);
-	// the agent runs at the next login regardless.
+	// Load it into the GUI session of whoever is at the screen, for the same
+	// reason setenv needs asuser: a root `launchctl load` loads into root's
+	// domain, where no application of theirs will ever look. Failure is fine —
+	// there may be nobody logged in, as during an MDM install — because the
+	// LaunchAgent runs at the next login regardless.
+	if uid := consoleUID(); uid > 0 {
+		_ = run("launchctl", "bootstrap", fmt.Sprintf("gui/%d", uid), sessionAgentPlist)
+		return nil
+	}
 	_ = run("launchctl", "load", "-w", sessionAgentPlist)
 	return nil
 }
@@ -155,14 +200,22 @@ func (e DarwinEnv) Remove() error {
 
 	// 2. the LaunchAgent
 	if _, err := os.Stat(sessionAgentPlist); err == nil {
+		if uid := consoleUID(); uid > 0 {
+			_ = run("launchctl", "bootout", fmt.Sprintf("gui/%d", uid), sessionAgentPlist)
+		}
 		_ = run("launchctl", "unload", "-w", sessionAgentPlist)
 		if err := os.Remove(sessionAgentPlist); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	// 3. the variables in the running GUI session
+	// 3. the variables in the running GUI session, in that session's own domain
+	// (see guiSetenvArgs) and in ours.
+	uid := consoleUID()
 	for _, k := range AllManagedVars {
+		if uid > 0 {
+			_ = run("launchctl", "asuser", strconv.Itoa(uid), "launchctl", "unsetenv", k)
+		}
 		_ = run("launchctl", "unsetenv", k)
 	}
 	return firstErr

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/pkisan/aiul/internal/platform"
 	"github.com/pkisan/aiul/internal/tasks"
 )
 
@@ -25,7 +26,7 @@ import (
 // We connect upstream FIRST, because that is where we learn which names the real
 // certificate carries — so our copy claims exactly what the genuine server claims
 // and nothing more.
-func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream net.Conn, hostport, client string, ctx tasks.Info) {
+func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream net.Conn, hostport string, client platform.Process, ctx tasks.Info) {
 	host := normalizeHost(hostport)
 	started := time.Now()
 
@@ -67,10 +68,12 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 		// break the tool: remember the host and pass it through sealed from now on,
 		// including this very connection, which the client will retry.
 		// Keyed by the program, not the host alone: a pinned app must not stop us
-		// capturing another tool's traffic to the same provider.
-		if p.cfg.Classifier.AddTunnel(host, client) {
+		// capturing another tool's traffic to the same provider. The key is the
+		// executable, not the process name, because the Claude desktop app's
+		// bundled Claude Code and the terminal CLI are both called "claude".
+		if p.cfg.Classifier.AddTunnel(host, client.Identity()) {
 			p.log.Warn("client rejected our certificate; tunneling this host for this program from now on",
-				"host", host, "process", client, "err", err,
+				"host", host, "process", client.Name, "executable", client.Path, "err", err,
 				"hint", "the tool may need its own CA environment variable, see the capture matrix")
 		}
 		return

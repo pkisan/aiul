@@ -69,3 +69,42 @@ func TestTheCAIsPublishedWhereEveryUserCanReadIt(t *testing.T) {
 		}
 	}
 }
+
+// The Claude desktop app bundles its own copy of Claude Code, and macOS reports
+// the process name of both it and the terminal CLI as "claude". Anything keyed by
+// the name alone treats the two as one program, which is how a pinned desktop app
+// switched off capture for the terminal CLI.
+func TestProcessIdentityPrefersTheExecutable(t *testing.T) {
+	desktop := Process{PID: 1, Name: "claude", Path: "/Users/x/Library/Application Support/Claude/claude-code/2.1.275/claude.app/Contents/MacOS/claude"}
+	cli := Process{PID: 2, Name: "claude", Path: "/opt/homebrew/bin/claude"}
+
+	if desktop.Identity() == cli.Identity() {
+		t.Errorf("two different programs share the identity %q", desktop.Identity())
+	}
+	// With no path — lsof lost the race, the process is gone — the name is all
+	// there is, and is still better than nothing.
+	unknown := Process{PID: 3, Name: "claude"}
+	if unknown.Identity() != "claude" {
+		t.Errorf("Identity() = %q, want the process name", unknown.Identity())
+	}
+}
+
+// `install` runs under sudo. A plain `launchctl setenv` from root writes root's
+// own domain, so the person's GUI applications never see the variable — which is
+// why Claude Desktop had no NODE_EXTRA_CA_CERTS and rejected our certificate.
+func TestGUIVariablesAreSetInTheLoggedInUsersDomain(t *testing.T) {
+	args := guiSetenvArgs(501, "NODE_EXTRA_CA_CERTS", "/usr/local/share/aiul/root.crt")
+	want := []string{"launchctl", "asuser", "501", "launchctl", "setenv", "NODE_EXTRA_CA_CERTS", "/usr/local/share/aiul/root.crt"}
+	if strings.Join(args, " ") != strings.Join(want, " ") {
+		t.Errorf("guiSetenvArgs = %v, want %v", args, want)
+	}
+
+	// Nobody at the screen: there is no GUI session to write to, so the plain
+	// form is all that is left, and it must not become "asuser 0".
+	for _, uid := range []int{0, -1} {
+		plain := guiSetenvArgs(uid, "HTTPS_PROXY", "http://127.0.0.1:8899")
+		if len(plain) != 4 || plain[1] != "setenv" {
+			t.Errorf("guiSetenvArgs(%d) = %v, want a plain setenv", uid, plain)
+		}
+	}
+}

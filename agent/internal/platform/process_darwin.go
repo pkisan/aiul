@@ -31,7 +31,26 @@ func (DarwinProcess) ByLocalPort(port int) (Process, error) {
 		// lsof exits non-zero when nothing matches, which is a normal "not found".
 		return Process{}, fmt.Errorf("no process found on port %d", port)
 	}
-	return parseLsof(string(out), port)
+	proc, err := parseLsof(string(out), port)
+	if err != nil {
+		return Process{}, err
+	}
+	proc.Path = executablePath(proc.PID)
+
+	return proc, nil
+}
+
+// executablePath reads a process's executable. `ps -o comm=` prints the full path
+// on macOS, which is what tells the Claude desktop app's bundled Claude Code apart
+// from the terminal CLI: both are called "claude".
+//
+// Empty on failure, which is normal — the process may already be gone.
+func executablePath(pid int) string {
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // parseLsof reads lsof's field output. Each line begins with a one-letter tag:

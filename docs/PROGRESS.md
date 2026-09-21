@@ -19,6 +19,39 @@ Last updated: 2026-09-21 (session resume)
   code; no system change without explicit yes (rule 1). Unpushed work also
   needs `git push` with owner approval.
 
+## Executable-keyed tunnel list + GUI environment — DONE 2026-09-21
+
+Installing the per-program tunnel list proved it only half fixed things, and
+showed the other half. Two bugs, both in the same 15:08 failure:
+
+1. **The desktop app and the terminal CLI share a process name.** Claude Desktop
+   bundles its own Claude Code at
+   `~/Library/Application Support/Claude/claude-code/2.1.275/claude.app/Contents/MacOS/claude`,
+   and `lsof` calls it "claude" — exactly what it calls the terminal CLI. The
+   desktop copy rejected our certificate and took the CLI down with it again.
+   `Process` now carries `Path` (from `ps -p <pid> -o comm=`) and `Identity()`
+   returns it, falling back to the name; the tunnel list is keyed by that.
+
+2. **GUI applications never received our CA.** `launchctl getenv
+   NODE_EXTRA_CA_CERTS` was empty for the logged-in user. `install` did call
+   `launchctl setenv`, but it runs under sudo, and launchctl writes the domain of
+   whoever asks — so everything landed in root's domain. `/etc/zshenv` covers
+   shells only, so the desktop app saw the system proxy but had no CA to verify
+   it with, and could do nothing except refuse. Both `setenv` and the LaunchAgent
+   load now go through the logged-in user's GUI domain (`launchctl asuser <uid>`,
+   `launchctl bootstrap gui/<uid>`), with the uid read from the owner of
+   `/dev/console`. Uninstall reverses both domains. `scripts/killswitch.sh`
+   already did the `asuser` form — only the Go path was wrong.
+
+Three tests: `Identity()` separates the two claudes, `guiSetenvArgs` uses the
+user's domain and does not become "asuser 0" with nobody logged in, and the
+classifier keeps capturing the CLI after the desktop app is tunnelled. Full agent
+suite passes, `-race` clean on proxy and platform.
+
+Built but NOT installed: `dist/aiul-<next>.pkg` still to be produced from this
+commit. After installing, Claude Desktop needs one quit and relaunch to pick up
+the environment.
+
 ## Per-program tunnel list — DONE 2026-09-21
 
 Capture of `api.anthropic.com` stopped at 12:58 today and nothing new reached the

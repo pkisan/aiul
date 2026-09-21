@@ -244,10 +244,10 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 			// already rejected our certificate on this host. Look it up now, while
 			// the connection is open: ports are reused quickly.
 			proc, ok := p.processOf(clientConn)
-			if d := p.cfg.Classifier.Classify(hostport, proc.Name); d == Tunnel {
+			if d := p.cfg.Classifier.Classify(hostport, proc.Identity()); d == Tunnel {
 				decision = Tunnel
 			} else {
-				p.capture(clientConn, clientReader, upstream, hostport, proc.Name, p.contextOf(proc, ok))
+				p.capture(clientConn, clientReader, upstream, hostport, proc, p.contextOf(proc, ok))
 			}
 		}
 

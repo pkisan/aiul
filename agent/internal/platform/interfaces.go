@@ -105,4 +105,22 @@ type ProcessFinder interface {
 type Process struct {
 	PID  int
 	Name string // "claude", "node", "Cursor Helper"
+
+	// Path is the executable, when we could read it:
+	// "/Users/x/Library/Application Support/Claude/claude-code/2.1.275/claude.app/Contents/MacOS/claude".
+	//
+	// Name alone is NOT an identity. The Claude desktop app bundles its own copy
+	// of Claude Code, and the process name of both that copy and the terminal CLI
+	// is "claude". Anything that has to tell two programs apart — the proxy's
+	// tunnel list, for one — must use this.
+	Path string
+}
+
+// Identity returns the most specific stable name we have for a program: its
+// executable path, or its process name when the path could not be read.
+func (p Process) Identity() string {
+	if p.Path != "" {
+		return p.Path
+	}
+	return p.Name
 }
