@@ -9,6 +9,7 @@ defineProps({
     weakest: Array,
     aiTimeDefinition: String,
     canViewRaw: Boolean,
+    recent: Array,
 });
 
 // Seconds read badly as a raw number on a dashboard.
@@ -88,13 +89,16 @@ const scoreClass = (score) => {
                                 <tr v-for="row in perTask" :key="row.task_id ?? 'untagged'"
                                     :class="row.untagged ? 'bg-amber-50' : ''">
                                     <td class="px-4 py-2 font-medium">
-                                        <span v-if="row.untagged" class="text-amber-800">
-                                            Untagged
-                                            <span class="ml-1 text-xs font-normal text-amber-700">
-                                                (no branch ticket)
+                                        <Link :href="route('usage.task', row.untagged ? 'untagged' : row.task_id)"
+                                              class="underline">
+                                            <span v-if="row.untagged" class="text-amber-800">
+                                                Untagged
+                                                <span class="ml-1 text-xs font-normal text-amber-700">
+                                                    (no branch ticket)
+                                                </span>
                                             </span>
-                                        </span>
-                                        <span v-else>{{ row.task_id }}</span>
+                                            <span v-else>{{ row.task_id }}</span>
+                                        </Link>
                                     </td>
                                     <td class="px-4 py-2 text-right">{{ row.human_prompts }}</td>
                                     <td class="px-4 py-2 text-right text-gray-500">{{ row.automated_followups }}</td>
@@ -144,8 +148,39 @@ const scoreClass = (score) => {
                     </table>
                 </div>
 
-                <!-- Coaching, not ranking -->
+                <!-- Recent, newest first: the short path to one prompt. -->
                 <div class="overflow-hidden rounded-lg bg-white shadow">
+                    <h3 class="border-b px-4 py-3 font-semibold">Recent interactions</h3>
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-50 text-left text-gray-600">
+                            <tr>
+                                <th class="px-4 py-2">When</th>
+                                <th class="px-4 py-2">Task</th>
+                                <th class="px-4 py-2">Tool</th>
+                                <th class="px-4 py-2 text-right">Score</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">
+                            <tr v-for="i in recent" :key="i.id" class="hover:bg-gray-50">
+                                <td class="px-4 py-2">
+                                    <Link :href="route('usage.show', i.id)" class="underline">
+                                        {{ new Date(i.occurred_at).toLocaleString() }}
+                                    </Link>
+                                </td>
+                                <td class="px-4 py-2">{{ i.task_id ?? 'untagged' }}</td>
+                                <td class="px-4 py-2 text-gray-500">{{ i.tool ?? '—' }}</td>
+                                <td class="px-4 py-2 text-right font-medium">{{ i.score ?? '—' }}</td>
+                            </tr>
+                            <tr v-if="!recent.length">
+                                <td colspan="4" class="px-4 py-6 text-center text-gray-500">
+                                    Nothing captured yet.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Coaching, not ranking -->                <div class="overflow-hidden rounded-lg bg-white shadow">
                     <h3 class="border-b px-4 py-3 font-semibold">
                         Where prompts are weakest
                         <span class="ml-2 text-sm font-normal text-gray-500">

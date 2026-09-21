@@ -187,4 +187,55 @@ class UsageReport
             'tools' => (clone $interactions)->distinct()->count('tool'),
         ];
     }
+
+    /**
+     * One task's interactions, newest first — the drill-down behind the per-task
+     * rows. The literal 'untagged' addresses the bucket with no branch ticket;
+     * real task IDs never look like that, so there is no collision.
+     */
+    public function interactionsForTask(string $task): array
+    {
+        $query = AiInteraction::query()
+            ->with('score:id,ai_interaction_id,score')
+            ->where('occurred_at', '>=', $this->since())
+            ->latest('occurred_at')
+            ->limit(100);
+
+        if ($task === 'untagged') {
+            $query->whereNull('task_id');
+        } else {
+            $query->where('task_id', $task);
+        }
+
+        return $query->get()->map(fn ($i) => [
+            'id' => $i->id,
+            'tool' => $i->tool,
+            'model' => $i->model,
+            'task_id' => $i->task_id,
+            'automated' => (bool) $i->automated,
+            'prompt_chars' => $i->prompt_chars,
+            'score' => $i->score?->score,
+            'occurred_at' => $i->occurred_at,
+        ])->all();
+    }
+
+    /** The newest interactions across tasks, for the dashboard's recent list. */
+    public function recent(int $limit = 10): array
+    {
+        return AiInteraction::query()
+            ->with('score:id,ai_interaction_id,score')
+            ->where('occurred_at', '>=', $this->since())
+            ->latest('occurred_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn ($i) => [
+                'id' => $i->id,
+                'tool' => $i->tool,
+                'model' => $i->model,
+                'task_id' => $i->task_id,
+                'automated' => (bool) $i->automated,
+                'score' => $i->score?->score,
+                'occurred_at' => $i->occurred_at,
+            ])->all();
+    }
 }

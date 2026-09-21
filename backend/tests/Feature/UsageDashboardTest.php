@@ -231,6 +231,49 @@ class UsageDashboardTest extends TestCase
         $this->actingAs($this->user(User::ROLE_MANAGER))->get('/my-data')->assertOk();
     }
 
+    public function test_a_task_page_lists_only_that_tasks_interactions(): void
+    {
+        $wanted = $this->interaction(['task_id' => 'ABC-123']);
+        $this->interaction(['task_id' => 'XYZ-9']);
+
+        $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/task/ABC-123')->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $this->assertSame('ABC-123', $props['task']);
+        $ids = collect($props['interactions'])->pluck('id')->all();
+        $this->assertContains($wanted->id, $ids);
+        $this->assertCount(1, $ids);
+    }
+
+    public function test_the_untagged_bucket_has_its_own_task_page(): void
+    {
+        $untagged = $this->interaction(['task_id' => null]);
+        $this->interaction(['task_id' => 'ABC-123']);
+
+        $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/task/untagged')->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $this->assertTrue($props['untagged']);
+        $this->assertSame([$untagged->id], collect($props['interactions'])->pluck('id')->all());
+    }
+
+    public function test_a_member_cannot_open_a_task_page(): void
+    {
+        $this->interaction(['task_id' => 'ABC-123']);
+
+        $this->actingAs($this->user())->get('/usage/task/ABC-123')->assertForbidden();
+    }
+
+    public function test_the_dashboard_carries_a_recent_list_with_ids_to_open(): void
+    {
+        $interaction = $this->interaction(['task_id' => 'ABC-123']);
+
+        $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')->assertOk();
+        $recent = collect($response->viewData('page')['props']['recent']);
+
+        $this->assertTrue($recent->contains(fn ($row) => $row['id'] === $interaction->id));
+    }
+
     public function test_the_audit_log_lists_who_read_what(): void
     {
         $subject = $this->user();

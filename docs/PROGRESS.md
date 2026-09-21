@@ -19,6 +19,17 @@ Last updated: 2026-09-21 (session resume)
   code; no system change without explicit yes (rule 1). Unpushed work also
   needs `git push` with owner approval.
 
+## Dashboard drill-down — DONE 2026-09-21 (demo request)
+
+The aggregates page had no click path to a prompt. Now: per-task rows link to
+`GET /usage/task/{task}` (`untagged` addresses the no-ticket bucket), each
+listing that task's interactions with links to `/usage/{interaction}`, which
+already held the audit-logged "Open the prompt text" button. A "Recent
+interactions" list on `/usage` gives the short path. Manager gate on all of
+it; raw-text policy untouched. `UsageReport::interactionsForTask` + `recent`,
+`UsageDashboardController::task`, `Task.vue`, 4 new tests — 77 backend tests
+pass. Rebuilt frontend (`npm run build`) so `public/build` serves it.
+
 ## MILESTONE: the whole pipeline proven through the INSTALLED package, 2026-09-20
 
 A real `claude -p` run, captured by the agent installed from `aiul-0.9.0.pkg`, is

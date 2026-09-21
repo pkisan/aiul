@@ -29,6 +29,21 @@ class UsageDashboardController extends Controller
             'weakest' => $report->weakestDimensions(),
             'aiTimeDefinition' => $this->aiTimeDefinition(),
             'canViewRaw' => $request->user()->canViewRawPrompts(),
+            'recent' => $report->recent(),
+        ]);
+    }
+
+    /** One task's interactions: the click between the per-task rows and a prompt. */
+    public function task(Request $request, string $task): Response
+    {
+        abort_unless($request->user()->isManager(), 403);
+
+        $report = new UsageReport(days: (int) $request->integer('days', 30) ?: 30);
+
+        return Inertia::render('Usage/Task', [
+            'task' => $task,
+            'untagged' => $task === 'untagged',
+            'interactions' => $report->interactionsForTask($task),
         ]);
     }
 
