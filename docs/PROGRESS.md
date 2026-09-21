@@ -14,8 +14,10 @@ Last updated: 2026-09-21 (HTTP/2 plan written)
   clean. `aiul status` on 2026-09-21 shows the agent INSTALLED (proxy
   listening, CA trusted, 4/4 services proxied, 9 env vars,
   CA at `/var/db/aiul/dev-ca/root.crt`). Owner chose LEAVE INSTALLED.
-- The Claude desktop app IS captured as of `611ed48` (rows 190-193, prompt
-  "foo"). Cursor still tunnels on a genuine TLS alert, which is correct.
+- The Claude desktop app is no longer tunnelled as of `611ed48`, and its prompt
+  is captured via `/v1/messages/count_tokens`, but its streamed `/v1/messages`
+  completion still records NOTHING. See "OPEN" below. Cursor still tunnels on a
+  genuine TLS alert, which is correct.
 - NEXT STEP: integration test for the deployment path — install, verify,
   upgrade, uninstall against real launchd. Plan goes in this file first.
 - Research mode is ON (`/var/db/aiul/research` holds decrypted, redacted
@@ -44,6 +46,38 @@ pieces of evidence killed it, both gathered before any of it was built:
 What the plan got right is that `openssl s_client -alpn h2` really is refused by
 this proxy. No AI client we have seen needs it. If one ever does, the steps are
 in git history at `d5bc9f8`; do not rebuild them on today's evidence.
+
+## OPEN: the desktop app's completion is captured but recorded empty
+
+Corrected claim: after `611ed48` the Claude desktop app is no longer tunnelled
+and its PROMPT does reach the database — but only through
+`POST /v1/messages/count_tokens`, which carries the prompt text and answers with
+24 bytes of `{"input_tokens":N}`. The completion itself,
+`POST /v1/messages` streamed, produced NO row (ids 188-193 were all
+count_tokens; nothing after matched). A fully captured exchange looks like the
+terminal CLI's: `path=/v1/messages streamed=true answer_chars=2197`.
+
+What the log shows for the app in that window: handshakes succeeding, no tunnel
+decisions, no warnings, and several `forwarding ended host=api.anthropic.com
+err=EOF`. `forward()` calls `record()` unconditionally AFTER the response is
+streamed, so an exchange that never records is one that returned early — at
+`write request upstream` or at `read response`. An `EOF` from `http.ReadResponse`
+means the provider closed without answering, and the most likely reason is ours:
+`capture()` holds ONE upstream connection per client connection, so a client that
+reuses its connection after the provider has dropped ours gets nothing.
+
+Diagnostic added (no behaviour change):
+- `forwarding ended` now carries `method`, `path` and `request_on_connection`,
+  so a failure on the second or third request of a reused connection is
+  distinguishable from a failure on the first.
+- `client connection ended` carries `requests_served`.
+- A new `recorded` DEBUG line carries parser, model, streamed, prompt_chars,
+  answer_chars, response_bytes, response_copy_bytes and content-type — an event
+  with a prompt but no answer is visible nowhere else.
+
+Database was wiped clean on request the same day (0 interactions, 0 sessions, 0
+quality_scores, 352 body objects deleted; devices, users, tenants and consent
+records kept so the agent keeps ingesting). Everything from here is fresh.
 
 ## Silence is not a refusal — DONE 2026-09-21 (the actual cause)
 

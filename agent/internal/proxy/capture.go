@@ -206,17 +206,28 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 	clientBuf := bufio.NewReader(clientTLS)
 	upstreamBuf := bufio.NewReader(upstreamTLS)
 
+	// Which request this is on this connection. Connections are reused, and an
+	// exchange that fails on the second or third request of a connection is a
+	// different fault from one that fails on the first: it means our single
+	// upstream connection went away while the client still had questions.
+	requests := 0
+
 	for {
 		req, err := http.ReadRequest(clientBuf)
 		if err != nil {
 			if !errors.Is(err, io.EOF) && !isClosed(err) {
-				p.log.Debug("client connection ended", "host", host, "err", err)
+				p.log.Debug("client connection ended", "host", host, "err", err,
+					"requests_served", requests)
 			}
 			return
 		}
+		requests++
+
+		method, path := req.Method, req.URL.Path
 
 		if err := p.forward(req, clientTLS, upstreamTLS, upstreamBuf, host, started, ctx); err != nil {
-			p.log.Debug("forwarding ended", "host", host, "err", err)
+			p.log.Debug("forwarding ended", "host", host, "err", err,
+				"method", method, "path", path, "request_on_connection", requests)
 			return
 		}
 	}

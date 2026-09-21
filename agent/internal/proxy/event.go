@@ -171,6 +171,14 @@ func (p *Proxy) record(in interaction) {
 		ev.ResponseTokens = res.ResponseTokens
 	}
 
+	// What the parser actually made of the exchange. An event with a prompt but
+	// no answer means the response side was lost, which no other line shows.
+	p.log.Debug("recorded", "host", in.Host, "path", in.Path, "status", in.Status,
+		"parser", ev.Parser, "model", ev.Model, "streamed", ev.Streamed,
+		"prompt_chars", len(ev.Prompt), "answer_chars", len(ev.Answer),
+		"response_bytes", in.ResponseBytes, "response_copy_bytes", len(in.ResponseCopy),
+		"content_type", in.ResponseHead.Get("Content-Type"))
+
 	// Rule 8: mask before anything is stored or sent. The provider already has the
 	// original request; this only touches our copy.
 	texts, found := p.redactor.Strings(ev.Prompt, ev.System, ev.Answer)
