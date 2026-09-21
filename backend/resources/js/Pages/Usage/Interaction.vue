@@ -1,8 +1,18 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 
-defineProps({ interaction: Object, score: Object, canViewRaw: Boolean });
+const props = defineProps({ interaction: Object, score: Object, canViewRaw: Boolean });
+
+// Someone else's words require a reason; the server bounces a reason-less
+// visit back with an error, which used to look like a dead button.
+const reason = ref('');
+const errors = computed(() => usePage().props.errors);
+const rawUrl = computed(() => {
+    const base = route('usage.raw', props.interaction.id);
+    return reason.value.trim() ? `${base}?reason=${encodeURIComponent(reason.value.trim())}` : base;
+});
 </script>
 
 <template>
@@ -47,12 +57,20 @@ defineProps({ interaction: Object, score: Object, canViewRaw: Boolean });
                     </ul>
                 </div>
 
-                <div v-if="canViewRaw">
-                    <Link :href="route('usage.raw', interaction.id)"
-                          class="inline-block rounded bg-gray-800 px-4 py-2 text-sm text-white">
-                        Open the prompt text
-                    </Link>
-                    <p class="mt-2 text-xs text-gray-500">Opening it is recorded in the audit log.</p>
+                <div v-if="canViewRaw" class="space-y-2">
+                    <label class="block text-sm text-gray-600" for="reason">
+                        Reason for opening — required for someone else's prompt, recorded in the audit log
+                    </label>
+                    <input id="reason" v-model="reason" type="text" placeholder="e.g. support investigation"
+                           class="w-full rounded border-gray-300 text-sm shadow-sm" />
+                    <p v-if="errors.reason" class="text-sm text-red-600">{{ errors.reason }}</p>
+                    <div>
+                        <Link :href="rawUrl"
+                              class="inline-block rounded bg-gray-800 px-4 py-2 text-sm text-white">
+                            Open the prompt text
+                        </Link>
+                        <p class="mt-2 text-xs text-gray-500">Opening it is recorded in the audit log.</p>
+                    </div>
                 </div>
                 <p v-else class="text-sm text-gray-500">
                     You do not have permission to read the prompt text.
