@@ -25,7 +25,13 @@ mitmproxy is only ever a research tool. The product never depends on it.
 <provider>/<case>.response.sse    a streamed response, raw SSE
 <provider>/<case>.response.json   a whole (non-streamed) response
 <provider>/<case>.meta.json       method, path, status, headers, HTTP version
+<provider>/<case>.ws.jsonl        WebSocket frames, one JSON object per line
 ```
+
+`.ws.jsonl` exists because Codex does not use HTTP bodies at all: it opens
+`GET /backend-api/codex/responses`, gets `101 Switching Protocols`, and every
+prompt and answer travels as WebSocket frames. Each line records `from`
+("client" or "server"), `binary`, `bytes` and the scrubbed `payload`.
 
 `.meta.json` exists for the HTTP/2 work: a fixture is only proof of an h2
 exchange if the version it was recorded over is written down next to it.

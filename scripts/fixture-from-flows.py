@@ -22,13 +22,15 @@ import re
 from mitmproxy import ctx
 
 # Only exchanges that carry a prompt. Anything else is noise for a parser.
-INTERESTING = ("/v1/messages", "/v1/chat/completions", "/backend-api/conversation")
+INTERESTING = ("/v1/messages", "/v1/chat/completions", "/backend-api/conversation",
+               "/backend-api/codex/responses", "/v1/responses")
 
 SECRET_HEADERS = {
     "authorization", "x-api-key", "cookie", "set-cookie", "proxy-authorization",
     "anthropic-api-key", "openai-organization", "x-session-token",
 }
 
+HOME = re.compile(r"/Users/[^/\"'\\s]+")
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 TOKEN = re.compile(r"\b(sk-ant-[\w-]+|sk-[A-Za-z0-9]{20,}|oat01-[\w-]+)\b")
@@ -41,6 +43,9 @@ def load(loader):
 
 def scrub(text: str) -> str:
     text = TOKEN.sub("REDACTED-TOKEN", text)
+    # A home directory carries the person's username, and tools put their paths
+    # into system prompts constantly.
+    text = HOME.sub("/Users/dev", text)
     text = UUID.sub("00000000-0000-4000-8000-000000000000", text)
     return EMAIL.sub("someone@example.com", text)
 
@@ -50,6 +55,45 @@ def headers(message) -> dict:
         k.lower(): ("REDACTED" if k.lower() in SECRET_HEADERS else scrub(v))
         for k, v in message.headers.items()
     }
+
+
+def websocket_message(flow):
+    """Record WebSocket frames.
+
+    Codex talks to /backend-api/codex/responses over a WebSocket: the HTTP
+    exchange is a bare 101 with no body, and every prompt and answer lives in
+    frames. Without these there is nothing for a parser to be written against.
+
+    One JSON object per line: direction, whether it was binary, and the payload.
+    """
+    if not any(part in flow.request.path for part in INTERESTING):
+        return
+
+    out = ctx.options.fixture_out
+    case = ctx.options.fixture_case
+    os.makedirs(os.path.join(out, os.path.dirname(case)), exist_ok=True)
+    path = os.path.join(out, case + ".ws.jsonl")
+
+    message = flow.websocket.messages[-1]
+    payload = message.text if not message.is_text is False else None
+    try:
+        text = scrub(message.text)
+    except (UnicodeDecodeError, AttributeError):
+        text = None
+
+    with open(path, "a") as f:
+        json.dump({
+            "from": "client" if message.from_client else "server",
+            "binary": not message.is_text,
+            "bytes": len(message.content),
+            "payload": text,
+        }, f, sort_keys=True)
+        f.write("\n")
+
+
+def websocket_end(flow):
+    ctx.log.info(f"websocket closed: {flow.request.path} "
+                 f"({len(flow.websocket.messages)} frames)")
 
 
 def response(flow):
@@ -73,7 +117,11 @@ def response(flow):
         f.write(body if body.endswith("\n") else body + "\n")
 
     answer = scrub(flow.response.get_text(strict=False) or "")
-    streamed = "text/event-stream" in flow.response.headers.get("content-type", "")
+    # Codex answers with event-stream framing and NO Content-Type header, which is
+    # exactly why its responses are not being parsed — so decide by what the body
+    # looks like, not by what the header claims.
+    streamed = ("text/event-stream" in flow.response.headers.get("content-type", "")
+                or answer.lstrip().startswith(("data:", "event:")))
     with open(f"{base}.response.{'sse' if streamed else 'json'}", "w") as f:
         f.write(answer if answer.endswith("\n") else answer + "\n")
 
