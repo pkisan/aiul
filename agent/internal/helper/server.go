@@ -16,7 +16,7 @@ import (
 type Privileged interface {
 	ProxyOn() error
 	ProxyOff() error
-	ProcessOnPort(port int) (pid int, name, workingDir string, err error)
+	ProcessOnPort(port int) (pid int, name, executable, workingDir string, err error)
 }
 
 // Server is the root side. It answers verbs and nothing more: it never opens a
@@ -134,7 +134,7 @@ func (s *Server) answer(line string) string {
 		return FormatOK()
 
 	case VerbProcess:
-		pid, name, dir, err := s.ops.ProcessOnPort(req.Port)
+		pid, name, exe, dir, err := s.ops.ProcessOnPort(req.Port)
 		if err != nil {
 			return FormatErr(err)
 		}
@@ -146,7 +146,9 @@ func (s *Server) answer(line string) string {
 		// — and the task ID is still worked out in the worker.
 		repo, branch := tasks.CheckoutAt(dir)
 
-		return FormatOK(fmt.Sprintf("%d", pid), name, dir, repo, branch)
+		// The executable, not just the process name: the Claude desktop app
+		// bundles its own Claude Code, and both are called "claude".
+		return FormatOK(fmt.Sprintf("%d", pid), name, dir, repo, branch, exe)
 
 	default:
 		// Unreachable: ParseRequest only returns verbs listed above. Kept so that

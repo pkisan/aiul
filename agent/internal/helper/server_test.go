@@ -20,7 +20,7 @@ type fakeOps struct {
 	proxyOff  int
 	lastPort  int
 	failWith  error
-	processes map[int][3]string
+	processes map[int][4]string // pid, name, working dir, executable
 }
 
 func (f *fakeOps) ProxyOn() error {
@@ -42,22 +42,22 @@ func (f *fakeOps) ProxyOff() error {
 // The fake stands in for the real lsof lookup. It knows nothing about checkouts:
 // the server reads those itself, which is the whole point of doing it in the
 // privileged half.
-func (f *fakeOps) ProcessOnPort(port int) (int, string, string, error) {
+func (f *fakeOps) ProcessOnPort(port int) (int, string, string, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.lastPort = port
 
 	if f.failWith != nil {
-		return 0, "", "", f.failWith
+		return 0, "", "", "", f.failWith
 	}
 	if entry, ok := f.processes[port]; ok {
 		var pid int
 		fmt.Sscanf(entry[0], "%d", &pid)
 
-		return pid, entry[1], entry[2], nil
+		return pid, entry[1], entry[3], entry[2], nil
 	}
 
-	return 0, "", "", fmt.Errorf("no process found on port %d", port)
+	return 0, "", "", "", fmt.Errorf("no process found on port %d", port)
 }
 
 // shortTempDir returns a temporary directory with a SHORT path.
@@ -95,8 +95,8 @@ func startServer(t *testing.T, ops *fakeOps) *Client {
 }
 
 func TestClientAndServerSpeakToEachOther(t *testing.T) {
-	ops := &fakeOps{processes: map[int][3]string{
-		54321: {"4242", "Cursor Helper", "/Users/dev/my project"},
+	ops := &fakeOps{processes: map[int][4]string{
+		54321: {"4242", "Cursor Helper", "/Users/dev/my project", "/Applications/Cursor.app/Contents/MacOS/Cursor"},
 	}}
 	client := startServer(t, ops)
 
@@ -111,7 +111,7 @@ func TestClientAndServerSpeakToEachOther(t *testing.T) {
 		t.Errorf("ProxyOff: %v", err)
 	}
 
-	pid, name, dir, _, _, err := client.ProcessOnPort(54321)
+	pid, name, dir, _, _, _, err := client.ProcessOnPort(54321)
 	if err != nil {
 		t.Fatalf("ProcessOnPort: %v", err)
 	}
@@ -139,9 +139,9 @@ func TestAnErrorFromThePrivilegedSideReachesTheClient(t *testing.T) {
 }
 
 func TestMissingProcessIsAnOrdinaryError(t *testing.T) {
-	client := startServer(t, &fakeOps{processes: map[int][3]string{}})
+	client := startServer(t, &fakeOps{processes: map[int][4]string{}})
 
-	if _, _, _, _, _, err := client.ProcessOnPort(9999); err == nil {
+	if _, _, _, _, _, _, err := client.ProcessOnPort(9999); err == nil {
 		t.Error("a port with no process must be an error, not a silent zero")
 	}
 }
@@ -160,11 +160,11 @@ func TestTheHelperReadsTheCheckoutTheWorkerCannot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := startServer(t, &fakeOps{processes: map[int][3]string{
-		4321: {"777", "claude", repo},
+	client := startServer(t, &fakeOps{processes: map[int][4]string{
+		4321: {"777", "claude", repo, "/opt/homebrew/bin/claude"},
 	}})
 
-	_, _, dir, gotRepo, gotBranch, err := client.ProcessOnPort(4321)
+	_, _, dir, gotRepo, gotBranch, _, err := client.ProcessOnPort(4321)
 	if err != nil {
 		t.Fatalf("ProcessOnPort: %v", err)
 	}
@@ -245,5 +245,28 @@ func TestClientReportsAnAbsentHelper(t *testing.T) {
 	}
 	if err := client.ProxyOn(); err == nil {
 		t.Error("calling an absent helper must fail rather than hang")
+	}
+}
+
+// The worker cannot run lsof itself, so whatever the helper leaves out is lost to
+// it. The executable is what tells the Claude desktop app's bundled Claude Code
+// apart from the terminal CLI — both are called "claude" — so it has to cross the
+// socket, and a path with spaces has to survive the tab-separated reply.
+func TestTheExecutableCrossesTheSocket(t *testing.T) {
+	const exe = "/Users/dev/Library/Application Support/Claude/claude-code/2.1.275/claude.app/Contents/MacOS/claude"
+
+	client := startServer(t, &fakeOps{processes: map[int][4]string{
+		5150: {"999", "claude", "/Users/dev", exe},
+	}})
+
+	_, name, _, _, _, gotExe, err := client.ProcessOnPort(5150)
+	if err != nil {
+		t.Fatalf("ProcessOnPort: %v", err)
+	}
+	if name != "claude" {
+		t.Errorf("name = %q", name)
+	}
+	if gotExe != exe {
+		t.Errorf("executable = %q, want %q", gotExe, exe)
 	}
 }

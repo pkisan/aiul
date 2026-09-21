@@ -113,18 +113,18 @@ type privilegedOps struct{}
 func (privilegedOps) ProxyOn() error  { return platform.Proxy().Set(proxyAddr) }
 func (privilegedOps) ProxyOff() error { return platform.Proxy().Unset() }
 
-func (privilegedOps) ProcessOnPort(port int) (int, string, string, error) {
+func (privilegedOps) ProcessOnPort(port int) (int, string, string, string, error) {
 	process, err := platform.Processes().ByLocalPort(port)
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", "", err
 	}
 
 	dir, err := platform.Processes().WorkingDir(process.PID)
 	if err != nil {
 		// Knowing the process but not its directory is still useful: the event
 		// records the tool even when the task cannot be worked out.
-		return process.PID, process.Name, "", nil
+		return process.PID, process.Name, process.Path, "", nil
 	}
 
-	return process.PID, process.Name, dir, nil
+	return process.PID, process.Name, process.Path, dir, nil
 }

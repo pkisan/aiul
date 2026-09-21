@@ -27,7 +27,7 @@ type privilegedSource interface {
 	// ProcessOnPort also answers what is checked out where that process is
 	// working: the worker's account cannot read a person's .git/HEAD, so the
 	// privileged side reads it in the same reply.
-	ProcessOnPort(port int) (pid int, name, workingDir, repo, branch string, err error)
+	ProcessOnPort(port int) (pid int, name, workingDir, repo, branch, executable string, err error)
 }
 
 // chooseSource prefers the helper and says plainly which one it picked, because
@@ -56,22 +56,22 @@ type directOps struct{}
 func (directOps) ProxyOn() error  { return platform.Proxy().Set(proxyAddr) }
 func (directOps) ProxyOff() error { return platform.Proxy().Unset() }
 
-func (directOps) ProcessOnPort(port int) (int, string, string, string, string, error) {
+func (directOps) ProcessOnPort(port int) (int, string, string, string, string, string, error) {
 	process, err := platform.Processes().ByLocalPort(port)
 	if err != nil {
-		return 0, "", "", "", "", err
+		return 0, "", "", "", "", "", err
 	}
 
 	dir, err := platform.Processes().WorkingDir(process.PID)
 	if err != nil {
-		return process.PID, process.Name, "", "", "", nil
+		return process.PID, process.Name, "", "", "", process.Path, nil
 	}
 
 	// Running by hand, this process is the person using the machine, so it can
 	// read the checkout itself.
 	repo, branch := tasks.CheckoutAt(dir)
 
-	return process.PID, process.Name, dir, repo, branch, nil
+	return process.PID, process.Name, dir, repo, branch, process.Path, nil
 }
 
 // sourceFinder adapts a privilegedSource to the interface the proxy wants for
@@ -81,7 +81,7 @@ type sourceFinder struct {
 }
 
 func (f sourceFinder) ByLocalPort(port int) (platform.Process, error) {
-	pid, name, dir, repo, branch, err := f.source.ProcessOnPort(port)
+	pid, name, dir, repo, branch, exe, err := f.source.ProcessOnPort(port)
 	if err != nil {
 		return platform.Process{}, err
 	}
@@ -90,7 +90,7 @@ func (f sourceFinder) ByLocalPort(port int) (platform.Process, error) {
 	// remember them rather than asking again.
 	f.remember(pid, dir, repo, branch)
 
-	return platform.Process{PID: pid, Name: name}, nil
+	return platform.Process{PID: pid, Name: name, Path: exe}, nil
 }
 
 func (f sourceFinder) WorkingDir(pid int) (string, error) {

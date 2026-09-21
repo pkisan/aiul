@@ -19,6 +19,25 @@ Last updated: 2026-09-21 (session resume)
   code; no system change without explicit yes (rule 1). Unpushed work also
   needs `git push` with owner approval.
 
+## The executable had to cross the helper socket — DONE 2026-09-21
+
+Installed `68d9a08` and the log said `process=claude executable=""`. The
+executable lookup was written in `platform.DarwinProcess`, but the INSTALLED
+worker never calls it: it cannot run lsof as a service account, so it asks the
+root helper over the unix socket, and the reply carried five fields — pid, name,
+dir, repo, branch. The new field simply never crossed. Same lesson as the seven
+deployment bugs: what the worker can do by hand is not what it does installed.
+
+`PROCESS` now replies with a sixth tab-separated field, the executable. The
+client accepts five or six, so a worker from the new build keeps working against
+a helper from the old one during the moments of an upgrade. Round-trip test
+covers a path with spaces. Full suite and `-race` pass.
+
+Known gap: when lsof cannot identify the process at all, the identity is empty
+and every such connection shares one tunnel bucket per host. A tool that rejects
+our certificate while unidentified therefore tunnels other unidentified
+connections to that host. Ranked below getting the identified case right.
+
 ## Executable-keyed tunnel list + GUI environment — DONE 2026-09-21
 
 Installing the per-program tunnel list proved it only half fixed things, and
