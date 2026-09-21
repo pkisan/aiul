@@ -19,6 +19,33 @@ Last updated: 2026-09-21 (session resume)
   code; no system change without explicit yes (rule 1). Unpushed work also
   needs `git push` with owner approval.
 
+## The desktop app was never pinning: it speaks HTTP/2 — DONE 2026-09-21 (log honesty)
+
+A prompt typed in Claude Desktop at 15:44 produced no row. The log said "client
+rejected our certificate", so the hunt went through trust stores and CA
+environment variables — and the app had all of them
+(`ps eww` shows `NODE_EXTRA_CA_CERTS`, `NODE_USE_SYSTEM_CA`, `HTTPS_PROXY`).
+
+The real cause, proved directly:
+
+```
+$ openssl s_client -proxy 127.0.0.1:8899 -connect api.openai.com:443 -alpn h2
+SSL alert number 120 — tlsv1 alert no application protocol
+```
+
+We advertise `http/1.1` only. The desktop app's bundled Claude Code (2.1.275)
+opens `/v1/messages` with ALPN `h2`, so the handshake ends before any
+certificate is judged. The same process IS captured on
+`/api/claude_cli/bootstrap`, `/api/claude_code_grove` and
+`/api/claude_code_penguin_mode`, which it opens over HTTP/1.1. The terminal CLI
+(2.1.267) uses HTTP/1.1 throughout, which is why it has always logged.
+
+Done now: the ALPN the client offered is recorded from the ClientHello and the
+warning says which of the two failures it was — `handshakeFailure()` in
+`capture.go`, with a test that an h2-only offer is not reported as distrust and
+that http/1.1-or-nothing still is. Behaviour is unchanged: rule 4 still tunnels,
+so the desktop app stays metadata-only until the proxy speaks HTTP/2.
+
 ## Dashboard clock was 5h30m fast — DONE 2026-09-21
 
 Every screen showed IST plus another 5h30m: a 15:29 interaction read 8:59 PM.

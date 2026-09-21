@@ -7,6 +7,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/pkisan/aiul/internal/platform"
@@ -26,6 +28,19 @@ import (
 // We connect upstream FIRST, because that is where we learn which names the real
 // certificate carries — so our copy claims exactly what the genuine server claims
 // and nothing more.
+// handshakeFailure explains why a client would not complete a handshake with us,
+// as far as its ALPN offer can say. A client that never offered http/1.1 did not
+// refuse our certificate — it asked for a protocol this proxy does not serve yet,
+// and no certificate or trust store change will help it.
+func handshakeFailure(offeredALPN []string) (reason, hint string) {
+	if len(offeredALPN) > 0 && !slices.Contains(offeredALPN, "http/1.1") {
+		return "the client speaks none of the protocols we serve (we serve http/1.1 only)",
+			"this is not a certificate problem: the proxy has to speak HTTP/2 to capture this tool"
+	}
+	return "the client rejected our certificate",
+		"the tool may need its own CA environment variable, see the capture matrix"
+}
+
 func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream net.Conn, hostport string, client platform.Process, ctx tasks.Info) {
 	host := normalizeHost(hostport)
 	started := time.Now()
@@ -56,25 +71,39 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 		return
 	}
 
+	// What the client offered in ALPN, recorded before the handshake can fail.
+	// Without it a client that speaks only HTTP/2 looks exactly like a client that
+	// distrusts our certificate, and the log blames the wrong thing.
+	var offeredALPN []string
+
 	clientTLS := tls.Server(rewindConn{Conn: clientConn, reader: clientReader}, &tls.Config{
 		Certificates: []tls.Certificate{*cert},
 		NextProtos:   []string{"http/1.1"},
 		MinVersion:   tls.VersionTLS12,
+		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+			offeredALPN = hello.SupportedProtos
+			// nil means "carry on with the configuration you already have".
+			return nil, nil
+		},
 	})
 
 	if err := clientTLS.HandshakeContext(handshakeContext()); err != nil {
-		// Rule 4: the client refused our certificate. This is certificate pinning,
-		// or a runtime that does not read the trust store. Either way we must never
-		// break the tool: remember the host and pass it through sealed from now on,
-		// including this very connection, which the client will retry.
+		// Rule 4: we could not complete a handshake this client accepts. It may be
+		// certificate pinning, a runtime that does not read the trust store, or a
+		// protocol we do not serve. Either way we must never break the tool:
+		// remember it and pass it through sealed from now on, including this very
+		// connection, which the client will retry.
+		//
 		// Keyed by the program, not the host alone: a pinned app must not stop us
 		// capturing another tool's traffic to the same provider. The key is the
 		// executable, not the process name, because the Claude desktop app's
 		// bundled Claude Code and the terminal CLI are both called "claude".
 		if p.cfg.Classifier.AddTunnel(host, client.Identity()) {
-			p.log.Warn("client rejected our certificate; tunneling this host for this program from now on",
-				"host", host, "process", client.Name, "executable", client.Path, "err", err,
-				"hint", "the tool may need its own CA environment variable, see the capture matrix")
+			reason, hint := handshakeFailure(offeredALPN)
+			p.log.Warn("tunneling this host for this program from now on",
+				"host", host, "reason", reason, "process", client.Name,
+				"executable", client.Path, "alpn", strings.Join(offeredALPN, ","),
+				"err", err, "hint", hint)
 		}
 		return
 	}

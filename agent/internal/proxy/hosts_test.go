@@ -223,3 +223,25 @@ func TestObservedIDEHostsAreClassified(t *testing.T) {
 		}
 	}
 }
+
+// A client that offers only h2 is not distrusting our certificate — it is asking
+// for a protocol we do not serve. Reported as pinning, it sent everyone hunting
+// through trust stores and CA environment variables for a day.
+func TestHandshakeFailureTellsALPNApartFromDistrust(t *testing.T) {
+	reason, hint := handshakeFailure([]string{"h2"})
+	if !strings.Contains(reason, "http/1.1") {
+		t.Errorf("an h2-only client reported as %q", reason)
+	}
+	if strings.Contains(hint, "CA environment variable") {
+		t.Errorf("hint sends the reader after certificates: %q", hint)
+	}
+
+	// Offering http/1.1 and still failing means the certificate really was the
+	// problem; so does offering nothing at all (an old client, no ALPN).
+	for _, offered := range [][]string{{"h2", "http/1.1"}, {"http/1.1"}, nil} {
+		reason, _ := handshakeFailure(offered)
+		if !strings.Contains(reason, "certificate") {
+			t.Errorf("offered %v reported as %q, want a certificate problem", offered, reason)
+		}
+	}
+}
