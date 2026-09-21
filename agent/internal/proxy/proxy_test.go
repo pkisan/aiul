@@ -941,3 +941,30 @@ func TestACancelledConnectionIsNotTakenForARefusal(t *testing.T) {
 		t.Errorf("body = %q", body)
 	}
 }
+
+// An answer of zero has two causes that look identical in the database: a turn
+// that carried no prose (only a tool call), and a stream this parser does not
+// understand. The event types separate them, and are types only — never the text.
+func TestSSETypesSummarisesAStreamWithoutRevealingIt(t *testing.T) {
+	got := sseTypes([]string{
+		`{"type":"message_start","message":{"usage":{"input_tokens":2}}}`,
+		`{"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\"cmd\""}}`,
+		`{"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":":\"ls\"}"}}`,
+		`{"type":"message_delta","usage":{"output_tokens":223}}`,
+		`not json at all`,
+	})
+
+	want := "message_start×1 content_block_delta:input_json_delta×2 message_delta×1"
+	if got != want {
+		t.Errorf("sseTypes = %q, want %q", got, want)
+	}
+	for _, secret := range []string{"cmd", "ls", "partial_json"} {
+		if strings.Contains(got, secret) {
+			t.Errorf("summary leaked content: %q", got)
+		}
+	}
+
+	if empty := sseTypes(nil); empty != "" {
+		t.Errorf("no events should summarise as empty, got %q", empty)
+	}
+}

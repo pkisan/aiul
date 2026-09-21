@@ -47,6 +47,47 @@ What the plan got right is that `openssl s_client -alpn h2` really is refused by
 this proxy. No AI client we have seen needs it. If one ever does, the steps are
 in git history at `d5bc9f8`; do not rebuild them on today's evidence.
 
+## OPEN: three distinct reasons an answer is missing (2026-09-21)
+
+With `f3d5c18` installed, one message in each app produced this:
+
+```
+recorded host=chatgpt.com path=/backend-api/codex/responses status=101 ... response_bytes=0        x15
+recorded host=chatgpt.com path=/backend-api/codex/responses status=200 model=gpt-5.6-luna streamed=true
+         prompt_chars=42996 answer_chars=0 response_bytes=204922 response_copy_bytes=204922
+recorded host=api.anthropic.com path=/v1/messages status=200 prompt_chars=0 answer_chars=0
+         response_bytes=1519 response_copy_bytes=1519 content_type=text/event-stream
+parse failed parser=anthropic err="unexpected end of JSON input"
+```
+
+Three separate faults, not one:
+
+1. **Codex speaks WebSocket.** `status=101` is a protocol upgrade; after it the
+   connection is frames, which `forward()` does not parse at all. Fifteen of them
+   in one message.
+2. **The Codex Responses API has no parser.** The one `200` carried 42,996
+   characters of prompt (parsed) and 204,922 bytes of answer the openai parser
+   made nothing of. Needs a fixture and a parser, like chatgpt.com had.
+3. **Some request bodies never reach our copy.** `prompt_chars=0` with the
+   response copied in full, and `unexpected end of JSON input` from the parser —
+   the response was there, the request body was not. Intermittent: the same
+   endpoint parses on other connections.
+
+A fourth case is NOT a fault: row 273 had `answer_chars=0` with
+`response_tokens=223`, which is what a turn that only calls a tool looks like —
+the deltas are `input_json_delta` and the parser keeps only `text_delta`.
+Whether such a turn should record something is a product decision.
+
+Diagnostic added for the two that are still unexplained (no behaviour change):
+- `sse_events` and `sse_types` on the `recorded` line — distinct event and delta
+  types with counts, in first-seen order, types only, never the text. This
+  separates "no prose in the stream" from "a stream shape we do not know".
+- `request_bytes`, `request_copy_bytes`, `request_encoding` and
+  `transfer_encoding`, for the empty-request-body case.
+
+Test: `TestSSETypesSummarisesAStreamWithoutRevealingIt` asserts the summary and
+that no `partial_json` content leaks into it.
+
 ## OPEN: the desktop app's completion is captured but recorded empty
 
 Corrected claim: after `611ed48` the Claude desktop app is no longer tunnelled

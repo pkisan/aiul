@@ -61,19 +61,20 @@ func (p *Proxy) forward(req *http.Request, client io.Writer, upstream *tls.Conn,
 	written, err := streamBody(client, resp, &respCopy)
 
 	ev := interaction{
-		Host:          host,
-		Method:        req.Method,
-		Path:          req.URL.Path,
-		Status:        resp.StatusCode,
-		RequestBytes:  req.ContentLength,
-		ResponseBytes: written,
-		RequestCopy:   reqCopy.Bytes(),
-		ResponseCopy:  respCopy.Bytes(),
-		RequestHeader: req.Header,
-		ResponseHead:  resp.Header,
-		Started:       started,
-		Duration:      time.Since(started),
-		Task:          taskCtx,
+		Host:                    host,
+		Method:                  req.Method,
+		Path:                    req.URL.Path,
+		Status:                  resp.StatusCode,
+		RequestBytes:            req.ContentLength,
+		ResponseBytes:           written,
+		RequestCopy:             reqCopy.Bytes(),
+		ResponseCopy:            respCopy.Bytes(),
+		RequestHeader:           req.Header,
+		RequestTransferEncoding: req.TransferEncoding,
+		ResponseHead:            resp.Header,
+		Started:                 started,
+		Duration:                time.Since(started),
+		Task:                    taskCtx,
 	}
 	p.record(ev)
 

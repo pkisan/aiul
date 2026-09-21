@@ -3,9 +3,12 @@ package proxy
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pkisan/aiul/internal/parsers"
@@ -33,6 +36,11 @@ type interaction struct {
 
 	RequestHeader http.Header
 	ResponseHead  http.Header
+
+	// How the client framed the request body. A chunked request is read
+	// differently from one with a Content-Length, and telling them apart matters
+	// when a body never reaches our copy.
+	RequestTransferEncoding []string
 
 	Started  time.Time
 	Duration time.Duration
@@ -152,9 +160,10 @@ func (p *Proxy) record(in interaction) {
 		return
 	}
 
+	var ex parsers.Exchange
 	{
 		ev.Parser = parser.Name()
-		ex := p.exchange(in)
+		ex = p.exchange(in)
 		res, err := parser.Parse(ex)
 		if err != nil {
 			// A body we could not read is still worth recording as metadata.
@@ -171,13 +180,23 @@ func (p *Proxy) record(in interaction) {
 		ev.ResponseTokens = res.ResponseTokens
 	}
 
-	// What the parser actually made of the exchange. An event with a prompt but
-	// no answer means the response side was lost, which no other line shows.
+	// What the parser actually made of the exchange, and what it was given.
+	//
+	// An answer of zero has two very different causes and no other line separates
+	// them: a stream that carried no prose (a turn that only calls a tool sends
+	// input_json_delta, never text_delta) and a stream whose shape this parser does
+	// not know (the Codex Responses API). The event types say which. The request
+	// side is here for the other failure — a prompt of zero with the response
+	// copied in full, which means the body never reached the tee.
 	p.log.Debug("recorded", "host", in.Host, "path", in.Path, "status", in.Status,
 		"parser", ev.Parser, "model", ev.Model, "streamed", ev.Streamed,
 		"prompt_chars", len(ev.Prompt), "answer_chars", len(ev.Answer),
+		"request_bytes", in.RequestBytes, "request_copy_bytes", len(in.RequestCopy),
+		"request_encoding", in.RequestHeader.Get("Content-Encoding"),
+		"transfer_encoding", strings.Join(in.RequestTransferEncoding, ","),
 		"response_bytes", in.ResponseBytes, "response_copy_bytes", len(in.ResponseCopy),
-		"content_type", in.ResponseHead.Get("Content-Type"))
+		"content_type", in.ResponseHead.Get("Content-Type"),
+		"sse_events", len(ex.SSE), "sse_types", sseTypes(ex.SSE))
 
 	// Rule 8: mask before anything is stored or sent. The provider already has the
 	// original request; this only touches our copy.
@@ -287,6 +306,43 @@ func (p *Proxy) exchange(in interaction) parsers.Exchange {
 		}
 	}
 	return ex
+}
+
+// sseTypes summarises what a streamed response actually contained: the distinct
+// event and delta types, in the order first seen, with how many of each. Types
+// only — never the text they carry.
+func sseTypes(events []string) string {
+	order := make([]string, 0, 8)
+	count := make(map[string]int, 8)
+
+	for _, data := range events {
+		var ev struct {
+			Type  string `json:"type"`
+			Delta struct {
+				Type string `json:"type"`
+			} `json:"delta"`
+		}
+		if json.Unmarshal([]byte(data), &ev) != nil {
+			continue
+		}
+		name := ev.Type
+		if name == "" {
+			name = "(no type)"
+		}
+		if ev.Delta.Type != "" {
+			name += ":" + ev.Delta.Type
+		}
+		if count[name] == 0 {
+			order = append(order, name)
+		}
+		count[name]++
+	}
+
+	parts := make([]string, 0, len(order))
+	for _, name := range order {
+		parts = append(parts, fmt.Sprintf("%s×%d", name, count[name]))
+	}
+	return strings.Join(parts, " ")
 }
 
 // newEventID returns a random identifier for one event, so the backend can
