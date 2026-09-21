@@ -29,6 +29,10 @@ interactions" list on `/usage` gives the short path. Manager gate on all of
 it; raw-text policy untouched. `UsageReport::interactionsForTask` + `recent`,
 `UsageDashboardController::task`, `Task.vue`, 4 new tests — 77 backend tests
 pass. Rebuilt frontend (`npm run build`) so `public/build` serves it.
+Follow-up `e43471e`: the "Open the prompt text" button sent no reason, so the
+server bounced it back with an error nobody displayed — it looked dead. The
+interaction page now has a reason field whose value travels in the link, and
+shows the server's error when it still bounces.
 
 ## MILESTONE: the whole pipeline proven through the INSTALLED package, 2026-09-20
 
