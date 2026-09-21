@@ -787,3 +787,104 @@ func TestCaptureThroughTheDeviceIntermediate(t *testing.T) {
 		t.Fatalf("got %d events, want 1", len(sink.all()))
 	}
 }
+
+// Research mode writes down what an unsupported endpoint actually sent, so a
+// parser can be written for it. Two things must hold: the secrets are masked
+// first, and a page full of JavaScript does not drown the one file that matters.
+func TestResearchModeWritesRedactedExchanges(t *testing.T) {
+	root := newTestRoot(t)
+	origin := newOriginServer(t, "chatgpt.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"message":{"content":{"parts":["an answer"]}}}`)
+	}))
+	defer origin.close()
+
+	dir := t.TempDir()
+	proxyAddr, _ := startProxy(t, Config{
+		Issuer:          root,
+		Sink:            &collector{},
+		UpstreamRootCAs: origin.rootPool,
+		ResearchDir:     dir,
+	}, origin.addr)
+
+	ourPool := x509.NewCertPool()
+	ourPool.AddCert(root.Cert)
+	client := clientThrough(proxyAddr, ourPool)
+
+	// A conversation, carrying something that must never reach the dump.
+	resp, err := client.Post("https://chatgpt.com/backend-api/f/conversation", "application/json",
+		strings.NewReader(`{"messages":[{"content":"my key is sk-ant-api03-SECRETVALUE1234567890"}]}`))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	resp.Body.Close()
+
+	// And a static asset, which is not research material.
+	resp, err = client.Get("https://chatgpt.com/cdn/assets/abc-123.js")
+	if err != nil {
+		t.Fatalf("asset request failed: %v", err)
+	}
+	resp.Body.Close()
+
+	var files []string
+	if !eventually(2*time.Second, func() bool {
+		entries, _ := os.ReadDir(dir)
+		files = files[:0]
+		for _, e := range entries {
+			files = append(files, e.Name())
+		}
+
+		return len(files) >= 1
+	}) {
+		t.Fatalf("nothing was written to the research directory")
+	}
+
+	if len(files) != 1 {
+		t.Errorf("got %d files, want 1 — the static asset must not be dumped: %v", len(files), files)
+	}
+	if !strings.Contains(files[0], "conversation") {
+		t.Errorf("the file written was %q, want the conversation endpoint", files[0])
+	}
+
+	body, err := os.ReadFile(filepath.Join(dir, files[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "SECRETVALUE1234567890") {
+		t.Error("SECURITY: the research dump contains an unmasked secret")
+	}
+	// The shape a parser is written against has to survive the masking. The body
+	// is a JSON string inside the dump, so its own quotes are escaped.
+	if !strings.Contains(string(body), `\"messages\"`) {
+		t.Errorf("the dump lost the request structure: %s", body)
+	}
+	if !strings.Contains(string(body), "REDACTED") {
+		t.Errorf("the secret was neither masked nor present — what happened? %s", body)
+	}
+}
+
+// Off unless asked for.
+func TestResearchModeIsOffByDefault(t *testing.T) {
+	root := newTestRoot(t)
+	origin := newOriginServer(t, "api.openai.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer origin.close()
+
+	dir := t.TempDir()
+	proxyAddr, _ := startProxy(t, Config{
+		Issuer: root, Sink: &collector{}, UpstreamRootCAs: origin.rootPool,
+	}, origin.addr)
+
+	ourPool := x509.NewCertPool()
+	ourPool.AddCert(root.Cert)
+	resp, err := clientThrough(proxyAddr, ourPool).Get("https://api.openai.com/v1/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("research mode wrote %d files without being asked", len(entries))
+	}
+}

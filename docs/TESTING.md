@@ -320,6 +320,42 @@ sudo grep -E "cursor" /var/log/aiul/agent.err.log | tail -10
 `decision=pass` lines with a cursor hostname are the evidence that it is invisible,
 and the hostnames you see there are exactly what the allow-list is missing.
 
+### Capturing what a tool sends, to write a parser for it
+
+The agent can write down the exchanges it cannot parse, which is what a new parser
+is written against. No second proxy and no second CA: it is already decrypting
+this traffic.
+
+```sh
+sudo mkdir -p /var/db/aiul/research
+sudo chown _aiul:_aiul /var/db/aiul/research
+echo 'AIUL_RESEARCH_DUMP=/var/db/aiul/research' | sudo tee -a /etc/aiul/agent.conf
+sudo launchctl kickstart -k system/com.aiul.agent
+```
+
+Use the tool — one short conversation is enough — then look:
+
+```sh
+sudo ls -t /var/db/aiul/research | head
+sudo cat "/var/db/aiul/research/$(sudo ls -t /var/db/aiul/research | head -1)"
+```
+
+Each file holds one exchange: host, path, the headers a parser might key on, and
+the request and response bodies. **Bodies are redacted** — values are masked, the
+JSON structure a parser needs is not. Static assets are skipped, so a web page
+load does not bury the one file that matters.
+
+Turn it off when finished, and delete what it wrote:
+
+```sh
+sudo sed -i '' '/AIUL_RESEARCH_DUMP/d' /etc/aiul/agent.conf
+sudo launchctl kickstart -k system/com.aiul.agent
+sudo rm -rf /var/db/aiul/research
+```
+
+It is still a record of real conversations, redacted or not: the directory is
+0700, the files 0600, and the agent says loudly in its log while it is on.
+
 ### Write down what you find
 
 For each surface: hostname, endpoint path, whether the certificate was accepted.

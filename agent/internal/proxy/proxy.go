@@ -90,6 +90,12 @@ type Config struct {
 	// Dial opens the connection to the real server. It exists so tests can point
 	// every hostname at a local fake provider. Nil means an ordinary TCP dial.
 	Dial func(network, addr string) (net.Conn, error)
+
+	// ResearchDir turns on research mode: every interesting exchange with an
+	// allow-listed host is written there, REDACTED, so a parser can be written for
+	// a tool nobody has supported yet. Empty means off, which is always the case
+	// unless somebody asked for it.
+	ResearchDir string
 }
 
 // Proxy is the explicit HTTPS proxy.
@@ -98,6 +104,7 @@ type Proxy struct {
 	certs    *CertCache
 	log      *slog.Logger
 	redactor *redact.Redactor
+	research *researchDumper
 	server   *http.Server
 
 	wg sync.WaitGroup
@@ -121,12 +128,23 @@ func New(cfg Config) (*Proxy, error) {
 		return nil, errors.New("proxy: no CA root; run 'aiul ca init' first")
 	}
 
+	research, err := newResearchDumper(cfg.ResearchDir)
+	if err != nil {
+		return nil, err
+	}
+	if research != nil {
+		cfg.Logger.Warn("RESEARCH MODE: writing decrypted exchanges to disk",
+			"dir", cfg.ResearchDir,
+			"note", "redacted, but still real conversations. For development only; delete when finished.")
+	}
+
 	p := &Proxy{
 		cfg:   cfg,
 		certs: NewCertCache(cfg.Issuer),
 		log:   cfg.Logger,
 		// Redaction is not optional and has no switch to turn it off. Rule 8.
 		redactor: redact.New(),
+		research: research,
 	}
 	p.server = &http.Server{
 		Addr:    cfg.Addr,

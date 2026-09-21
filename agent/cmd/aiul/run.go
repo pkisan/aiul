@@ -165,6 +165,8 @@ func cmdRun(args []string) int {
 		// The checkout comes back with the process lookup, because the worker's own
 		// account cannot read anyone's .git/HEAD.
 		Checkout: rememberedCheckout,
+		// Research mode: off unless AIUL_RESEARCH_DUMP names a directory.
+		ResearchDir: firstSet(os.Getenv("AIUL_RESEARCH_DUMP"), config["AIUL_RESEARCH_DUMP"]),
 	})
 	if err != nil {
 		log.Error("cannot start the proxy", "err", err)

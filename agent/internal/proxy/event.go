@@ -128,14 +128,26 @@ func (p *Proxy) record(in interaction) {
 	}
 
 	parser := parsers.For(in.Host, in.Path)
+
+	// Research mode, off unless asked for: write down what an endpoint we cannot
+	// parse actually sent, so a parser can be written against it.
+	p.dumpForResearch(in, parser)
+
 	if parser == nil {
 		// An allow-listed host makes plenty of calls that are not conversations:
-		// registry lookups, account settings, telemetry batches. One Claude Code
-		// run produced twelve of them and a single real exchange. Storing them
-		// would mean holding data about the user for no benefit, so they are
-		// decrypted, forwarded and forgotten.
-		p.log.Debug("no parser for this endpoint; nothing recorded",
-			"host", in.Host, "method", in.Method, "path", in.Path, "status", in.Status)
+		// registry lookups, account settings, telemetry batches, and — for a web
+		// application — hundreds of scripts and images. One Claude Code run
+		// produced twelve of them and a single real exchange. Storing them would
+		// mean holding data about the user for no benefit, so they are decrypted,
+		// forwarded and forgotten.
+		//
+		// Static assets are not even worth a log line: a single page load buries
+		// everything else under a hundred of them.
+		if interesting(in.Path, in.ResponseHead.Get("Content-Type")) {
+			p.log.Debug("no parser for this endpoint; nothing recorded",
+				"host", in.Host, "method", in.Method, "path", in.Path, "status", in.Status)
+		}
+
 		return
 	}
 
@@ -170,6 +182,63 @@ func (p *Proxy) record(in interaction) {
 	}
 
 	p.cfg.Sink.Record(ev)
+}
+
+// dumpForResearch writes an exchange to the research directory, when one is
+// configured. Bodies are REDACTED first: masking replaces values and leaves the
+// structure a parser is written against intact.
+func (p *Proxy) dumpForResearch(in interaction, parser parsers.Parser) {
+	if p.research == nil || !interesting(in.Path, in.ResponseHead.Get("Content-Type")) {
+		return
+	}
+
+	ex := p.exchange(in)
+
+	reqBody, respBody := string(ex.ReqBody), string(ex.RespBody)
+	masked, _ := p.redactor.Strings(reqBody, respBody)
+	reqBody, respBody = masked[0], masked[1]
+
+	events := make([]string, 0, len(ex.SSE))
+	for _, e := range ex.SSE {
+		one, _ := p.redactor.Strings(e)
+		events = append(events, one[0])
+	}
+
+	dumped := dumpedExchange{
+		Time:     in.Started,
+		Host:     in.Host,
+		Method:   in.Method,
+		Path:     in.Path,
+		Status:   in.Status,
+		ReqHead:  headerMap(in.RequestHeader),
+		ReqBody:  reqBody,
+		RespHead: headerMap(in.ResponseHead),
+		RespBody: respBody,
+		SSE:      events,
+	}
+	if parser != nil {
+		dumped.Parser = parser.Name()
+	}
+
+	if err := p.research.write(dumped); err != nil {
+		p.log.Warn("could not write the research dump", "err", err)
+	}
+}
+
+// headerMap keeps the headers a parser might key on and drops the rest, so a dump
+// carries no cookie and no authorization header.
+func headerMap(h http.Header) map[string]string {
+	out := map[string]string{}
+	for _, name := range []string{
+		"Content-Type", "Content-Encoding", "Accept", "User-Agent",
+		"X-Stainless-Package-Version", "X-App", "Anthropic-Version", "Openai-Beta",
+	} {
+		if v := h.Get(name); v != "" {
+			out[name] = v
+		}
+	}
+
+	return out
 }
 
 // exchange prepares our copies for a parser: decompress, and split a streamed
