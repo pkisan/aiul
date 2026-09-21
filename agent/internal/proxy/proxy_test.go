@@ -968,3 +968,24 @@ func TestSSETypesSummarisesAStreamWithoutRevealingIt(t *testing.T) {
 		t.Errorf("no events should summarise as empty, got %q", empty)
 	}
 }
+
+// bodyShape says how a body is framed and never what it says. Codex answers with
+// no Content-Type, so nothing else in the log distinguishes event-stream lines
+// from JSON from anything else.
+func TestBodyShapeDescribesFramingNotContent(t *testing.T) {
+	sse := []byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"secret\"}\n\ndata: [DONE]\n")
+	got := bodyShape(sse)
+	if !strings.Contains(got, "data_lines=2") {
+		t.Errorf("shape = %q, want two data lines", got)
+	}
+	if strings.Contains(got, "secret") || strings.Contains(got, "delta") {
+		t.Errorf("shape leaked content: %q", got)
+	}
+
+	if got := bodyShape([]byte(`  {"answer":"hello"}`)); !strings.Contains(got, "json_start=true") {
+		t.Errorf("json body = %q", got)
+	}
+	if got := bodyShape(nil); got != "empty" {
+		t.Errorf("empty body = %q", got)
+	}
+}

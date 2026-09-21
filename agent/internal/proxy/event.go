@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -202,7 +203,8 @@ func (p *Proxy) record(in interaction) {
 		"transfer_encoding", strings.Join(in.RequestTransferEncoding, ","),
 		"response_bytes", in.ResponseBytes, "response_copy_bytes", len(in.ResponseCopy),
 		"content_type", in.ResponseHead.Get("Content-Type"),
-		"sse_events", len(ex.SSE), "sse_types", sseTypes(ex.SSE))
+		"sse_events", len(ex.SSE), "sse_types", sseTypes(ex.SSE),
+		"body_shape", bodyShape(in.ResponseCopy))
 
 	if truncated {
 		p.log.Warn("the request body was larger than we copy, so the prompt may be incomplete",
@@ -325,6 +327,34 @@ func (p *Proxy) exchange(in interaction) parsers.Exchange {
 // copied. It goes in the stored text, where anyone reading the prompt sees it —
 // a log line they will never look at is not honest enough.
 const truncationNote = "\n\n[aiul: the request was larger than the 4 MiB we copy, so this prompt is incomplete]"
+
+// bodyShape describes how a body is FRAMED, never what it says: the first few
+// bytes as hex, and how many "data:" lines it contains. Codex answers 207 KB with
+// no Content-Type at all, so isSSE() says no and the bytes go nowhere — and
+// nothing in the log says whether they are event-stream lines, JSON, or
+// something else entirely.
+func bodyShape(body []byte) string {
+	if len(body) == 0 {
+		return "empty"
+	}
+
+	head := body
+	if len(head) > 8 {
+		head = head[:8]
+	}
+
+	return fmt.Sprintf("first=%x data_lines=%d json_start=%t",
+		head, bytes.Count(body, []byte("\ndata:"))+boolToInt(bytes.HasPrefix(body, []byte("data:"))),
+		bytes.HasPrefix(bytes.TrimLeft(body, " \r\n\t"), []byte("{")) ||
+			bytes.HasPrefix(bytes.TrimLeft(body, " \r\n\t"), []byte("[")))
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
 
 // sseTypes summarises what a streamed response actually contained: the distinct
 // event and delta types, in the order first seen, with how many of each. Types

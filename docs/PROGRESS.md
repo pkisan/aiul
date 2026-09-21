@@ -47,6 +47,45 @@ What the plan got right is that `openssl s_client -alpn h2` really is refused by
 this proxy. No AI client we have seen needs it. If one ever does, the steps are
 in git history at `d5bc9f8`; do not rebuild them on today's evidence.
 
+## Claude desktop app is fully captured — DONE 2026-09-21
+
+Installed `d5311df` (carrying `f8d0ef6`). Row 420, from a message typed in the
+Claude desktop app: `path=/v1/messages streamed=true prompt_chars=18
+answer_chars=110 response_tokens=35`, answer text present. Prompt AND answer.
+
+What made the difference was `f8d0ef6`: the request-parse failure no longer
+discards the response. The app's requests are large enough to pass the 4 MiB
+copy cap regularly, and every one of those was costing us an answer we had
+already copied in full.
+
+## OPEN: Codex, and two transports rather than one
+
+Codex is not captured, and the fixture showed why the earlier plan was wrong:
+there are TWO transports.
+
+1. **WebSocket.** `GET /backend-api/codex/responses` → `101 Switching
+   Protocols`, `upgrade: websocket`. Every prompt and answer is in frames; the
+   HTTP exchange has no body at all, which is why fifteen of them logged
+   `response_bytes=0`. Fixture recorded:
+   `agent/testdata/openai/codex-responses.ws.jsonl`, 36 frames —
+   `response.create` from the client, `response.output_text.delta` x17 and
+   `response.completed` from the server. The CLI uses this. So does the app.
+2. **HTTP, with no Content-Type.** Row 422: `status=200 streamed=true
+   prompt_chars=43089 answer_chars=0 response_bytes=207441
+   response_copy_bytes=207441 content_type="" sse_events=0`. We hold the whole
+   answer and cannot tell what framing it is in, because `isSSE()` keys off a
+   header the provider does not send.
+
+`bodyShape()` added to the `recorded` line for exactly this: the first eight
+bytes as hex, how many `data:` lines the body has, and whether it starts as
+JSON. Framing only, never content, with a test that asserts no payload leaks.
+
+Next: install, send one Codex message, read `body_shape`. If it shows
+`data_lines>0`, the fix is to sniff the framing when the header is missing and
+the existing SSE path takes over. Then a parser for the Responses events, and
+separately the WebSocket transport, which needs `forward()` to pass a 101
+through while reading frames.
+
 ## OPEN: three distinct reasons an answer is missing (2026-09-21)
 
 With `f3d5c18` installed, one message in each app produced this:
