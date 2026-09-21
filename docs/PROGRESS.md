@@ -14,13 +14,21 @@ Last updated: 2026-09-21 (HTTP/2 plan written)
   clean. `aiul status` on 2026-09-21 shows the agent INSTALLED (proxy
   listening, CA trusted, 4/4 services proxied, 9 env vars,
   CA at `/var/db/aiul/dev-ca/root.crt`). Owner chose LEAVE INSTALLED.
-- NEXT STEP: install the pre-warm fix (below) and confirm a Claude desktop app
-  message produces a row. The HTTP/2 plan is WITHDRAWN — its premise was wrong.
+- The Claude desktop app IS captured as of `611ed48` (rows 190-193, prompt
+  "foo"). Cursor still tunnels on a genuine TLS alert, which is correct.
+- NEXT STEP: integration test for the deployment path — install, verify,
+  upgrade, uninstall against real launchd. Plan goes in this file first.
+- Research mode is ON (`/var/db/aiul/research` holds decrypted, redacted
+  exchanges). Turn it off and delete that directory when parser work pauses.
 - AFTER THAT: integration test for the deployment path — install, verify,
   upgrade, uninstall against real launchd. Unpushed work also needs `git push`
   with owner approval.
-- Today's installed binary is `a144b86`; `2a869cf` (backend, live already) and
-  `b0a756d` (ALPN in the log) are committed but NOT in the installed package.
+- Installed binary is `611ed48`, which is also `origin/main`: the 24 unpushed
+  commits were pushed on 2026-09-21 after the desktop-app capture was confirmed.
+- The 76 interactions and 8 sessions written before the UTC fix were shifted
+  back by 5h30m on 2026-09-21; every row's `occurred_at` now sits just before
+  its `created_at`. Pre-shift values: `scratchpad/timestamp-backup.json` (a
+  session-local file, gone when the scratchpad is cleared).
 
 ## WITHDRAWN: the HTTP/2 plan — the premise was wrong (2026-09-21)
 
