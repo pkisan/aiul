@@ -33,6 +33,26 @@ import (
 // as far as its ALPN offer can say. A client that never offered http/1.1 did not
 // refuse our certificate — it asked for a protocol this proxy does not serve yet,
 // and no certificate or trust store change will help it.
+// clientObjected says whether the client actually refused our certificate.
+//
+// A client that distrusts a certificate SAYS SO: TLS has alerts for exactly this,
+// and Go surfaces them as tls.AlertError or as "remote error: tls: ...". Cursor,
+// which genuinely pins, produces "remote error: tls: unknown certificate".
+//
+// A bare EOF or a TCP reset is not an objection. It is the connection of a
+// process that exited, and short-lived children do that constantly. Treating
+// silence as refusal is what tunnelled the Claude desktop app's executable within
+// seconds of every launch, so its prompts were never captured.
+func clientObjected(err error) bool {
+	var alert tls.AlertError
+	if errors.As(err, &alert) {
+		return true
+	}
+	// Go does not export the type it uses for an alert received from the peer, so
+	// the text is the only handle on it. It is stable and specific.
+	return strings.Contains(err.Error(), "remote error: tls:")
+}
+
 // helloFingerprint describes a ClientHello in one field: enough to tell one TLS
 // stack from another (Node, Chromium, Go, curl all look different) without
 // recording anything about the conversation inside it.
@@ -131,33 +151,30 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 	})
 
 	if err := clientTLS.HandshakeContext(handshakeContext()); err != nil {
-		if !helloSeen {
-			// The client opened the tunnel and closed it again without starting
-			// TLS. Clients pre-warm connections and then cancel them, and a
-			// cancelled connection carries no opinion about our certificate — it
-			// never saw one. Recording it as a refusal condemns the program for
-			// every later connection: the Claude desktop app pre-warms on launch,
-			// so it silenced itself within seconds, every launch. Say nothing,
-			// record nothing, and let the next connection be judged on its own.
-			p.log.Debug("client closed the connection before the TLS handshake; nothing recorded",
-				"host", host, "process", client.Name, "err", err)
+		if !clientObjected(err) {
+			// The connection died without the client ever saying it disliked
+			// anything: a bare EOF or a TCP reset, which is what the kernel sends
+			// for the sockets of a process that has exited. The Claude desktop app
+			// spawns short-lived children that open a connection and are gone
+			// before the handshake finishes, and reading that as pinning
+			// condemned the executable for every later connection — including the
+			// ones carrying the prompts.
+			p.log.Debug("handshake ended without an objection from the client; nothing recorded",
+				"host", host, "process", client.Name, "hello", fingerprint,
+				"hello_seen", helloSeen, "err", err)
 			return
 		}
 
-		// Rule 4: the client saw our certificate and would not complete a
-		// handshake. It may be certificate pinning, a runtime that does not read
-		// the trust store, or a protocol we do not serve. Either way we must never
-		// break the tool: remember it and pass it through sealed from now on,
-		// including this very connection, which the client will retry.
+		// Rule 4: the client SAID it would not accept our certificate. It may be
+		// certificate pinning or a runtime that does not read the trust store.
+		// Either way we must never break the tool: remember it and pass it through
+		// sealed from now on, including this very connection, which the client
+		// will retry.
 		//
 		// Keyed by the program, not the host alone: a pinned app must not stop us
 		// capturing another tool's traffic to the same provider. The key is the
 		// executable, not the process name, because the Claude desktop app's
 		// bundled Claude Code and the terminal CLI are both called "claude".
-		// Ask again who owns this connection. The first lookup happened before the
-		// handshake, and a source port is reused quickly enough that the answer
-		// can belong to a process that has already gone — which is how one second
-		// of log can blame two different programs for the same failure.
 		atFailure, _ := p.processOf(clientConn)
 
 		if p.cfg.Classifier.AddTunnel(host, client.Identity()) {

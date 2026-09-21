@@ -1,9 +1,15 @@
 package proxy
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
+	"fmt"
+	"io"
+	"net"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 )
 
@@ -272,5 +278,35 @@ func TestHelloFingerprintDescribesTheStackAndNothingElse(t *testing.T) {
 	// rather than an empty one: "said nothing" is itself the evidence.
 	if bare := helloFingerprint(&tls.ClientHelloInfo{}); !strings.Contains(bare, "ciphers=0") {
 		t.Errorf("empty hello = %q", bare)
+	}
+}
+
+// Rule 4 must fire when a client REFUSES our certificate, and never when a
+// connection simply died. A TLS alert is a refusal; an EOF or a reset is a
+// process that exited mid-handshake, which short-lived children do constantly.
+func TestOnlyATLSAlertCountsAsARefusal(t *testing.T) {
+	refusals := []error{
+		tls.AlertError(42), // bad_certificate
+		errors.New("remote error: tls: unknown certificate"),
+		fmt.Errorf("handshake: %w", errors.New("remote error: tls: bad certificate")),
+	}
+	for _, err := range refusals {
+		if !clientObjected(err) {
+			t.Errorf("%v should count as a refusal", err)
+		}
+	}
+
+	// These are what the Claude desktop app's dying children produced, three
+	// times a launch, and what was read as pinning for most of a day.
+	silence := []error{
+		io.EOF,
+		errors.New("read tcp 127.0.0.1:8899->127.0.0.1:56032: read: connection reset by peer"),
+		&net.OpError{Op: "read", Err: syscall.ECONNRESET},
+		context.DeadlineExceeded,
+	}
+	for _, err := range silence {
+		if clientObjected(err) {
+			t.Errorf("%v must not count as a refusal", err)
+		}
 	}
 }

@@ -37,6 +37,46 @@ What the plan got right is that `openssl s_client -alpn h2` really is refused by
 this proxy. No AI client we have seen needs it. If one ever does, the steps are
 in git history at `d5bc9f8`; do not rebuild them on today's evidence.
 
+## Silence is not a refusal — DONE 2026-09-21 (the actual cause)
+
+The fingerprint settled it. The SAME executable, with the SAME ClientHello,
+succeeded and failed six seconds apart:
+
+```
+16:29:34 DEBUG client handshake succeeded  hello="tls=1.3/1.2 ciphers=18(...) sigalgs=9 sni=api.anthropic.com alpn=0"
+16:29:40 WARN  tunneling ...               hello="tls=1.3/1.2 ciphers=18(...) sigalgs=9 sni=api.anthropic.com alpn=0"
+                                           err="read: connection reset by peer" process_at_failure=""
+```
+
+And the app's child environment, finally read off the live process rather than
+inferred from its parent, is identical to a shell child's: `NODE_EXTRA_CA_CERTS`,
+`NODE_USE_SYSTEM_CA=1`, `SSL_CERT_FILE`, `HTTPS_PROXY` all present.
+
+So the client was never the variable. The ERROR was:
+
+| Client | Error | Meaning |
+| --- | --- | --- |
+| Cursor (really pins) | `remote error: tls: unknown certificate` | a TLS alert — an objection |
+| Claude desktop app | `EOF`, `read: connection reset by peer` | a process that exited |
+
+A client that distrusts a certificate says so; TLS has alerts for exactly that.
+A bare EOF or a TCP reset is the kernel tidying up after a process that is gone —
+and `process_at_failure=""` on every one of those lines says the same. The
+desktop app spawns short-lived children; they connect, send a ClientHello, exit,
+and rule 4 read the silence as pinning and condemned the executable for every
+later connection, including the ones carrying prompts.
+
+`clientObjected()` now gates rule 4: `tls.AlertError` or `remote error: tls:`
+tunnels; EOF, reset and timeout are logged at DEBUG and recorded nowhere. The
+`helloSeen` guard from the previous commit is subsumed by it (no hello, no
+alert) and its test still passes. New test covers both lists of errors, and
+removing the gate makes the integration tests fail.
+
+Three wrong theories preceded this one — HTTP/2, stripped environment variables,
+pre-warmed connections — each plausible, each fixed something real, none of them
+the cause. What ended it was logging the ClientHello and re-reading the error
+text, not another hypothesis.
+
 ## DIAGNOSTIC: fingerprint the refusing client — 2026-09-21, awaiting evidence
 
 The Claude desktop app still refuses our certificate on a clean agent with an
