@@ -255,6 +255,77 @@ your sentence with the key and the email replaced by masks while the rest stays
 readable. **The provider received the original bytes** — redaction only ever
 touches our copy.
 
+## 7b. The other surfaces: browser, IDE, extension
+
+The CLI is the proven path. These are the ones where the answer is partly "not
+yet", and knowing exactly which part is the point of the exercise.
+
+**GUI applications do not see the environment variables until you log out and back
+in.** The install writes a LaunchAgent that sets them at login. To test without
+logging out, start the application from a terminal that already has them:
+
+```sh
+# Cursor, VS Code — Electron apps read NODE_EXTRA_CA_CERTS
+open -a "Visual Studio Code" --env NODE_EXTRA_CA_CERTS=/usr/local/share/aiul/root.crt \
+                             --env HTTPS_PROXY=http://127.0.0.1:8899
+open -a Cursor --env NODE_EXTRA_CA_CERTS=/usr/local/share/aiul/root.crt \
+               --env HTTPS_PROXY=http://127.0.0.1:8899
+```
+
+Quit the application first — `open` will not re-launch one that is already
+running, and it keeps the environment it started with.
+
+### Browser: chatgpt.com and claude.ai
+
+Safari and Chrome use the macOS keychain, where our CA is trusted, so the
+handshake should succeed. Have a short conversation in each, then:
+
+```sh
+sudo grep -E "claude.ai|chatgpt.com|openai.com" /var/log/aiul/agent.err.log | tail -20
+```
+
+Three outcomes, all informative:
+
+| What the log says | What it means |
+| --- | --- |
+| `no parser for this endpoint; nothing recorded` | **Expected today.** We decrypted it; nobody has written a parser for that endpoint. Note the exact `path=` — that is the input to writing one. |
+| `client rejected our certificate; tunneling this host from now on` | That client pins its certificate. It will keep working, recorded as metadata only, and **no parser can ever change that.** |
+| `masked secrets before storing` / an event appears | it was captured and recorded |
+
+Firefox will fail differently: it has its own trust store and ignores the
+keychain, so it needs a policy file before it can be captured at all.
+
+### IDE: GitHub Copilot in VS Code
+
+Copilot's API is allow-listed and parsed. Open a file, let Copilot suggest
+something, or use Copilot Chat, then:
+
+```sh
+sudo grep -E "githubcopilot|copilot-proxy" /var/log/aiul/agent.err.log | tail -10
+```
+
+Completions are a different shape from chat — expect chat to parse and inline
+completions possibly not.
+
+### IDE: Cursor
+
+**Expect nothing.** Cursor talks to `api2.cursor.sh` and similar, which are NOT on
+the allow-list, so that traffic is passed through sealed and never decrypted. This
+is the gap, not a bug. To see it for yourself, watch what goes past:
+
+```sh
+sudo grep -E "cursor" /var/log/aiul/agent.err.log | tail -10
+```
+
+`decision=pass` lines with a cursor hostname are the evidence that it is invisible,
+and the hostnames you see there are exactly what the allow-list is missing.
+
+### Write down what you find
+
+For each surface: hostname, endpoint path, whether the certificate was accepted.
+That list is the input to the capture work in `docs/ROADMAP.md` step 1, and it is
+worth more than any guess I can make about what these tools do.
+
 ## 8. The dashboard
 
 Open <http://127.0.0.1:8088/usage> and sign in as `manager@example.com`.
