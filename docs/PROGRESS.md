@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-21 (session resume)
+Last updated: 2026-09-21 (HTTP/2 plan written)
 
 ## Session resume 2026-09-21 — read this first
 
@@ -14,10 +14,90 @@ Last updated: 2026-09-21 (session resume)
   clean. `aiul status` on 2026-09-21 shows the agent INSTALLED (proxy
   listening, CA trusted, 4/4 services proxied, 9 env vars,
   CA at `/var/db/aiul/dev-ca/root.crt`). Owner chose LEAVE INSTALLED.
-- NEXT STEP (unchanged): integration test for the deployment path — install,
-  verify, upgrade, uninstall against real launchd. Plan goes below before any
-  code; no system change without explicit yes (rule 1). Unpushed work also
-  needs `git push` with owner approval.
+- NEXT STEP: PLAN — Phase 2 reopened, HTTP/2 in the proxy engine (below, "PLAN:
+  HTTP/2 capture"). Nothing of it is built. Steps run one at a time, each with
+  its own commit; step 7 is a system change and needs an explicit yes (rule 1).
+- AFTER THAT: integration test for the deployment path — install, verify,
+  upgrade, uninstall against real launchd. Unpushed work also needs `git push`
+  with owner approval.
+- Today's installed binary is `a144b86`; `2a869cf` (backend, live already) and
+  `b0a756d` (ALPN in the log) are committed but NOT in the installed package.
+
+## PLAN: HTTP/2 capture — Phase 2 reopened, NOT STARTED
+
+Written 2026-09-21. No code exists for any of this.
+
+### Why this reopens Phase 2 rather than being a later phase
+
+Phase 2 owns `internal/proxy`: CONNECT handling, classification, TLS
+termination, streaming, SSE reassembly. HTTP/2 is not a feature beside that
+engine, it is that engine's contract changing, so the work belongs to Phase 2
+and the phase is reopened rather than a new one invented.
+
+### Why it was not done the moment the cause was found
+
+- `capture.go` owns the exchange by hand: `http.ReadRequest` off a
+  `bufio.Reader`, write upstream, `http.ReadResponse`, copy chunks out while
+  teeing a copy to the parser. HTTP/2 is multiplexed — concurrent streams on one
+  connection, compressed headers, no readable request/response pairs on the
+  wire. That loop cannot be extended; it becomes an `http.Handler`.
+- Six parsers (anthropic, openai, chatgpt.com, claude.ai web, Codex routing,
+  IDE) consume what that loop hands them. Changing the transport underneath all
+  of them at once, with no h2 fixture in `agent/testdata/`, is how prompts stop
+  being logged silently — the failure mode of this whole day.
+- Rules 5, 6 and 8 all have to be re-proved in the new shape: upstream still
+  verified against system roots, every chunk still flushed immediately (h2
+  flushing is not h1 flushing), redaction still before storage.
+- Rule 13 (one phase at a time) and rule 14 (plan written before anything long).
+
+### The failure this fixes
+
+The desktop app's bundled Claude Code (2.1.275) opens `/v1/messages` with ALPN
+`h2`. We advertise `http/1.1` only, so the handshake ends with alert 120 before
+any certificate is judged, rule 4 tunnels the program, and the prompt is never
+seen. Its HTTP/1.1 requests on the same host ARE captured today. The terminal
+CLI (2.1.267) is HTTP/1.1 throughout, which is why it has always logged.
+
+### Steps, one commit each
+
+1. **Fixture first.** With research mode on, capture one real h2 exchange with
+   `mitmweb` (research tool only — the product never depends on it), anonymise
+   it into `agent/testdata/`. Nothing else starts until this exists.
+2. **Downstream h2.** `NextProtos: ["h2","http/1.1"]`, and serve the hijacked
+   connection through `http.Server.ServeTLS` on a one-connection listener:
+   the standard library wires up HTTP/2 itself, so no new dependency and no
+   DECISIONS.md entry is needed (rule 11). Keep `GetConfigForClient` recording
+   ALPN — `handshakeFailure()` stays useful for clients that offer neither.
+3. **Upstream h2.** One `http.Transport` with `ForceAttemptHTTP2`, system roots,
+   no `InsecureSkipVerify` anywhere (rule 5). The per-connection upstream TLS
+   dial in `capture.go` goes away.
+4. **Move the exchange into a handler.** Request read, upstream round trip,
+   response copy, SSE reassembly and the side copy for parsing all move behind
+   `http.Handler`. Protocol-specific code must not leak into the parsers: they
+   keep receiving the same `interaction`.
+5. **Prove streaming.** A test that fails if any chunk is buffered — a slow
+   fake provider writing chunks with gaps, asserting each reaches the client
+   before the next is written, under h2 and h1 both (rule 6).
+6. **Re-run every parser** against the existing HTTP/1.1 fixtures — their output
+   must be byte-identical — plus the new h2 fixture. `aiul parsers` stays green.
+7. **Prove it installed** (system change, needs an explicit yes): build, package,
+   install, restart the agent to clear the tunnel list, quit and relaunch Claude
+   Desktop, type one prompt, confirm the row and its `prompt_chars`, and confirm
+   `example.com` through the same proxy still shows its real issuer.
+
+### Done when
+
+A prompt typed in the Claude desktop app appears in `/usage` with its model,
+task and score; `decision=tunnel` no longer appears for `api.anthropic.com`;
+every existing parser test passes unchanged; no new dependency in `go.mod`.
+
+### Risks to watch
+
+- h2 flushing: `http.ResponseWriter` under h2 needs explicit `Flush()` per chunk
+  or the client waits — exactly rule 6, and the reason step 5 exists.
+- Trailers and `CONNECT`-style streams are not needed for these providers; if a
+  parser starts needing them, stop and record it rather than improvising.
+- A client that offers only h2 AND pins will still tunnel. That is correct.
 
 ## The desktop app was never pinning: it speaks HTTP/2 — DONE 2026-09-21 (log honesty)
 
