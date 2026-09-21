@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -32,6 +33,41 @@ import (
 // as far as its ALPN offer can say. A client that never offered http/1.1 did not
 // refuse our certificate — it asked for a protocol this proxy does not serve yet,
 // and no certificate or trust store change will help it.
+// helloFingerprint describes a ClientHello in one field: enough to tell one TLS
+// stack from another (Node, Chromium, Go, curl all look different) without
+// recording anything about the conversation inside it.
+func helloFingerprint(hello *tls.ClientHelloInfo) string {
+	versions := make([]string, 0, len(hello.SupportedVersions))
+	for _, v := range hello.SupportedVersions {
+		switch v {
+		case tls.VersionTLS13:
+			versions = append(versions, "1.3")
+		case tls.VersionTLS12:
+			versions = append(versions, "1.2")
+		case tls.VersionTLS11:
+			versions = append(versions, "1.1")
+		case tls.VersionTLS10:
+			versions = append(versions, "1.0")
+		default:
+			versions = append(versions, fmt.Sprintf("0x%04x", v))
+		}
+	}
+
+	first := hello.CipherSuites
+	if len(first) > 3 {
+		first = first[:3]
+	}
+	top := make([]string, 0, len(first))
+	for _, c := range first {
+		top = append(top, fmt.Sprintf("0x%04x", c))
+	}
+
+	return fmt.Sprintf("tls=%s ciphers=%d(%s) curves=%d sigalgs=%d sni=%q alpn=%d",
+		strings.Join(versions, "/"), len(hello.CipherSuites), strings.Join(top, ","),
+		len(hello.SupportedCurves), len(hello.SignatureSchemes),
+		hello.ServerName, len(hello.SupportedProtos))
+}
+
 func handshakeFailure(offeredALPN []string) (reason, hint string) {
 	if len(offeredALPN) > 0 && !slices.Contains(offeredALPN, "http/1.1") {
 		return "the client speaks none of the protocols we serve (we serve http/1.1 only)",
@@ -71,12 +107,14 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 		return
 	}
 
-	// What the client offered in ALPN, and whether it said anything at all, both
-	// recorded before the handshake can fail. A client that never sent a
-	// ClientHello never saw our certificate, so it cannot have refused it.
+	// What the client offered, recorded before the handshake can fail. A client
+	// that never sent a ClientHello never saw our certificate, so it cannot have
+	// refused it; and when one does refuse, its ClientHello is the only
+	// description we have of what it is.
 	var (
 		offeredALPN []string
 		helloSeen   bool
+		fingerprint string
 	)
 
 	clientTLS := tls.Server(rewindConn{Conn: clientConn, reader: clientReader}, &tls.Config{
@@ -86,6 +124,7 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
 			helloSeen = true
 			offeredALPN = hello.SupportedProtos
+			fingerprint = helloFingerprint(hello)
 			// nil means "carry on with the configuration you already have".
 			return nil, nil
 		},
@@ -115,17 +154,30 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 		// capturing another tool's traffic to the same provider. The key is the
 		// executable, not the process name, because the Claude desktop app's
 		// bundled Claude Code and the terminal CLI are both called "claude".
+		// Ask again who owns this connection. The first lookup happened before the
+		// handshake, and a source port is reused quickly enough that the answer
+		// can belong to a process that has already gone — which is how one second
+		// of log can blame two different programs for the same failure.
+		atFailure, _ := p.processOf(clientConn)
+
 		if p.cfg.Classifier.AddTunnel(host, client.Identity()) {
 			reason, hint := handshakeFailure(offeredALPN)
 			p.log.Warn("tunneling this host for this program from now on",
 				"host", host, "reason", reason, "process", client.Name,
-				"executable", client.Path, "alpn", strings.Join(offeredALPN, ","),
+				"executable", client.Path, "process_at_failure", atFailure.Name,
+				"executable_at_failure", atFailure.Path,
+				"alpn", strings.Join(offeredALPN, ","), "hello", fingerprint,
 				"err", err, "hint", hint)
 		}
 		return
 	}
 
 	defer clientTLS.Close()
+
+	// The same description for a handshake that worked. Comparing a working
+	// client with a refusing one is the whole point of recording it.
+	p.log.Debug("client handshake succeeded", "host", host,
+		"process", client.Name, "executable", client.Path, "hello", fingerprint)
 
 	if proto := clientTLS.ConnectionState().NegotiatedProtocol; proto != "" && proto != "http/1.1" {
 		p.log.Warn("client negotiated a protocol we do not parse", "host", host, "protocol", proto)

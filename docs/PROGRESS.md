@@ -37,6 +37,37 @@ What the plan got right is that `openssl s_client -alpn h2` really is refused by
 this proxy. No AI client we have seen needs it. If one ever does, the steps are
 in git history at `d5bc9f8`; do not rebuild them on today's evidence.
 
+## DIAGNOSTIC: fingerprint the refusing client — 2026-09-21, awaiting evidence
+
+The Claude desktop app still refuses our certificate on a clean agent with an
+empty tunnel list, and every cheap explanation is now excluded:
+
+| Theory | Killed by |
+| --- | --- |
+| HTTP/2 only | recorded fixture is HTTP/1.1; every failure reports `alpn=""` |
+| pre-warmed connection, no ClientHello | guard installed, fires zero times |
+| Electron strips `NODE_EXTRA_CA_CERTS` | live Electron pid has all four variables |
+| bad CA bundle | `ca-bundle.pem` holds 129 certs, ours among them, keychain trusts it |
+| the binary itself pins | same binary from a shell captured fine (row 140, "say OK") |
+
+So the difference is between the app's child and a shell's child of the SAME
+executable with the SAME trust material, and no theory left is worth another fix.
+This commit adds evidence instead of a fix:
+
+- `helloFingerprint()` records the ClientHello in one log field — TLS versions,
+  cipher count and first three suites, curve and signature-algorithm counts, SNI,
+  ALPN count. Enough to tell Node from Chromium from Go from curl; nothing about
+  the conversation inside.
+- The same field is logged at DEBUG for handshakes that SUCCEED, so the refusing
+  client can be diffed against a working one.
+- The owning process is resolved a second time AT the failure. The first lookup
+  happens before the handshake, and a source port is reused fast enough that the
+  answer can already belong to a dead process — which is how one second of log
+  blamed `process=""` and `process=claude` for the same failure.
+
+Nothing about behaviour changes. Next: install, relaunch the app, send one
+message, then compare the two `hello=` lines.
+
 ## Pre-warmed connections were being read as pinning — DONE 2026-09-21
 
 `alpn=""` meant `GetConfigForClient` never ran: the client opened the CONNECT

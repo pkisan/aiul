@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"crypto/tls"
 	"strings"
 	"sync"
 	"testing"
@@ -243,5 +244,33 @@ func TestHandshakeFailureTellsALPNApartFromDistrust(t *testing.T) {
 		if !strings.Contains(reason, "certificate") {
 			t.Errorf("offered %v reported as %q, want a certificate problem", offered, reason)
 		}
+	}
+}
+
+// The fingerprint has one job: tell two TLS stacks apart in a log line, while
+// saying nothing about the conversation inside the connection.
+func TestHelloFingerprintDescribesTheStackAndNothingElse(t *testing.T) {
+	got := helloFingerprint(&tls.ClientHelloInfo{
+		SupportedVersions: []uint16{tls.VersionTLS13, tls.VersionTLS12},
+		CipherSuites:      []uint16{0x1301, 0x1302, 0x1303, 0xc02b},
+		SupportedCurves:   []tls.CurveID{tls.X25519, tls.CurveP256},
+		SignatureSchemes:  []tls.SignatureScheme{tls.ECDSAWithP256AndSHA256},
+		ServerName:        "api.anthropic.com",
+		SupportedProtos:   nil,
+	})
+
+	for _, want := range []string{
+		`tls=1.3/1.2`, `ciphers=4(0x1301,0x1302,0x1303)`, `curves=2`,
+		`sigalgs=1`, `sni="api.anthropic.com"`, `alpn=0`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("fingerprint %q is missing %q", got, want)
+		}
+	}
+
+	// A client that offers nothing at all must still produce a usable line
+	// rather than an empty one: "said nothing" is itself the evidence.
+	if bare := helloFingerprint(&tls.ClientHelloInfo{}); !strings.Contains(bare, "ciphers=0") {
+		t.Errorf("empty hello = %q", bare)
 	}
 }
