@@ -94,7 +94,11 @@ func (d *researchDumper) write(ex dumpedExchange) error {
 	// holds: 20260921T105021.356-chatgpt.com-backend-api-f-conversation.json
 	safe := strings.Trim(strings.ReplaceAll(strings.Trim(ex.Path, "/"), "/", "-"), "-")
 	if len(safe) > 60 {
-		safe = safe[:60]
+		// Keep the END. A path like
+		// api/organizations/<uuid>/chat_conversations/<uuid>/completion says what
+		// it is in its last word, and cutting from the front turned every one of
+		// them into the same unreadable prefix.
+		safe = "..." + safe[len(safe)-57:]
 	}
 	name := fmt.Sprintf("%s-%s-%s.json",
 		ex.Time.Format("20060102T150405.000"), ex.Host, safe)
