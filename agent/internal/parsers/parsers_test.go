@@ -579,3 +579,37 @@ func TestCodexThroughTheChatGPTBackend(t *testing.T) {
 		}
 	}
 }
+
+// A 5 MB request truncated by the copy cap made the request JSON unreadable, and
+// the parser threw away the response with it — thirteen text_delta events we had
+// copied in full. The two sides are parsed independently now.
+func TestAnAnswerSurvivesAnUnreadableRequest(t *testing.T) {
+	truncated := []byte(`{"model":"claude-sonnet-5","messages":[{"role":"user","content":"this json never clo`)
+
+	res, err := Anthropic{}.Parse(Exchange{
+		Host:    "api.anthropic.com",
+		Path:    "/v1/messages",
+		ReqBody: truncated,
+		SSE: []string{
+			`{"type":"message_start","message":{"usage":{"input_tokens":7}}}`,
+			`{"type":"content_block_delta","delta":{"type":"text_delta","text":"the answer"}}`,
+			`{"type":"content_block_delta","delta":{"type":"text_delta","text":" survived"}}`,
+			`{"type":"message_delta","usage":{"output_tokens":4}}`,
+		},
+	})
+
+	// The error is still reported — the request really was unreadable — but the
+	// response must come back in full.
+	if err == nil {
+		t.Error("the unreadable request should still be reported")
+	}
+	if res.Answer != "the answer survived" {
+		t.Errorf("answer = %q", res.Answer)
+	}
+	if res.ResponseTokens != 4 || res.PromptTokens != 7 {
+		t.Errorf("tokens = %d in, %d out", res.PromptTokens, res.ResponseTokens)
+	}
+	if !res.Streamed {
+		t.Error("a streamed response must still be marked streamed")
+	}
+}

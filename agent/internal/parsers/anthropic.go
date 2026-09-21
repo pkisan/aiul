@@ -28,9 +28,12 @@ func (p Anthropic) Parse(ex Exchange) (Result, error) {
 			Content json.RawMessage `json:"content"`
 		} `json:"messages"`
 	}
-	if err := json.Unmarshal(ex.ReqBody, &req); err != nil {
-		return res, err
-	}
+	// A request we cannot read must not cost us the response. The request body is
+	// the bigger of the two and the one that gets truncated by the copy cap — a
+	// 5 MB request threw away thirteen text_delta events sitting in a response we
+	// had copied in full. Remember the failure, carry on with what we do have.
+	reqErr := json.Unmarshal(ex.ReqBody, &req)
+
 	res.Model = req.Model
 	res.Streamed = req.Stream
 	res.System = textFromContent(req.System)
@@ -52,11 +55,11 @@ func (p Anthropic) Parse(ex Exchange) (Result, error) {
 	if len(ex.SSE) > 0 {
 		res.Streamed = true
 		res.Answer, res.PromptTokens, res.ResponseTokens = p.reassemble(ex.SSE)
-		return res, nil
+		return res, reqErr
 	}
 
 	p.parseWholeResponse(ex.RespBody, &res)
-	return res, nil
+	return res, reqErr
 }
 
 // reassemble joins a streamed Messages response.

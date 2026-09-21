@@ -101,10 +101,11 @@ func (p OpenAI) Parse(ex Exchange) (Result, error) {
 	var res Result
 	res.Tool = toolFromHeaders(ex.ReqHead)
 
+	// See the note in anthropic.go: an unreadable request must not discard a
+	// response we already have.
 	var req openAIRequest
-	if err := json.Unmarshal(ex.ReqBody, &req); err != nil {
-		return res, err
-	}
+	reqErr := json.Unmarshal(ex.ReqBody, &req)
+
 	res.Model = req.Model
 	res.Streamed = req.Stream
 	res.System = req.Instructions
@@ -132,11 +133,11 @@ func (p OpenAI) Parse(ex Exchange) (Result, error) {
 	if len(ex.SSE) > 0 {
 		res.Streamed = true
 		res.Answer, res.PromptTokens, res.ResponseTokens = p.reassemble(ex.SSE)
-		return res, nil
+		return res, reqErr
 	}
 
 	p.parseWholeResponse(ex.RespBody, &res)
-	return res, nil
+	return res, reqErr
 }
 
 // reassemble joins a streamed Chat Completions response back into one answer.

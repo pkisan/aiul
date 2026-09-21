@@ -160,6 +160,12 @@ func (p *Proxy) record(in interaction) {
 		return
 	}
 
+	// A copy that stopped exactly at the cap is a body we did not see all of.
+	// Without saying so, a prompt parsed from a truncated request is
+	// indistinguishable from a complete one, and an empty one looks like a tool
+	// that sent nothing.
+	truncated := len(in.RequestCopy) >= maxCopyBytes
+
 	var ex parsers.Exchange
 	{
 		ev.Parser = parser.Name()
@@ -197,6 +203,13 @@ func (p *Proxy) record(in interaction) {
 		"response_bytes", in.ResponseBytes, "response_copy_bytes", len(in.ResponseCopy),
 		"content_type", in.ResponseHead.Get("Content-Type"),
 		"sse_events", len(ex.SSE), "sse_types", sseTypes(ex.SSE))
+
+	if truncated {
+		p.log.Warn("the request body was larger than we copy, so the prompt may be incomplete",
+			"host", in.Host, "path", in.Path, "request_bytes", in.RequestBytes,
+			"copied_bytes", len(in.RequestCopy), "prompt_chars", len(ev.Prompt))
+		ev.Prompt = strings.TrimRight(ev.Prompt, "\n") + truncationNote
+	}
 
 	// Rule 8: mask before anything is stored or sent. The provider already has the
 	// original request; this only touches our copy.
@@ -307,6 +320,11 @@ func (p *Proxy) exchange(in interaction) parsers.Exchange {
 	}
 	return ex
 }
+
+// truncationNote is appended to a prompt parsed from a request we only partly
+// copied. It goes in the stored text, where anyone reading the prompt sees it —
+// a log line they will never look at is not honest enough.
+const truncationNote = "\n\n[aiul: the request was larger than the 4 MiB we copy, so this prompt is incomplete]"
 
 // sseTypes summarises what a streamed response actually contained: the distinct
 // event and delta types, in the order first seen, with how many of each. Types
