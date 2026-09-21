@@ -558,3 +558,24 @@ func TestEveryCopilotPlanHostIsParsed(t *testing.T) {
 		}
 	}
 }
+
+// Codex signed in with a ChatGPT account posts the Responses API shape to the
+// ChatGPT backend rather than to api.openai.com. Its model list is housekeeping,
+// and the browser's own conversation endpoint belongs to the web parser.
+func TestCodexThroughTheChatGPTBackend(t *testing.T) {
+	cases := map[string]string{
+		"/backend-api/codex/responses": "openai",
+		"/backend-api/codex/models":    "",
+		"/backend-api/f/conversation":  "chatgpt-web",
+		"/backend-api/conversations":   "",
+	}
+	for path, want := range cases {
+		got := ""
+		if p := For("chatgpt.com", path); p != nil {
+			got = p.Name()
+		}
+		if got != want {
+			t.Errorf("For(chatgpt.com, %q) = %q, want %q", path, got, want)
+		}
+	}
+}

@@ -50,7 +50,17 @@ var openAICompatibleHosts = map[string]bool{
 }
 
 func (OpenAI) Handles(host, path string) bool {
-	if !openAICompatibleHosts[strings.ToLower(host)] {
+	host = strings.ToLower(host)
+
+	// Codex signed in with a ChatGPT account does not talk to api.openai.com: it
+	// posts the Responses API shape to the ChatGPT backend. Observed on the
+	// owner's Mac on 2026-09-21. Only the conversation endpoint — /codex/models is
+	// the client asking which models exist, which is housekeeping.
+	if host == "chatgpt.com" || host == "chat.openai.com" {
+		return strings.HasPrefix(path, "/backend-api/codex/responses")
+	}
+
+	if !openAICompatibleHosts[host] {
 		return false
 	}
 
