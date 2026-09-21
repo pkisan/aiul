@@ -373,3 +373,91 @@ func TestOpenAICompatibleProviders(t *testing.T) {
 		t.Errorf("answer = %q", res.Answer)
 	}
 }
+
+// chatgpt.com in a browser. The fixture below reproduces the protocol captured on
+// 2026-09-21 — the same event shapes and the same order — with invented content:
+// the real capture carried the person's own conversation and profile, so it is not
+// in this repository.
+func TestChatGPTWebConversation(t *testing.T) {
+	res, err := ChatGPTWeb{}.Parse(Exchange{
+		Host:   "chatgpt.com",
+		Path:   "/backend-api/f/conversation",
+		Method: "POST",
+		Status: 200,
+		ReqBody: []byte(`{
+			"action": "next",
+			"messages": [{
+				"id": "eb27ed69-ad0c-4902-94dd-439c4427bbcd",
+				"author": {"role": "user"},
+				"content": {"content_type": "text", "parts": ["how do I reverse a list in python"]},
+				"metadata": {"submission_mode": "manual_send"}
+			}],
+			"parent_message_id": "client-created-root",
+			"model": "auto",
+			"conversation_mode": {"kind": "primary_assistant"}
+		}`),
+		SSE: []string{
+			`"v1"`,
+			`{"type":"resume_conversation_token","kind":"topic","token":"eyJ...","conversation_id":"6ab0c34f"}`,
+			// The user's own message echoed back, and system context messages. None
+			// of this is the answer.
+			`{"p":"","o":"add","v":{"message":{"id":"52df8e9d","author":{"role":"user"},"content":{"content_type":"user_editable_context","user_profile":"about the user"}}}}`,
+			`{"v":{"message":{"id":"d4f4a7e5","author":{"role":"system"},"content":{"content_type":"text","parts":[""]}}}}`,
+			`{"p":"","o":"add","v":{"message":{"id":"c8c08fde","author":{"role":"assistant"},"content":{"content_type":"text","parts":[""]},"metadata":{"model_slug":"gpt-5-6","default_model_slug":"auto"}}}}`,
+			`{"type":"message_marker","message_id":"c8c08fde","marker":"user_visible_token","event":"first"}`,
+			// The answer: one targeted append, then bare continuations, then a
+			// batched patch that finishes the sentence and closes the turn.
+			`{"p":"/message/content/parts/0","o":"append","v":"Use "}`,
+			`{"v":"reversed(), "}`,
+			`{"v":"or a [::-1] slice"}`,
+			`{"p":"","o":"patch","v":[{"p":"/message/content/parts/0","o":"append","v":" for a copy."},{"p":"/message/status","o":"replace","v":"finished_successfully"},{"p":"/message/end_turn","o":"replace","v":true}]}`,
+			`{"type":"message_marker","message_id":"c8c08fde","marker":"last_token","event":"last"}`,
+			`{"type":"title_generation","title":"Reversing a list"}`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	if res.Prompt != "how do I reverse a list in python" {
+		t.Errorf("prompt = %q", res.Prompt)
+	}
+	if res.Answer != "Use reversed(), or a [::-1] slice for a copy." {
+		t.Errorf("answer = %q\nthe stream has to be reassembled from appends, bare continuations and a batched patch", res.Answer)
+	}
+	// The request said "auto"; the stream said what actually answered.
+	if res.Model != "gpt-5-6" {
+		t.Errorf("model = %q, want gpt-5-6", res.Model)
+	}
+	if !res.Streamed {
+		t.Error("a browser conversation is always streamed")
+	}
+	if res.Tool != "chatgpt-web" {
+		t.Errorf("tool = %q", res.Tool)
+	}
+}
+
+// The web application calls a dozen endpoints with similar names. Only one of them
+// is a person talking to the model, and recording the others would mean holding
+// data about somebody for no benefit.
+func TestOnlyTheChatGPTConversationEndpointIsParsed(t *testing.T) {
+	cases := map[string]string{
+		"/backend-api/f/conversation":                                     "chatgpt-web",
+		"/backend-api/conversation":                                       "chatgpt-web",
+		"/backend-api/f/conversation/prepare":                             "",
+		"/backend-api/conversations":                                      "", // the sidebar list
+		"/backend-api/conversation/experimental/generate_autocompletions": "",
+		"/backend-api/sentinel/chat-requirements/prepare":                 "",
+		"/ces/v1/telemetry/intake":                                        "",
+		"/backend-api/codex/models":                                       "",
+	}
+	for path, want := range cases {
+		got := ""
+		if p := For("chatgpt.com", path); p != nil {
+			got = p.Name()
+		}
+		if got != want {
+			t.Errorf("For(chatgpt.com, %q) = %q, want %q", path, got, want)
+		}
+	}
+}

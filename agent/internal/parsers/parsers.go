@@ -87,6 +87,7 @@ func All() []Parser {
 		OpenAI{},
 		Anthropic{},
 		Gemini{},
+		ChatGPTWeb{},
 	}
 }
 

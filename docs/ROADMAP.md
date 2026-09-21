@@ -78,6 +78,25 @@ is an audit log and a "my data" page so that can be done honestly — see
 This is the real objective, and today the product meets about half of it. Here is
 the truth, surface by surface.
 
+## What the 2026-09-21 captures established
+
+Run on the owner's Mac with the agent's own research mode, not mitmproxy.
+
+- **chatgpt.com in a browser is fully capturable.** It accepted our certificate,
+  and its conversation endpoint is `POST /backend-api/f/conversation`. A parser
+  for it is built and verified against the real capture.
+- **Cursor PINS its certificate.** `api2.cursor.sh` rejected ours and was tunneled
+  — the tool kept working, and only its telemetry host `api3.cursor.sh` decrypts.
+  **No parser can change this.** Cursor usage is countable (when, how much, by
+  whom) and never readable.
+- **Copilot was invisible for a fixable reason**: a personal plan talks to
+  `api.individual.githubcopilot.com`, which was not on the allow-list.
+  `api.githubcopilot.com` saw nothing. Now listed, along with the business and
+  enterprise prefixes.
+- **claude.ai's conversation endpoint** is
+  `POST /api/organizations/<org>/chat_conversations/<id>/completion`, alongside a
+  lot of `event_logging/v2/batch` noise. Parser still to write.
+
 ## Where it stands
 
 | Surface | Decrypted? | Conversation recorded? | Why |
@@ -85,9 +104,11 @@ the truth, surface by surface.
 | **CLI** — Claude Code, Codex, OpenCode | yes | **yes**, proven live | parsers exist for the provider APIs |
 | **Direct API** — curl, scripts, SDKs | yes | **yes** | same parsers |
 | **Nine more providers** — Groq, DeepSeek, Mistral, xAI, Together, Perplexity, OpenRouter, Copilot API, Cursor's OpenAI-compatible calls | yes | **probably** — parsed from documented shapes, never driven live | one parser covers the OpenAI format |
-| **Web apps** — chatgpt.com, claude.ai, gemini.google.com | yes | **NO — metadata only** | no parser for their private endpoints |
-| **IDE assistants** — Copilot in VS Code, JetBrains AI | partly | partly | `api.githubcopilot.com` is allow-listed and parsed; JetBrains uses its own hosts, not listed |
-| **Cursor** | **NO** | no | `api2.cursor.sh` and friends are not on the allow-list at all — the traffic passes sealed and invisible |
+| **chatgpt.com in a browser** | yes | **YES** — parser built 2026-09-21 | its private endpoint and patch-stream protocol are now parsed |
+| **claude.ai, gemini.google.com in a browser** | yes | not yet | endpoints identified; parsers not written |
+| **Copilot in VS Code** | yes | expected — untested | the real host `api.individual.githubcopilot.com` is now allow-listed; nobody has driven it yet |
+| **JetBrains AI** | no | no | its hosts are not listed; nobody has captured them |
+| **Cursor** | **no, and never will be** | **no** | it pins its certificate: `api2.cursor.sh` rejects ours and is tunneled. Metadata only, permanently |
 | **Windsurf, Tabnine, Amazon Q, Gemini Code Assist** | **NO** | no | same: not listed |
 
 Two things to take from that table. Everything on the allow-list is at least
