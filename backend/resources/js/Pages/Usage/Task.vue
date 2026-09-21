@@ -2,7 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
 
-defineProps({ task: String, untagged: Boolean, interactions: Array });
+defineProps({ task: String, untagged: Boolean, interactions: Object });
 </script>
 
 <template>
@@ -32,7 +32,7 @@ defineProps({ task: String, untagged: Boolean, interactions: Array });
                             </tr>
                         </thead>
                         <tbody class="divide-y">
-                            <tr v-for="i in interactions" :key="i.id" class="hover:bg-gray-50">
+                            <tr v-for="i in interactions.data" :key="i.id" class="hover:bg-gray-50">
                                 <td class="px-4 py-2">
                                     <Link :href="route('usage.show', i.id)" class="underline">
                                         {{ new Date(i.occurred_at).toLocaleString() }}
@@ -45,13 +45,29 @@ defineProps({ task: String, untagged: Boolean, interactions: Array });
                                 </td>
                                 <td class="px-4 py-2 text-right font-medium">{{ i.score ?? '—' }}</td>
                             </tr>
-                            <tr v-if="!interactions.length">
+                            <tr v-if="!interactions.data.length">
                                 <td colspan="5" class="px-4 py-6 text-center text-gray-500">
                                     Nothing captured for this task in the period.
                                 </td>
                             </tr>
                         </tbody>
                     </table>
+                    <div v-if="interactions.last_page > 1" class="flex items-center justify-between border-t px-4 py-3 text-sm">
+                        <span class="text-gray-500">
+                            Page {{ interactions.current_page }} of {{ interactions.last_page }}
+                            ({{ interactions.total }} interactions)
+                        </span>
+                        <span class="flex gap-1">
+                            <Link v-for="link in interactions.links" :key="link.label" :href="link.url ?? ''"
+                                  :only="['interactions']" :preserve-scroll="true" v-html="link.label"
+                                  class="rounded px-2 py-1"
+                                  :class="{
+                                      'bg-gray-800 text-white': link.active,
+                                      'text-gray-600 underline': !link.active && link.url,
+                                      'text-gray-300': !link.url,
+                                  }" />
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>

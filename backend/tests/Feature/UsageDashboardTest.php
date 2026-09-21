@@ -242,7 +242,7 @@ class UsageDashboardTest extends TestCase
         $props = $response->viewData('page')['props'];
 
         $this->assertSame('ABC-123', $props['task']);
-        $ids = collect($props['interactions'])->pluck('id')->all();
+        $ids = collect($props['interactions']['data'])->pluck('id')->all();
         $this->assertContains($wanted->id, $ids);
         $this->assertCount(1, $ids);
     }
@@ -256,7 +256,27 @@ class UsageDashboardTest extends TestCase
         $props = $response->viewData('page')['props'];
 
         $this->assertTrue($props['untagged']);
-        $this->assertSame([$untagged->id], collect($props['interactions'])->pluck('id')->all());
+        $this->assertSame([$untagged->id], collect($props['interactions']['data'])->pluck('id')->all());
+    }
+
+    public function test_a_task_page_paginates_twenty_at_a_time(): void
+    {
+        for ($n = 0; $n < 25; $n++) {
+            $this->interaction(['task_id' => null]);
+        }
+
+        $page1 = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/task/untagged')->assertOk();
+        $pager = $page1->viewData('page')['props']['interactions'];
+
+        $this->assertSame(25, $pager['total']);
+        $this->assertSame(20, $pager['per_page']);
+        $this->assertCount(20, $pager['data']);
+
+        $page2 = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/task/untagged?page=2')->assertOk();
+        $pager2 = $page2->viewData('page')['props']['interactions'];
+
+        $this->assertSame(2, $pager2['current_page']);
+        $this->assertCount(5, $pager2['data']);
     }
 
     public function test_a_member_cannot_open_a_task_page(): void

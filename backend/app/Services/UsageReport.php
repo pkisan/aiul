@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AiInteraction;
 use App\Models\AiSession;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -192,14 +193,16 @@ class UsageReport
      * One task's interactions, newest first — the drill-down behind the per-task
      * rows. The literal 'untagged' addresses the bucket with no branch ticket;
      * real task IDs never look like that, so there is no collision.
+     *
+     * Paginated, because the untagged bucket grows without bound and a 100-row
+     * dump is how a page starts timing out.
      */
-    public function interactionsForTask(string $task): array
+    public function interactionsForTask(string $task, int $perPage = 20): LengthAwarePaginator
     {
         $query = AiInteraction::query()
             ->with('score:id,ai_interaction_id,score')
             ->where('occurred_at', '>=', $this->since())
-            ->latest('occurred_at')
-            ->limit(100);
+            ->latest('occurred_at');
 
         if ($task === 'untagged') {
             $query->whereNull('task_id');
@@ -207,7 +210,7 @@ class UsageReport
             $query->where('task_id', $task);
         }
 
-        return $query->get()->map(fn ($i) => [
+        return $query->paginate($perPage)->through(fn ($i) => [
             'id' => $i->id,
             'tool' => $i->tool,
             'model' => $i->model,
@@ -216,7 +219,7 @@ class UsageReport
             'prompt_chars' => $i->prompt_chars,
             'score' => $i->score?->score,
             'occurred_at' => $i->occurred_at,
-        ])->all();
+        ]);
     }
 
     /** The newest interactions across tasks, for the dashboard's recent list. */

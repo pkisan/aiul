@@ -421,6 +421,9 @@ captured in this exchange" unless chars were recorded and the key is gone.
 Nothing was ever purged early — retention is 90 days, all stored objects verify
 present. 79 backend tests.
 
+Task-page pagination — DONE 2026-09-21: `interactionsForTask` paginates 20 per
+page (`through` keeps the shape), Task.vue renders page links with
+Inertia partial reloads (`only=['interactions']`, scroll preserved). 81 tests.
 ## MILESTONE: the whole pipeline proven through the INSTALLED package, 2026-09-20
 
 A real `claude -p` run, captured by the agent installed from `aiul-0.9.0.pkg`, is
