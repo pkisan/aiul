@@ -153,3 +153,40 @@ func TestClassifierIsConcurrencySafe(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// The hosts observed on a real Mac on 2026-09-21, and the ones deliberately left
+// off. Copilot on a personal plan talks to api.individual.githubcopilot.com, not
+// api.githubcopilot.com, which is why Copilot usage was invisible until then.
+func TestObservedIDEHostsAreClassified(t *testing.T) {
+	c := NewClassifier()
+
+	capture := []string{
+		"api.individual.githubcopilot.com:443",
+		"api2.cursor.sh:443",
+		"api3.cursor.sh:443",
+		"api2direct.cursor.sh:443",
+		"api.origin.cursor.com:443",
+	}
+	for _, host := range capture {
+		if got := c.Classify(host); got != Capture {
+			t.Errorf("%s should be captured, got %v", host, got)
+		}
+	}
+
+	// Updates, telemetry and the extension marketplace are not AI usage, and
+	// decrypting them would be reading traffic we have no business reading.
+	pass := []string{
+		"downloads.cursor.com:443",
+		"metrics.cursor.sh:443",
+		"marketplace.cursorapi.com:443",
+		// And the anchoring rule still holds for the new entries.
+		"api2.cursor.sh.evil.net:443",
+		"notapi2.cursor.sh:443",
+		"cursor.sh:443",
+	}
+	for _, host := range pass {
+		if got := c.Classify(host); got == Capture {
+			t.Errorf("SECURITY: %s must not be decrypted, got %v", host, got)
+		}
+	}
+}

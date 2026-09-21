@@ -10,7 +10,7 @@ import (
 
 // AllowListVersion is bumped whenever the list below changes, so a captured event
 // records which version of the list decided to capture it.
-const AllowListVersion = 1
+const AllowListVersion = 2
 
 // Decision is what the proxy does with one connection.
 type Decision int
@@ -72,8 +72,25 @@ var allowList = []string{
 	"aistudio.google.com",
 
 	// GitHub Copilot. Again narrow: the Copilot API hosts only, never github.com.
+	//
+	// api.individual.githubcopilot.com is the one a personal plan actually uses —
+	// observed on the owner's Mac on 2026-09-21, passing through sealed while
+	// api.githubcopilot.com saw nothing. Business and enterprise plans use their
+	// own prefixes, so this is a family rather than one name.
 	"api.githubcopilot.com",
+	"api.individual.githubcopilot.com",
+	"api.business.githubcopilot.com",
+	"api.enterprise.githubcopilot.com",
 	"copilot-proxy.githubusercontent.com",
+
+	// Cursor. Observed 2026-09-21 on the owner's Mac. Its conversation traffic goes
+	// to the api*.cursor.sh hosts and api.origin.cursor.com; downloads.cursor.com,
+	// metrics.cursor.sh and marketplace.cursorapi.com are updates, telemetry and
+	// the extension marketplace, so they stay off the list.
+	"api2.cursor.sh",
+	"api2direct.cursor.sh",
+	"api3.cursor.sh",
+	"api.origin.cursor.com",
 
 	// Other providers commonly used from CLIs and IDEs.
 	"api.mistral.ai",
