@@ -540,3 +540,21 @@ func TestOnlyTheClaudeCompletionEndpointIsParsed(t *testing.T) {
 		}
 	}
 }
+
+// A host on the allow-list but absent from every parser is decrypted and then
+// never read. That is a legitimate state — Cursor pins, so it can only ever be
+// metadata — but it must be deliberate rather than an oversight. Copilot spent a
+// day in that state because the host was added to the allow-list and not to the
+// parser.
+func TestEveryCopilotPlanHostIsParsed(t *testing.T) {
+	for _, host := range []string{
+		"api.githubcopilot.com",
+		"api.individual.githubcopilot.com",
+		"api.business.githubcopilot.com",
+		"api.enterprise.githubcopilot.com",
+	} {
+		if p := For(host, "/chat/completions"); p == nil {
+			t.Errorf("%s is decrypted but no parser claims it, so Copilot usage there is recorded as metadata only", host)
+		}
+	}
+}

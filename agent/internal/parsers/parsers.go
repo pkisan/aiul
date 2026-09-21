@@ -92,6 +92,19 @@ func All() []Parser {
 	}
 }
 
+// Names lists the parsers in this build, so `aiul parsers` can report what a
+// given binary actually understands rather than what a document claims.
+func Names() []string {
+	list := All()
+
+	out := make([]string, 0, len(list))
+	for _, p := range list {
+		out = append(out, p.Name())
+	}
+
+	return out
+}
+
 // For returns the first parser that handles this host and path, or nil.
 func For(host, path string) Parser {
 	for _, p := range All() {

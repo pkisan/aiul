@@ -40,8 +40,13 @@ var openAICompatibleHosts = map[string]bool{
 	"api.x.ai":          true,
 	"openrouter.ai":     true,
 
-	// GitHub Copilot's chat endpoint is the same format.
-	"api.githubcopilot.com": true,
+	// GitHub Copilot's chat endpoint is the same format. Which host a client uses
+	// depends on the plan: a personal one talks to api.individual.githubcopilot.com,
+	// which is what the owner's Mac was observed doing on 2026-09-21.
+	"api.githubcopilot.com":            true,
+	"api.individual.githubcopilot.com": true,
+	"api.business.githubcopilot.com":   true,
+	"api.enterprise.githubcopilot.com": true,
 }
 
 func (OpenAI) Handles(host, path string) bool {
