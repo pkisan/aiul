@@ -120,6 +120,25 @@ class EventIngestionTest extends TestCase
         $this->assertSame(['email'], $stored->redacted);
     }
 
+    // The agent sends the device's local time with its offset. Stored without
+    // converting, a Mac in IST wrote 15:29 into a UTC column and every screen
+    // then showed 20:59 — the offset added a second time.
+    public function test_a_device_in_another_timezone_is_stored_in_utc(): void
+    {
+        Queue::fake();
+        [$device, $token] = $this->newDevice();
+
+        $this->withToken($token)
+            ->postJson('/api/aiul/events', ['events' => [
+                $this->anEvent(['time' => '2026-09-21T15:29:42+05:30']),
+            ]])
+            ->assertOk();
+
+        $stored = AiInteraction::withoutGlobalScope('tenant')->first();
+
+        $this->assertSame('2026-09-21 09:59:42', $stored->occurred_at->utc()->format('Y-m-d H:i:s'));
+    }
+
     public function test_prompt_text_is_kept_out_of_the_database_and_encrypted_in_object_storage(): void
     {
         Queue::fake();

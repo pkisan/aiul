@@ -98,7 +98,12 @@ class EventIngestionController extends Controller
             return $existing->event_id;
         }
 
-        $occurredAt = Carbon::parse($event['time']);
+        // The agent sends RFC 3339 with the device's offset ("...T15:29:42+05:30").
+        // Columns are plain timestamps and the application runs in UTC, so the
+        // offset has to be applied here — without ->utc() the local wall clock is
+        // stored as if it were UTC and every screen shows the device's offset
+        // added on top of it.
+        $occurredAt = Carbon::parse($event['time'])->utc();
         $session = $this->sessionFor($device, $event, $occurredAt);
 
         $interaction = new AiInteraction([

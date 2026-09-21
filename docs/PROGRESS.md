@@ -19,6 +19,22 @@ Last updated: 2026-09-21 (session resume)
   code; no system change without explicit yes (rule 1). Unpushed work also
   needs `git push` with owner approval.
 
+## Dashboard clock was 5h30m fast — DONE 2026-09-21
+
+Every screen showed IST plus another 5h30m: a 15:29 interaction read 8:59 PM.
+The agent sends RFC 3339 with the device's offset (`...T15:29:42+05:30`),
+`EventIngestionController` did `Carbon::parse($event['time'])` with no
+conversion, and `occurred_at` is a plain timestamp column in an application
+running in UTC — so the device's wall clock went in as if it were already UTC,
+and the browser added the offset a second time on the way out. One `->utc()` at
+ingestion fixes it for every screen, because everything reads that column.
+Test posts `+05:30` and asserts `09:59:42` is stored; it fails without the fix.
+80 backend tests pass.
+
+Rows written before this (ids 1..71 on this Mac) are still 5h30m fast. Not
+corrected: the shift to apply depends on each device's offset at the time, and
+these are development rows. Say the word and they can be moved by hand.
+
 ## The executable had to cross the helper socket — DONE 2026-09-21
 
 Installed `68d9a08` and the log said `process=claude executable=""`. The
