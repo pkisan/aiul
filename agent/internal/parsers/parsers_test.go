@@ -463,3 +463,80 @@ func TestOnlyTheChatGPTConversationEndpointIsParsed(t *testing.T) {
 		}
 	}
 }
+
+// claude.ai in a browser. The response stream is the Messages API's, so only the
+// request shape is new: one `prompt` string for the turn, because the rest of the
+// conversation already lives on the server.
+//
+// Captured on 2026-09-21; the content here is invented, the shape is not.
+func TestClaudeWebConversation(t *testing.T) {
+	res, err := ClaudeWeb{}.Parse(Exchange{
+		Host:   "claude.ai",
+		Path:   "/api/organizations/162413ac-394f-4bf8-a0ed-40ea3e1ff577/chat_conversations/4601760a-5b5c-40e7-a1d7-6d99e3817174/completion",
+		Method: "POST",
+		Status: 200,
+		ReqBody: []byte(`{
+			"prompt": "what is a race condition",
+			"timezone": "Asia/Calcutta",
+			"model": "claude-sonnet-5",
+			"effort": "medium",
+			"thinking_mode": "auto",
+			"tools": [{"name": "batch", "description": "a connected tool"}]
+		}`),
+		SSE: []string{
+			`{"type":"ping"   }`,
+			`{"type":"conversation_ready"     }`,
+			`{"type":"message_start","message":{"id":"chatcompl_011Cf","type":"message","role":"assistant","model":"claude-opus-5","usage":{"input_tokens":812,"output_tokens":1}}}`,
+			`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+			`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Two threads "}}`,
+			`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"touching the same state."}}`,
+			`{"type":"content_block_stop","index":0}`,
+			`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":9}}`,
+			`{"type":"message_stop"}`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	if res.Prompt != "what is a race condition" {
+		t.Errorf("prompt = %q", res.Prompt)
+	}
+	if res.Answer != "Two threads touching the same state." {
+		t.Errorf("answer = %q", res.Answer)
+	}
+	// The request asked for sonnet; the stream said opus answered.
+	if res.Model != "claude-opus-5" {
+		t.Errorf("model = %q, want the model the stream named", res.Model)
+	}
+	if res.PromptTokens != 812 || res.ResponseTokens != 9 {
+		t.Errorf("tokens = %d/%d, want 812/9", res.PromptTokens, res.ResponseTokens)
+	}
+	if res.Tool != "claude-web" {
+		t.Errorf("tool = %q", res.Tool)
+	}
+}
+
+// claude.ai calls many endpoints per conversation. One of them is the conversation.
+func TestOnlyTheClaudeCompletionEndpointIsParsed(t *testing.T) {
+	const org = "/api/organizations/162413ac-394f-4bf8-a0ed-40ea3e1ff577"
+
+	cases := map[string]string{
+		org + "/chat_conversations/4601760a/completion": "claude-web",
+		org + "/chat_conversations/4601760a":            "",
+		org + "/chat_conversations/4601760a/title":      "",
+		org + "/chat_conversations_v2":                  "",
+		org + "/projects":                               "",
+		"/api/event_logging/v2/batch":                   "",
+		"/edge-api/client-health-check":                 "",
+	}
+	for path, want := range cases {
+		got := ""
+		if p := For("claude.ai", path); p != nil {
+			got = p.Name()
+		}
+		if got != want {
+			t.Errorf("For(claude.ai, %q) = %q, want %q", path, got, want)
+		}
+	}
+}

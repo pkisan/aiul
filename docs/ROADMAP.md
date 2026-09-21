@@ -93,9 +93,10 @@ Run on the owner's Mac with the agent's own research mode, not mitmproxy.
   `api.individual.githubcopilot.com`, which was not on the allow-list.
   `api.githubcopilot.com` saw nothing. Now listed, along with the business and
   enterprise prefixes.
-- **claude.ai's conversation endpoint** is
-  `POST /api/organizations/<org>/chat_conversations/<id>/completion`, alongside a
-  lot of `event_logging/v2/batch` noise. Parser still to write.
+- **claude.ai is fully capturable too.** Its endpoint is
+  `POST /api/organizations/<org>/chat_conversations/<id>/completion`, and its
+  response stream turned out to be the Messages API's, so the existing reassembly
+  was reused. Parser built and verified against the real capture.
 
 ## Where it stands
 
@@ -105,7 +106,8 @@ Run on the owner's Mac with the agent's own research mode, not mitmproxy.
 | **Direct API** — curl, scripts, SDKs | yes | **yes** | same parsers |
 | **Nine more providers** — Groq, DeepSeek, Mistral, xAI, Together, Perplexity, OpenRouter, Copilot API, Cursor's OpenAI-compatible calls | yes | **probably** — parsed from documented shapes, never driven live | one parser covers the OpenAI format |
 | **chatgpt.com in a browser** | yes | **YES** — parser built 2026-09-21 | its private endpoint and patch-stream protocol are now parsed |
-| **claude.ai, gemini.google.com in a browser** | yes | not yet | endpoints identified; parsers not written |
+| **claude.ai in a browser** | yes | **YES** — parser built 2026-09-21 | its stream is the Messages API's; only the request shape differs |
+| **gemini.google.com in a browser** | yes | not yet | nobody has captured it |
 | **Copilot in VS Code** | yes | expected — untested | the real host `api.individual.githubcopilot.com` is now allow-listed; nobody has driven it yet |
 | **JetBrains AI** | no | no | its hosts are not listed; nobody has captured them |
 | **Cursor** | **no, and never will be** | **no** | it pins its certificate: `api2.cursor.sh` rejects ours and is tunneled. Metadata only, permanently |

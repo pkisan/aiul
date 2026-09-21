@@ -196,10 +196,11 @@ putting the agent on another managed Mac, covering every AI surface rather than
 only the CLI, and what Windows and Linux need. It also lists what must exist
 before a pilot that is not code.
 
-The headline from it: **the CLI is proven, the web apps are metadata-only, and
-Cursor is not on the allow-list at all**, so its traffic is invisible. Closing
-that needs real captures through `mitmweb`, one tool at a time — which needs the
-owner, since it needs the tools.
+Updated 2026-09-21 after the first capture session: **chatgpt.com and claude.ai
+in a browser are now parsed** — both verified against real captures taken with the
+agent's own research mode rather than mitmproxy. **Cursor pins its certificate**
+and can never be read, only counted. **Copilot** was invisible because a personal
+plan uses `api.individual.githubcopilot.com`; now allow-listed, still undriven.
 
 ### How to test the whole thing
 
