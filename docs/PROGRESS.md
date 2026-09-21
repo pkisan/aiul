@@ -2,7 +2,22 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-19
+Last updated: 2026-09-21 (session resume)
+
+## Session resume 2026-09-21 — read this first
+
+- `git status` clean, but `main` is 8 commits ahead of `origin/main`
+  (`db05c10`..`c52ff27`): IDE allow-list, chatgpt.com + claude.ai web parsers,
+  `aiul parsers`, brotli/zstd (D15), Codex-via-ChatGPT routing. Last task
+  (`c52ff27`) is COMPLETE, not interrupted — parsers + proxy tests pass.
+- PROGRESS.md was stale: it did not mention `c52ff27`, and it claims the Mac is
+  clean. `aiul status` on 2026-09-21 shows the agent INSTALLED (proxy
+  listening, CA trusted, 4/4 services proxied, 9 env vars,
+  CA at `/var/db/aiul/dev-ca/root.crt`). Owner chose LEAVE INSTALLED.
+- NEXT STEP (unchanged): integration test for the deployment path — install,
+  verify, upgrade, uninstall against real launchd. Plan goes below before any
+  code; no system change without explicit yes (rule 1). Unpushed work also
+  needs `git push` with owner approval.
 
 ## MILESTONE: the whole pipeline proven through the INSTALLED package, 2026-09-20
 
