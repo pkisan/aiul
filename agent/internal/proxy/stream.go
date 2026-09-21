@@ -6,6 +6,9 @@ import (
 	"compress/zlib"
 	"io"
 	"strings"
+
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
 
 // This file works on OUR COPY of a body only. The client and the provider always
@@ -47,7 +50,34 @@ func decompress(body []byte, contentEncoding string) (out []byte, readable bool)
 		}
 		return got, true
 
-	default: // br, zstd, anything else
+	case "br":
+		// Brotli and zstd were left undecoded until 2026-09-21 (D12), on the
+		// evidence that no real capture had ever needed them. claude.ai then
+		// started answering with zstd, which would have reached a parser as
+		// rubbish and produced an event with an empty answer — the failure that
+		// looks like success. See D15.
+		got, err := io.ReadAll(brotli.NewReader(bytes.NewReader(body)))
+		if len(got) == 0 && err != nil {
+			return body, false
+		}
+
+		return got, true
+
+	case "zstd":
+		r, err := zstd.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return body, false
+		}
+		defer r.Close()
+
+		got, err := io.ReadAll(r)
+		if len(got) == 0 && err != nil {
+			return body, false
+		}
+
+		return got, true
+
+	default:
 		return body, false
 	}
 }

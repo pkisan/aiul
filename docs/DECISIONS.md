@@ -541,3 +541,33 @@ and reissues when they differ.
 
 **Still to come, and it needs AWS:** the root itself in KMS, one per tenant, and a
 CRL so "revoke this device now" does not mean "wait up to seven days".
+
+---
+
+## D15 — Brotli and zstd are decoded after all (2026-09-21)
+
+**Decision.** Add `github.com/klauspost/compress` and
+`github.com/andybalholm/brotli`, and decode both. This reverses D12, on the
+evidence D12 itself asked for.
+
+**What changed.** D12 left them undecoded because a full day of real traffic had
+produced zero undecodable bodies, and said to revisit "if the logs show real
+captures being lost". On 2026-09-21 the log showed exactly that:
+
+```
+msg="body was compressed in a format we do not decode yet"
+host=claude.ai response_encoding=zstd
+```
+
+**Why it matters more than it looks.** An undecoded body does not fail loudly. It
+reaches the parser as rubbish, the parser finds nothing in it, and the event is
+stored with an empty answer — a record that looks fine and is wrong. Metadata-only
+was an acceptable outcome when it applied to nothing; it is not acceptable for a
+browser conversation on one of the two surfaces we just built parsers for.
+
+**Cost accepted.** Two dependencies, both widely used, both pure Go, neither
+touching the network or the filesystem. Rule 11 prefers the standard library, and
+the standard library has neither codec.
+
+**What is still true from D12:** the debug line that produced this evidence stays.
+It is what turned "we think this is fine" into "here is the host and the encoding".

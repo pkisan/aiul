@@ -837,10 +837,10 @@ real prompt in plaintext**. Remove with `sudo rm -rf /var/db/aiul`.
   left of D9 is the production half: `wrap`/`unwrap` in `BodyStore` become KMS
   calls. Bodies written before the change stay readable under the application key
   until retention deletes them.
-- Brotli and zstd response bodies are recorded as metadata only. CLOSED as a debt
-  on 2026-09-19 (D12): a full day of real traffic produced zero undecoded bodies,
-  so the two dependencies are not worth their cost. The debug line that would
-  prove otherwise is in place.
+- ~~Brotli and zstd response bodies are recorded as metadata only~~ FIXED
+  2026-09-21 (D15). D12 had closed this on the evidence available then; two days
+  later claude.ai began answering with zstd and the debug line said so, which is
+  exactly the trigger D12 named. Both are decoded now.
 - ~~Retention~~ DONE 2026-09-19: `aiul:purge-bodies`, scheduled nightly. Note that
   nothing runs the Laravel scheduler on this Mac, so it purges only when run by
   hand here.

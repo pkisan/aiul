@@ -3,6 +3,8 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 	"testing"
 )
 
@@ -99,5 +101,60 @@ func TestIsSSE(t *testing.T) {
 	}
 	if isSSE("application/json") {
 		t.Error("JSON is not SSE")
+	}
+}
+
+// Brotli and zstd. Left undecoded until 2026-09-21 on the evidence that nothing
+// real had needed them; claude.ai then began answering with zstd, and an answer
+// that reaches a parser as rubbish is worse than one that is missing, because the
+// event still looks fine.
+func TestDecompressHandlesBrotliAndZstd(t *testing.T) {
+	const text = `{"type":"content_block_delta","delta":{"text":"a real answer"}}`
+
+	t.Run("zstd", func(t *testing.T) {
+		var buf bytes.Buffer
+		w, err := zstd.NewWriter(&buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(text)); err != nil {
+			t.Fatal(err)
+		}
+		w.Close()
+
+		got, ok := decompress(buf.Bytes(), "zstd")
+		if !ok {
+			t.Fatal("zstd reported unreadable")
+		}
+		if string(got) != text {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("brotli", func(t *testing.T) {
+		var buf bytes.Buffer
+		w := brotli.NewWriter(&buf)
+		if _, err := w.Write([]byte(text)); err != nil {
+			t.Fatal(err)
+		}
+		w.Close()
+
+		got, ok := decompress(buf.Bytes(), "brotli")
+		if ok {
+			t.Errorf("only the wire name 'br' is real; %q should not decode", "brotli")
+		}
+
+		got, ok = decompress(buf.Bytes(), "br")
+		if !ok {
+			t.Fatal("br reported unreadable")
+		}
+		if string(got) != text {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	// Rubbish must still be reported as unreadable rather than stored as text.
+	if _, ok := decompress([]byte("not compressed at all"), "zstd"); ok {
+		t.Error("undecodable bytes must be reported unreadable")
 	}
 }
