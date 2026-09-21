@@ -24,4 +24,25 @@ mitmproxy is only ever a research tool. The product never depends on it.
 <provider>/<case>.request.json    the request body
 <provider>/<case>.response.sse    a streamed response, raw SSE
 <provider>/<case>.response.json   a whole (non-streamed) response
+<provider>/<case>.meta.json       method, path, status, headers, HTTP version
 ```
+
+`.meta.json` exists for the HTTP/2 work: a fixture is only proof of an h2
+exchange if the version it was recorded over is written down next to it.
+
+## Recording one with the converter
+
+`scripts/fixture-from-flows.py` runs inside mitmproxy's own interpreter, so
+nothing needs installing, and it strips credentials, uuids and e-mail addresses
+on the way out:
+
+```
+mitmweb --listen-host 127.0.0.1 --listen-port 8080 \
+        --save-stream-file /tmp/aiul-h2.flows
+mitmdump -ns scripts/fixture-from-flows.py -r /tmp/aiul-h2.flows \
+         --set fixture_out=agent/testdata --set fixture_case=anthropic/messages-h2
+```
+
+It is not a substitute for reading what it wrote before committing. Record with
+a prompt you invented for the purpose, so the text in the fixture is safe to
+publish whatever the scrubber missed.
