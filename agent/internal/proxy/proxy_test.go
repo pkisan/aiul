@@ -888,3 +888,56 @@ func TestResearchModeIsOffByDefault(t *testing.T) {
 		t.Errorf("research mode wrote %d files without being asked", len(entries))
 	}
 }
+
+// A client that opens the tunnel and closes it again without starting TLS never
+// saw our certificate, so it has no opinion about it. Recording that as a refusal
+// condemned the program for every later connection: the Claude desktop app
+// pre-warms connections on launch, so it silenced itself within seconds of
+// starting, every time, and its prompts were never captured.
+func TestACancelledConnectionIsNotTakenForARefusal(t *testing.T) {
+	root := newTestRoot(t)
+	origin := newOriginServer(t, "api.openai.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "captured-ok")
+	}))
+	defer origin.close()
+
+	classifier := NewClassifier()
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Classifier: classifier, Sink: &collector{}, UpstreamRootCAs: origin.rootPool}, origin.addr)
+
+	// Open the tunnel exactly as a client does, then hang up before the TLS
+	// handshake — a pre-warmed connection the client decided not to use.
+	conn, err := net.Dial("tcp", proxyAddr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	if _, err := fmt.Fprint(conn, "CONNECT api.openai.com:443 HTTP/1.1\r\nHost: api.openai.com:443\r\n\r\n"); err != nil {
+		t.Fatalf("CONNECT: %v", err)
+	}
+	answer := make([]byte, 64)
+	if _, err := conn.Read(answer); err != nil {
+		t.Fatalf("reading the proxy's answer: %v", err)
+	}
+	conn.Close()
+
+	// Nothing may be recorded about a connection that said nothing. Give the
+	// proxy's goroutine a moment to reach its decision first.
+	if eventually(time.Second, func() bool { return classifier.Classify("api.openai.com", "") == Tunnel }) {
+		t.Fatal("a cancelled connection was recorded as a refusal")
+	}
+
+	// And the next connection is still captured, which is the whole point.
+	ourPool := x509.NewCertPool()
+	ourPool.AddCert(root.Cert)
+
+	client := clientThrough(proxyAddr, ourPool)
+	resp, err := client.Get("https://api.openai.com/v1/models")
+	if err != nil {
+		t.Fatalf("after a cancelled connection, capture must still work: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "captured-ok") {
+		t.Errorf("body = %q", body)
+	}
+}

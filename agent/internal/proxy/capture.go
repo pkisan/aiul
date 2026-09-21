@@ -71,16 +71,20 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 		return
 	}
 
-	// What the client offered in ALPN, recorded before the handshake can fail.
-	// Without it a client that speaks only HTTP/2 looks exactly like a client that
-	// distrusts our certificate, and the log blames the wrong thing.
-	var offeredALPN []string
+	// What the client offered in ALPN, and whether it said anything at all, both
+	// recorded before the handshake can fail. A client that never sent a
+	// ClientHello never saw our certificate, so it cannot have refused it.
+	var (
+		offeredALPN []string
+		helloSeen   bool
+	)
 
 	clientTLS := tls.Server(rewindConn{Conn: clientConn, reader: clientReader}, &tls.Config{
 		Certificates: []tls.Certificate{*cert},
 		NextProtos:   []string{"http/1.1"},
 		MinVersion:   tls.VersionTLS12,
 		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+			helloSeen = true
 			offeredALPN = hello.SupportedProtos
 			// nil means "carry on with the configuration you already have".
 			return nil, nil
@@ -88,11 +92,24 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 	})
 
 	if err := clientTLS.HandshakeContext(handshakeContext()); err != nil {
-		// Rule 4: we could not complete a handshake this client accepts. It may be
-		// certificate pinning, a runtime that does not read the trust store, or a
-		// protocol we do not serve. Either way we must never break the tool:
-		// remember it and pass it through sealed from now on, including this very
-		// connection, which the client will retry.
+		if !helloSeen {
+			// The client opened the tunnel and closed it again without starting
+			// TLS. Clients pre-warm connections and then cancel them, and a
+			// cancelled connection carries no opinion about our certificate — it
+			// never saw one. Recording it as a refusal condemns the program for
+			// every later connection: the Claude desktop app pre-warms on launch,
+			// so it silenced itself within seconds, every launch. Say nothing,
+			// record nothing, and let the next connection be judged on its own.
+			p.log.Debug("client closed the connection before the TLS handshake; nothing recorded",
+				"host", host, "process", client.Name, "err", err)
+			return
+		}
+
+		// Rule 4: the client saw our certificate and would not complete a
+		// handshake. It may be certificate pinning, a runtime that does not read
+		// the trust store, or a protocol we do not serve. Either way we must never
+		// break the tool: remember it and pass it through sealed from now on,
+		// including this very connection, which the client will retry.
 		//
 		// Keyed by the program, not the host alone: a pinned app must not stop us
 		// capturing another tool's traffic to the same provider. The key is the
@@ -107,6 +124,7 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 		}
 		return
 	}
+
 	defer clientTLS.Close()
 
 	if proto := clientTLS.ConnectionState().NegotiatedProtocol; proto != "" && proto != "http/1.1" {
