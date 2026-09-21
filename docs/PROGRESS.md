@@ -58,6 +58,30 @@ discards the response. The app's requests are large enough to pass the 4 MiB
 copy cap regularly, and every one of those was costing us an answer we had
 already copied in full.
 
+## Codex HTTP transport: framing sniffed, answers parse — 2026-09-21
+
+`body_shape` answered it in one line:
+
+```
+body_shape="first=6576656e743a2072 data_lines=17 json_start=false"
+            "event: r"
+```
+
+Event-stream framing, 17 data lines, and no `Content-Type` at all — so
+`isSSE()` said no and 207 KB of answer went to the JSON path and parsed as
+nothing.
+
+`looksLikeSSE()` now decides by the bytes when the header does not say: a body
+beginning `event:` or `data:` is a stream. The OpenAI parser already understood
+`response.output_text.delta`; it now also reads usage from
+`response.completed`, which is where the Responses API puts it.
+
+Tests: the framing test accepts the three shapes Codex sends and refuses JSON
+that merely contains the words; the parser test reassembles a Responses stream
+with the event names recorded in `codex-responses.ws.jsonl`.
+
+The WebSocket transport is untouched and still uncaptured — see below.
+
 ## OPEN: Codex, and two transports rather than one
 
 Codex is not captured, and the fixture showed why the earlier plan was wrong:

@@ -989,3 +989,24 @@ func TestBodyShapeDescribesFramingNotContent(t *testing.T) {
 		t.Errorf("empty body = %q", got)
 	}
 }
+
+// Codex sends event-stream framing with no Content-Type at all, so a header check
+// alone routed 207 KB of answer to the JSON path, where it parsed as nothing.
+func TestSSEIsRecognisedByItsFramingWhenNoHeaderSaysSo(t *testing.T) {
+	for _, body := range []string{
+		"event: response.output_text.delta\ndata: {\"delta\":\"hi\"}\n\n",
+		"data: {\"delta\":\"hi\"}\n\n",
+		"\n  data: {\"delta\":\"hi\"}\n",
+	} {
+		if !looksLikeSSE([]byte(body)) {
+			t.Errorf("not recognised as a stream: %q", body)
+		}
+	}
+
+	// A JSON document must not be mistaken for one.
+	for _, body := range []string{`{"data":"not a stream"}`, `[{"event":"no"}]`, ""} {
+		if looksLikeSSE([]byte(body)) {
+			t.Errorf("mistaken for a stream: %q", body)
+		}
+	}
+}

@@ -160,9 +160,16 @@ func (OpenAI) reassemble(events []string) (answer string, promptTokens, response
 				PromptTokens     int `json:"prompt_tokens"`
 				CompletionTokens int `json:"completion_tokens"`
 			} `json:"usage"`
-			// The Responses API streams a different shape.
-			Type  string `json:"type"`
-			Delta string `json:"delta"`
+			// The Responses API streams a different shape: typed events, with the
+			// text in "delta" and the usage inside the finished response.
+			Type     string `json:"type"`
+			Delta    string `json:"delta"`
+			Response *struct {
+				Usage *struct {
+					InputTokens  int `json:"input_tokens"`
+					OutputTokens int `json:"output_tokens"`
+				} `json:"usage"`
+			} `json:"response"`
 		}
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			continue // a chunk we cannot read must not lose the ones we can
@@ -176,6 +183,10 @@ func (OpenAI) reassemble(events []string) (answer string, promptTokens, response
 		if chunk.Usage != nil {
 			promptTokens = chunk.Usage.PromptTokens
 			responseTokens = chunk.Usage.CompletionTokens
+		}
+		if chunk.Response != nil && chunk.Response.Usage != nil {
+			promptTokens = chunk.Response.Usage.InputTokens
+			responseTokens = chunk.Response.Usage.OutputTokens
 		}
 	}
 	return b.String(), promptTokens, responseTokens

@@ -312,7 +312,7 @@ func (p *Proxy) exchange(in interaction) parsers.Exchange {
 		ex.ReqBody = reqBody
 	}
 	if respOK {
-		if isSSE(in.ResponseHead.Get("Content-Type")) {
+		if isSSE(in.ResponseHead.Get("Content-Type")) || looksLikeSSE(respBody) {
 			for _, e := range parseSSE(respBody) {
 				ex.SSE = append(ex.SSE, e.Data)
 			}
@@ -327,6 +327,17 @@ func (p *Proxy) exchange(in interaction) parsers.Exchange {
 // copied. It goes in the stored text, where anyone reading the prompt sees it —
 // a log line they will never look at is not honest enough.
 const truncationNote = "\n\n[aiul: the request was larger than the 4 MiB we copy, so this prompt is incomplete]"
+
+// looksLikeSSE decides by the bytes when the header does not say.
+//
+// Codex answers /backend-api/codex/responses with event-stream framing and NO
+// Content-Type at all, so a header check alone sent 207 KB of answer to the JSON
+// path, where it parsed as nothing. Framing is a property of the body, and the
+// body is right here.
+func looksLikeSSE(body []byte) bool {
+	head := bytes.TrimLeft(body, " \r\n\t")
+	return bytes.HasPrefix(head, []byte("event:")) || bytes.HasPrefix(head, []byte("data:"))
+}
 
 // bodyShape describes how a body is FRAMED, never what it says: the first few
 // bytes as hex, and how many "data:" lines it contains. Codex answers 207 KB with

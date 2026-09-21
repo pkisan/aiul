@@ -613,3 +613,34 @@ func TestAnAnswerSurvivesAnUnreadableRequest(t *testing.T) {
 		t.Error("a streamed response must still be marked streamed")
 	}
 }
+
+// Codex streams the Responses API: typed events, the text in "delta", the usage
+// inside the finished response. The event names are those recorded in
+// testdata/openai/codex-responses.ws.jsonl.
+func TestCodexResponsesStreamIsReassembled(t *testing.T) {
+	res, err := OpenAI{}.Parse(Exchange{
+		Host:    "chatgpt.com",
+		Path:    "/backend-api/codex/responses",
+		ReqBody: []byte(`{"model":"gpt-5.6-luna","input":[{"role":"user","content":"Is codex ready for work?"}]}`),
+		SSE: []string{
+			`{"type":"response.created"}`,
+			`{"type":"response.output_text.delta","delta":"Yes—ready to work. "}`,
+			`{"type":"response.output_text.delta","delta":"What would you like to tackle?"}`,
+			`{"type":"response.output_text.done"}`,
+			`{"type":"response.completed","response":{"usage":{"input_tokens":2803,"output_tokens":12}}}`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	if res.Answer != "Yes—ready to work. What would you like to tackle?" {
+		t.Errorf("answer = %q", res.Answer)
+	}
+	if res.PromptTokens != 2803 || res.ResponseTokens != 12 {
+		t.Errorf("tokens = %d in, %d out", res.PromptTokens, res.ResponseTokens)
+	}
+	if res.Model != "gpt-5.6-luna" {
+		t.Errorf("model = %q", res.Model)
+	}
+}
