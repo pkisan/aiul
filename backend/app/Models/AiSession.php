@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class AiSession extends Model
@@ -19,6 +20,12 @@ class AiSession extends Model
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
         ];
+    }
+
+    /** Whose session this was, when the device is assigned to someone. */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function interactions(): HasMany

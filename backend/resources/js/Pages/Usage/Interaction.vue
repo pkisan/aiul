@@ -1,5 +1,9 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import Panel from '@/Components/Usage/Panel.vue';
+import Score from '@/Components/Usage/Score.vue';
+import Tag from '@/Components/Usage/Tag.vue';
+import { count, when } from '@/Components/Usage/format';
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
@@ -20,61 +24,98 @@ const rawUrl = computed(() => {
 
     <AuthenticatedLayout>
         <template #header>
-            <h2 class="text-xl font-semibold leading-tight text-gray-800">Interaction</h2>
+            <div class="flex items-center gap-3">
+                <Link :href="route('usage.index')" class="text-sm text-gray-500 hover:text-gray-900">← AI usage</Link>
+                <h2 class="text-xl font-semibold leading-tight text-gray-800">Interaction</h2>
+                <Tag :label="interaction.automated ? 'automated follow-up' : 'human prompt'"
+                     :tone="interaction.automated ? 'gray' : 'green'" />
+            </div>
         </template>
 
-        <div class="py-8">
+        <div class="bg-gray-50 py-8">
             <div class="mx-auto max-w-4xl space-y-4 px-4 sm:px-6 lg:px-8">
-                <div class="rounded-lg bg-white p-4 text-sm shadow">
-                    <dl class="grid grid-cols-2 gap-2">
-                        <dt class="text-gray-500">Tool</dt><dd>{{ interaction.tool ?? '—' }}</dd>
-                        <dt class="text-gray-500">Model</dt><dd>{{ interaction.model ?? '—' }}</dd>
-                        <dt class="text-gray-500">Task</dt><dd>{{ interaction.task_id ?? 'untagged' }}</dd>
-                        <dt class="text-gray-500">Branch</dt><dd>{{ interaction.branch ?? '—' }}</dd>
-                        <dt class="text-gray-500">Tokens</dt>
-                        <dd>{{ interaction.prompt_tokens }} in / {{ interaction.response_tokens }} out</dd>
-                        <dt class="text-gray-500">Duration</dt><dd>{{ interaction.duration_ms }} ms</dd>
-                        <dt class="text-gray-500">Kind</dt>
-                        <dd>{{ interaction.automated ? 'automated follow-up' : 'human prompt' }}</dd>
-                        <dt class="text-gray-500">Masked</dt>
-                        <dd>{{ interaction.redacted?.length ? interaction.redacted.join(', ') : 'nothing' }}</dd>
+                <Panel title="What was captured">
+                    <dl class="grid grid-cols-2 gap-x-6 gap-y-3 px-5 py-4 text-sm sm:grid-cols-4">
+                        <div>
+                            <dt class="text-xs uppercase tracking-wide text-gray-500">Tool</dt>
+                            <dd class="mt-0.5 text-gray-900">{{ interaction.tool ?? '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs uppercase tracking-wide text-gray-500">Model</dt>
+                            <dd class="mt-0.5 text-gray-900">{{ interaction.model ?? '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs uppercase tracking-wide text-gray-500">Task</dt>
+                            <dd class="mt-0.5 text-gray-900">{{ interaction.task_id ?? 'untagged' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs uppercase tracking-wide text-gray-500">Branch</dt>
+                            <dd class="mt-0.5 truncate text-gray-900">{{ interaction.branch ?? '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs uppercase tracking-wide text-gray-500">Tokens</dt>
+                            <dd class="mt-0.5 tabular-nums text-gray-900">
+                                {{ count(interaction.prompt_tokens) }} in / {{ count(interaction.response_tokens) }} out
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs uppercase tracking-wide text-gray-500">Duration</dt>
+                            <dd class="mt-0.5 tabular-nums text-gray-900">{{ count(interaction.duration_ms) }} ms</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs uppercase tracking-wide text-gray-500">When</dt>
+                            <dd class="mt-0.5 text-gray-900">{{ when(interaction.occurred_at) }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs uppercase tracking-wide text-gray-500">Masked</dt>
+                            <dd class="mt-0.5 text-gray-900">
+                                {{ interaction.redacted?.length ? interaction.redacted.join(', ') : 'nothing' }}
+                            </dd>
+                        </div>
                     </dl>
-                </div>
+                </Panel>
 
-                <div v-if="score" class="rounded-lg bg-white p-4 shadow">
-                    <h3 class="mb-2 font-semibold">
-                        Prompt quality: {{ score.score }}
-                        <span class="text-sm font-normal text-gray-500">rubric v{{ score.rubric_version }}</span>
-                    </h3>
-                    <ul class="divide-y text-sm">
-                        <li v-for="(dimension, name) in score.dimensions" :key="name" class="flex gap-3 py-2">
-                            <span class="w-10 text-right font-semibold">{{ dimension.score }}</span>
-                            <span>
-                                <span class="font-medium">{{ String(name).replaceAll('_', ' ') }}</span>
-                                <span class="block text-gray-600">{{ dimension.reason }}</span>
-                            </span>
+                <Panel v-if="score" title="Prompt quality" :subtitle="`rubric v${score.rubric_version}`">
+                    <template #actions>
+                        <Score :value="score.score" class="text-base" />
+                    </template>
+                    <ul class="divide-y divide-gray-100">
+                        <li v-for="(dimension, name) in score.dimensions" :key="name" class="flex gap-4 px-5 py-3">
+                            <Score :value="dimension.score" class="w-10 shrink-0 text-right" />
+                            <div>
+                                <div class="text-sm font-medium capitalize text-gray-900">
+                                    {{ String(name).replaceAll('_', ' ') }}
+                                </div>
+                                <p class="text-sm text-gray-600">{{ dimension.reason }}</p>
+                            </div>
                         </li>
                     </ul>
-                </div>
+                </Panel>
 
-                <div v-if="canViewRaw" class="space-y-2">
-                    <label class="block text-sm text-gray-600" for="reason">
-                        Reason for opening (optional) — recorded in the audit log either way
-                    </label>
-                    <input id="reason" v-model="reason" type="text" placeholder="e.g. support investigation"
-                           class="w-full rounded border-gray-300 text-sm shadow-sm" />
-                    <p v-if="errors.reason" class="text-sm text-red-600">{{ errors.reason }}</p>
-                    <div>
-                        <Link :href="rawUrl"
-                              class="inline-block rounded bg-gray-800 px-4 py-2 text-sm text-white">
-                            Open the prompt text
-                        </Link>
-                        <p class="mt-2 text-xs text-gray-500">Opening it is recorded in the audit log.</p>
+                <Panel title="Prompt text" subtitle="Every read is written to the audit log">
+                    <div v-if="canViewRaw" class="space-y-3 px-5 py-4">
+                        <div>
+                            <label class="mb-1 block text-sm text-gray-600" for="reason">
+                                Reason for opening (optional)
+                            </label>
+                            <input
+                                id="reason"
+                                v-model="reason"
+                                type="text"
+                                placeholder="e.g. support investigation"
+                                class="w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-gray-400 focus:ring-gray-400"
+                            />
+                            <p v-if="errors.reason" class="mt-1 text-sm text-rose-600">{{ errors.reason }}</p>
+                        </div>
+                        <Link
+                            :href="rawUrl"
+                            class="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
+                        >Open the prompt text</Link>
                     </div>
-                </div>
-                <p v-else class="text-sm text-gray-500">
-                    You do not have permission to read the prompt text.
-                </p>
+                    <p v-else class="px-5 py-8 text-center text-sm text-gray-500">
+                        You do not have permission to read the prompt text.
+                    </p>
+                </Panel>
             </div>
         </div>
     </AuthenticatedLayout>

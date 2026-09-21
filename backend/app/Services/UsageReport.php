@@ -222,6 +222,71 @@ class UsageReport
         ]);
     }
 
+    /**
+     * Work grouped the way it actually happened: one row per session.
+     *
+     * A session is a stretch of interactions on one task from one device with no
+     * gap longer than the idle window, which is how the ingestion groups them.
+     * A flat list of interactions buries the shape of the work — one message to
+     * an agent produces a dozen rows — so the dashboard leads with sessions and
+     * lets a reader open one.
+     */
+    public function sessions(int $limit = 25): array
+    {
+        return AiSession::query()
+            ->where('started_at', '>=', $this->since())
+            ->withCount([
+                'interactions as human_prompts' => fn ($q) => $q->where('automated', false),
+            ])
+            ->withAvg(
+                ['interactions as avg_score' => fn ($q) => $q->join(
+                    'quality_scores', 'quality_scores.ai_interaction_id', '=', 'ai_interactions.id'
+                )],
+                'quality_scores.score'
+            )
+            ->with('user:id,name')
+            ->latest('started_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn (AiSession $s) => [
+                'id' => $s->id,
+                'tool' => $s->tool,
+                'task_id' => $s->task_id,
+                'branch' => $s->branch,
+                'repo' => $s->repo ? basename($s->repo) : null,
+                'person' => $s->user?->name,
+                'interactions' => $s->interaction_count,
+                'human_prompts' => $s->human_prompts,
+                'avg_score' => $s->avg_score === null ? null : round((float) $s->avg_score, 1),
+                'started_at' => $s->started_at,
+                'ended_at' => $s->ended_at,
+                // The model owns this definition, so the session list and the
+                // per-task "AI time" can never drift apart.
+                'seconds' => $s->durationSeconds(),
+            ])->all();
+    }
+
+    /** One session's interactions, oldest first: a conversation reads forwards. */
+    public function interactionsForSession(AiSession $session): array
+    {
+        return $session->interactions()
+            ->with('score:id,ai_interaction_id,score')
+            ->orderBy('occurred_at')
+            ->get()
+            ->map(fn (AiInteraction $i) => [
+                'id' => $i->id,
+                'tool' => $i->tool,
+                'model' => $i->model,
+                'automated' => (bool) $i->automated,
+                'prompt_chars' => $i->prompt_chars,
+                'answer_chars' => $i->answer_chars,
+                'prompt_tokens' => $i->prompt_tokens,
+                'response_tokens' => $i->response_tokens,
+                'score' => $i->score?->score,
+                'occurred_at' => $i->occurred_at,
+            ])->all();
+    }
+
     /** The newest interactions across tasks, for the dashboard's recent list. */
     public function recent(int $limit = 10): array
     {

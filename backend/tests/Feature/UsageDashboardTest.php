@@ -332,6 +332,50 @@ class UsageDashboardTest extends TestCase
         $this->assertSame('purged', $props['answerState']);
     }
 
+    // One message to an agent produces a dozen interactions, so the dashboard
+    // leads with sessions — the stretch of work as it actually happened.
+    public function test_the_dashboard_groups_work_into_sessions(): void
+    {
+        $first = $this->interaction();
+        // A second interaction in the SAME session: an agent's follow-up, which
+        // must not be counted as another human prompt.
+        $this->interaction(['ai_session_id' => $first->ai_session_id, 'automated' => true]);
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))
+            ->get('/usage')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->has('sessions'));
+
+        $sessions = collect((new \App\Services\UsageReport(30))->sessions())
+            ->keyBy('id');
+
+        $this->assertSame(1, $sessions[$first->ai_session_id]['human_prompts']);
+        $this->assertSame('ABC-123', $sessions[$first->ai_session_id]['task_id']);
+    }
+
+    public function test_a_session_reads_forwards_and_lists_its_interactions(): void
+    {
+        $interaction = $this->interaction();
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))
+            ->get('/usage/session/'.$interaction->ai_session_id)
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Usage/Session')
+                ->where('session.id', $interaction->ai_session_id)
+                ->has('interactions', 1)
+                ->where('interactions.0.id', $interaction->id));
+    }
+
+    public function test_a_member_cannot_open_a_session(): void
+    {
+        $interaction = $this->interaction();
+
+        $this->actingAs($this->user())
+            ->get('/usage/session/'.$interaction->ai_session_id)
+            ->assertForbidden();
+    }
+
     public function test_the_audit_log_lists_who_read_what(): void
     {
         $subject = $this->user();

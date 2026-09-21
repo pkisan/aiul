@@ -14,10 +14,23 @@ import (
 	"time"
 )
 
-// maxCopyBytes caps how much of a body we keep for logging. Streams can be large,
-// and our copy lives in memory. Past this we keep the head and note the truncation;
-// the client still receives every byte.
-const maxCopyBytes = 4 << 20 // 4 MiB
+// How much of each body we keep for logging. Our copy lives in memory, and the
+// client always receives every byte regardless — these caps only bound what we
+// hold.
+//
+// The request side is generous because it carries the prompt, and a prompt cut
+// in half is not worth recording: an agent re-sends the whole conversation, its
+// tool definitions and any file it has read, and 5 MB requests are routine. The
+// old 4 MiB cap truncated those into unparseable JSON and cost us the answer
+// too.
+//
+// The response side stays smaller: it carries the answer, which is bounded by
+// what a model generates, and a long stream would otherwise sit in memory for
+// the life of the connection.
+const (
+	maxRequestCopyBytes  = 64 << 20 // 64 MiB
+	maxResponseCopyBytes = 8 << 20  // 8 MiB
+)
 
 // forward sends one request upstream and streams the response back.
 //
@@ -34,7 +47,7 @@ func (p *Proxy) forward(req *http.Request, client io.Writer, upstream *tls.Conn,
 	var reqCopy bytes.Buffer
 	if req.Body != nil {
 		req.Body = readCloser{
-			Reader: io.TeeReader(req.Body, limitedWriter{w: &reqCopy, max: maxCopyBytes}),
+			Reader: io.TeeReader(req.Body, limitedWriter{w: &reqCopy, max: maxRequestCopyBytes}),
 			Closer: req.Body,
 		}
 	}
@@ -111,7 +124,7 @@ func streamBody(client io.Writer, resp *http.Response, copyTo io.Writer) (int64,
 				return total, err
 			}
 			flush(client) // rule 6: the user sees this chunk now, not at the end
-			_, _ = limitedWriter{w: copyTo, max: maxCopyBytes}.Write(chunk)
+			_, _ = limitedWriter{w: copyTo, max: maxResponseCopyBytes}.Write(chunk)
 			total += int64(n)
 		}
 		if readErr != nil {

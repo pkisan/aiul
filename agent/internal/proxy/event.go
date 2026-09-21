@@ -165,7 +165,7 @@ func (p *Proxy) record(in interaction) {
 	// Without saying so, a prompt parsed from a truncated request is
 	// indistinguishable from a complete one, and an empty one looks like a tool
 	// that sent nothing.
-	truncated := len(in.RequestCopy) >= maxCopyBytes
+	truncated := len(in.RequestCopy) >= maxRequestCopyBytes
 
 	var ex parsers.Exchange
 	{
@@ -326,7 +326,7 @@ func (p *Proxy) exchange(in interaction) parsers.Exchange {
 // truncationNote is appended to a prompt parsed from a request we only partly
 // copied. It goes in the stored text, where anyone reading the prompt sees it —
 // a log line they will never look at is not honest enough.
-const truncationNote = "\n\n[aiul: the request was larger than the 4 MiB we copy, so this prompt is incomplete]"
+const truncationNote = "\n\n[aiul: the request was larger than the 64 MiB we copy, so this prompt is incomplete]"
 
 // looksLikeSSE decides by the bytes when the header does not say.
 //

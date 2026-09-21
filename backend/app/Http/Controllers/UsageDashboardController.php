@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AiInteraction;
+use App\Models\AiSession;
 use App\Models\ConsentRecord;
 use App\Services\BodyStore;
 use App\Services\UsageReport;
@@ -30,6 +31,31 @@ class UsageDashboardController extends Controller
             'aiTimeDefinition' => $this->aiTimeDefinition(),
             'canViewRaw' => $request->user()->canViewRawPrompts(),
             'recent' => $report->recent(),
+            'sessions' => $report->sessions(),
+        ]);
+    }
+
+    /** One session, read forwards: the work as it actually happened. */
+    public function session(Request $request, AiSession $session): Response
+    {
+        abort_unless($request->user()->isManager(), 403);
+
+        $report = new UsageReport(days: (int) $request->integer('days', 30) ?: 30);
+
+        return Inertia::render('Usage/Session', [
+            'session' => [
+                'id' => $session->id,
+                'tool' => $session->tool,
+                'task_id' => $session->task_id,
+                'branch' => $session->branch,
+                'repo' => $session->repo,
+                'started_at' => $session->started_at,
+                'ended_at' => $session->ended_at,
+                'seconds' => $session->durationSeconds(),
+                'interactions' => $session->interaction_count,
+            ],
+            'interactions' => $report->interactionsForSession($session),
+            'canViewRaw' => $request->user()->canViewRawPrompts(),
         ]);
     }
 

@@ -58,6 +58,33 @@ discards the response. The app's requests are large enough to pass the 4 MiB
 copy cap regularly, and every one of those was costing us an answer we had
 already copied in full.
 
+## Dashboard: sessions first, pages rebuilt, prompt cap raised — DONE 2026-09-21
+
+Three requests from the owner, all done:
+
+1. **No more truncated prompts.** The 4 MiB copy cap is split in two:
+   `maxRequestCopyBytes` 64 MiB (the prompt side, where agents re-send whole
+   conversations and 5 MB requests are routine) and `maxResponseCopyBytes`
+   8 MiB (the answer side, bounded by what a model generates and held in memory
+   for the life of a stream). The truncation note stays for anything past 64 MiB.
+2. **Grouped by session.** `UsageReport::sessions()` and
+   `interactionsForSession()`, a `session()` action, `GET /usage/session/{id}`
+   and a `Usage/Session` page that reads OLDEST first, because a session is a
+   conversation. `/usage` now leads with sessions: task, tool, branch, person,
+   prompts, AI time, average score. `AiSession::user()` added.
+3. **The pages were rebuilt** around four shared pieces in
+   `resources/js/Components/Usage/`: `Panel`, `StatCard`, `Score`, `Tag` and a
+   `format.js` so a duration or timestamp never reads two ways on two pages.
+   Index, Session, Raw, Interaction, Task and Audit all use them.
+
+The raw page also stops dumping 150k characters at a reader: it shows the last
+4,000 by default — the person's own words are at the END of an agent's prompt —
+with a button for the whole thing and a copy button for each body.
+
+Three new tests: sessions group without counting follow-ups as prompts, a
+session page lists its interactions, a member cannot open one. 84 backend tests
+pass. Frontend rebuilt (`npm run build`).
+
 ## Codex HTTP transport: framing sniffed, answers parse — 2026-09-21
 
 `body_shape` answered it in one line:

@@ -40,8 +40,9 @@ Route::middleware(['auth', 'verified', SetTenantFromUser::class])->group(functio
     // Managers: the aggregate view and the audit log.
     Route::get('/usage', [UsageDashboardController::class, 'index'])->name('usage.index');
     Route::get('/usage/audit', [UsageDashboardController::class, 'audit'])->name('usage.audit');
-    // Two segments, so this never collides with /usage/{interaction} below.
+    // Two segments, so these never collide with /usage/{interaction} below.
     Route::get('/usage/task/{task}', [UsageDashboardController::class, 'task'])->name('usage.task');
+    Route::get('/usage/session/{session}', [UsageDashboardController::class, 'session'])->name('usage.session');
     Route::get('/usage/{interaction}', [UsageDashboardController::class, 'show'])->name('usage.show');
 
     // Raw prompt text: policy-checked and audit-logged on every single view.
