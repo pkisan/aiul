@@ -54,7 +54,9 @@ func TestForPicksTheRightParser(t *testing.T) {
 
 		// Still no parser: a different format, and one nobody has captured yet.
 		{"api.cohere.com", "/v1/chat", ""},
-		{"chatgpt.com", "/backend-api/conversation", ""},
+		// Was unparsed until 2026-09-21, when the web application's protocol was
+		// captured and a parser written for it.
+		{"chatgpt.com", "/backend-api/conversation", "chatgpt-web"},
 
 		// A host must match whole, never as a suffix. Rule 3 in the allow-list, and
 		// the same rule here, since a parser decides what gets stored.
