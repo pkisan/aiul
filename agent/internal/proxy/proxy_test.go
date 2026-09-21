@@ -322,8 +322,8 @@ func TestClientRejectingOurCertIsTunneled(t *testing.T) {
 	// The proxy must have learned from that failure. The client sees the error the
 	// moment it rejects the certificate, a hair before the proxy's own goroutine
 	// records it, so poll briefly rather than assuming an order.
-	if !eventually(2*time.Second, func() bool { return classifier.Classify("api.openai.com") == Tunnel }) {
-		t.Fatalf("after a rejected handshake, Classify = %v, want tunnel", classifier.Classify("api.openai.com"))
+	if !eventually(2*time.Second, func() bool { return classifier.Classify("api.openai.com", "") == Tunnel }) {
+		t.Fatalf("after a rejected handshake, Classify = %v, want tunnel", classifier.Classify("api.openai.com", ""))
 	}
 
 	// And the retry must now succeed, sealed, with the origin's own certificate.

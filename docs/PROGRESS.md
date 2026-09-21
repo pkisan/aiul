@@ -19,6 +19,29 @@ Last updated: 2026-09-21 (session resume)
   code; no system change without explicit yes (rule 1). Unpushed work also
   needs `git push` with owner approval.
 
+## Per-program tunnel list — DONE 2026-09-21
+
+Capture of `api.anthropic.com` stopped at 12:58 today and nothing new reached the
+dashboard. Cause: rule 4's tunnel list was keyed by hostname alone. Claude Desktop
+starts, pins certificates, drops our handshake (`err=EOF`), and from that moment
+every program on the Mac — the Claude CLI included — was passed through sealed for
+that host. The same had happened to `api2.cursor.sh`, `chatgpt.com`,
+`chat.openai.com` and `api.individual.githubcopilot.com`.
+
+Pinning is a property of the program, not the host, so the list is now keyed by
+host plus client program name (`lsof` gives "Claude" for the desktop app and
+"claude" for the CLI). `Classify` and `AddTunnel` take that name;
+`TunnelHosts` reports `host (program)`; `contextOf` was split so the process
+lookup happens once per connection and feeds both the tunnel check and the task
+tagging. `aiul status` shows each tunnelled pair. Unit test covers the exact
+regression: desktop tunnelled, CLI still captured. Proxy tests pass with `-race`.
+
+Known limits: two tools sharing a process name (two `node` CLIs) share a bucket,
+and the list is still in memory, so a restart retries every pinned program once.
+
+NOT yet installed on this Mac — needs a rebuild and reinstall (rule 1, owner's
+explicit yes).
+
 ## Dashboard drill-down — DONE 2026-09-21 (demo request)
 
 The aggregates page had no click path to a prompt. Now: per-task rows link to

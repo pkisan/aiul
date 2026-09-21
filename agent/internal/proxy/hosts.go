@@ -121,7 +121,7 @@ func AllowListEntries() []string {
 type Classifier struct {
 	mu      sync.RWMutex
 	allowed []string        // from allowList, lower-cased
-	tunnel  map[string]bool // hosts that rejected our certificate (rule 4)
+	tunnel  map[string]bool // host+program pairs that rejected our certificate (rule 4)
 }
 
 // NewClassifier builds a classifier from the built-in allow-list.
@@ -142,9 +142,16 @@ func NewClassifierWith(hosts []string) *Classifier {
 	return c
 }
 
-// Classify returns what to do with this host. The argument may include a port
-// ("api.openai.com:443"), as it does in a CONNECT request.
-func (c *Classifier) Classify(hostport string) Decision {
+// Classify returns what to do with this host for this client program. The host
+// may include a port ("api.openai.com:443"), as it does in a CONNECT request.
+// The client is the process name that opened the connection ("claude", "Claude",
+// "Code Helper"); empty means we could not identify it.
+//
+// The client matters because certificate pinning is a property of the PROGRAM,
+// not of the host. Claude Desktop pins api.anthropic.com; the Claude CLI on the
+// same Mac trusts our CA happily. Keying the tunnel list by host alone let one
+// pinned program turn off capture for every other tool talking to that host.
+func (c *Classifier) Classify(hostport, client string) Decision {
 	host := normalizeHost(hostport)
 	if host == "" {
 		return Pass
@@ -153,9 +160,10 @@ func (c *Classifier) Classify(hostport string) Decision {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	// Tunnel wins over capture: once a host has rejected our certificate, we never
-	// try again, or we would break the tool on every connection.
-	if c.tunnel[host] {
+	// Tunnel wins over capture: once this program has rejected our certificate on
+	// this host, we never try again, or we would break the tool on every
+	// connection.
+	if c.tunnel[tunnelKey(host, client)] {
 		return Tunnel
 	}
 	for _, pattern := range c.allowed {
@@ -166,31 +174,45 @@ func (c *Classifier) Classify(hostport string) Decision {
 	return Pass
 }
 
-// AddTunnel records that this host refused our certificate, so every future
-// connection to it passes through sealed. Returns false if it was already known.
-func (c *Classifier) AddTunnel(hostport string) bool {
+// AddTunnel records that this program refused our certificate on this host, so
+// every future connection from the same program to it passes through sealed.
+// Other programs keep being captured. Returns false if it was already known.
+func (c *Classifier) AddTunnel(hostport, client string) bool {
 	host := normalizeHost(hostport)
 	if host == "" {
 		return false
 	}
+	key := tunnelKey(host, client)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.tunnel[host] {
+	if c.tunnel[key] {
 		return false
 	}
-	c.tunnel[host] = true
+	c.tunnel[key] = true
 	return true
 }
 
-// TunnelHosts lists the hosts currently being tunneled, for `aiul status`.
+// TunnelHosts lists what is currently being tunneled, for `aiul status`, as
+// "host" or "host (program)".
 func (c *Classifier) TunnelHosts() []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	out := make([]string, 0, len(c.tunnel))
-	for h := range c.tunnel {
-		out = append(out, h)
+	for k := range c.tunnel {
+		host, client, _ := strings.Cut(k, "\x00")
+		if client == "" {
+			out = append(out, host)
+			continue
+		}
+		out = append(out, host+" ("+client+")")
 	}
 	return out
+}
+
+// tunnelKey joins a host and a client program into one map key. A program name
+// cannot contain a NUL byte, so the two parts can never run together.
+func tunnelKey(host, client string) string {
+	return host + "\x00" + client
 }
 
 // normalizeHost strips the port, lower-cases, removes a trailing dot (the root

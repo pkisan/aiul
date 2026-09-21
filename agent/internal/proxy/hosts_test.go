@@ -75,7 +75,7 @@ func TestClassifyDefaultsToPass(t *testing.T) {
 		"notopenai.com", "api.openai.com.evil.net", "openai.com.attacker.io",
 		"", "localhost", "127.0.0.1",
 	} {
-		if got := c.Classify(host); got != Pass {
+		if got := c.Classify(host, ""); got != Pass {
 			t.Errorf("Classify(%q) = %v, want pass", host, got)
 		}
 	}
@@ -88,7 +88,7 @@ func TestClassifyCapturesAIHosts(t *testing.T) {
 		"api.anthropic.com", "claude.ai", "api.claude.ai",
 		"generativelanguage.googleapis.com", "chatgpt.com", "cdn.chatgpt.com",
 	} {
-		if got := c.Classify(host); got != Capture {
+		if got := c.Classify(host, ""); got != Capture {
 			t.Errorf("Classify(%q) = %v, want capture", host, got)
 		}
 	}
@@ -117,26 +117,36 @@ func TestAllowListHasNoBroadDomains(t *testing.T) {
 func TestTunnelListWinsOverCapture(t *testing.T) {
 	c := NewClassifier()
 
-	if got := c.Classify("api.anthropic.com"); got != Capture {
+	if got := c.Classify("api.anthropic.com", "Claude"); got != Capture {
 		t.Fatalf("precondition: want capture, got %v", got)
 	}
 
-	// A client rejected our certificate — rule 4 says never try again.
-	if !c.AddTunnel("api.anthropic.com:443") {
-		t.Error("AddTunnel should report the host as newly added")
+	// Claude Desktop rejected our certificate — rule 4 says never try again for
+	// that program.
+	if !c.AddTunnel("api.anthropic.com:443", "Claude") {
+		t.Error("AddTunnel should report the pair as newly added")
 	}
-	if c.AddTunnel("api.anthropic.com") {
+	if c.AddTunnel("api.anthropic.com", "Claude") {
 		t.Error("AddTunnel should report false the second time")
 	}
 
-	if got := c.Classify("api.anthropic.com"); got != Tunnel {
+	if got := c.Classify("api.anthropic.com", "Claude"); got != Tunnel {
 		t.Errorf("after AddTunnel, Classify = %v, want tunnel", got)
 	}
+	// The bug this keys the list by program to fix: another program talking to the
+	// same host must still be captured.
+	if got := c.Classify("api.anthropic.com", "claude"); got != Capture {
+		t.Errorf("the CLI on the same host changed to %v, want capture", got)
+	}
+	// Nor may an unidentified program inherit another program's rejection.
+	if got := c.Classify("api.anthropic.com", ""); got != Capture {
+		t.Errorf("unidentified program changed to %v, want capture", got)
+	}
 	// Tunneling one host must not affect any other.
-	if got := c.Classify("api.openai.com"); got != Capture {
+	if got := c.Classify("api.openai.com", "Claude"); got != Capture {
 		t.Errorf("unrelated host changed to %v", got)
 	}
-	if hosts := c.TunnelHosts(); len(hosts) != 1 || hosts[0] != "api.anthropic.com" {
+	if hosts := c.TunnelHosts(); len(hosts) != 1 || hosts[0] != "api.anthropic.com (Claude)" {
 		t.Errorf("TunnelHosts = %v", hosts)
 	}
 }
@@ -148,8 +158,8 @@ func TestClassifierIsConcurrencySafe(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
 		wg.Add(2)
-		go func() { defer wg.Done(); c.Classify("api.openai.com") }()
-		go func() { defer wg.Done(); c.AddTunnel("api.anthropic.com") }()
+		go func() { defer wg.Done(); c.Classify("api.openai.com", "") }()
+		go func() { defer wg.Done(); c.AddTunnel("api.anthropic.com", "Claude") }()
 	}
 	wg.Wait()
 }
@@ -168,7 +178,7 @@ func TestObservedIDEHostsAreClassified(t *testing.T) {
 		"api.origin.cursor.com:443",
 	}
 	for _, host := range capture {
-		if got := c.Classify(host); got != Capture {
+		if got := c.Classify(host, ""); got != Capture {
 			t.Errorf("%s should be captured, got %v", host, got)
 		}
 	}
@@ -185,7 +195,7 @@ func TestObservedIDEHostsAreClassified(t *testing.T) {
 		"cursor.sh:443",
 	}
 	for _, host := range pass {
-		if got := c.Classify(host); got == Capture {
+		if got := c.Classify(host, ""); got == Capture {
 			t.Errorf("SECURITY: %s must not be decrypted, got %v", host, got)
 		}
 	}

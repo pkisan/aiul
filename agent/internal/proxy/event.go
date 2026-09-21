@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pkisan/aiul/internal/parsers"
+	"github.com/pkisan/aiul/internal/platform"
 	"github.com/pkisan/aiul/internal/redact"
 	"github.com/pkisan/aiul/internal/tasks"
 )
@@ -290,23 +291,32 @@ func newEventID() string {
 	return hex.EncodeToString(b[:])
 }
 
-// contextOf works out which task a connection belongs to, from the port it came
-// from. Everything here is best-effort: not knowing is normal and never an error,
-// because plenty of AI traffic comes from a browser or a directory that is not a
-// checkout.
-func (p *Proxy) contextOf(clientConn net.Conn) tasks.Info {
-	if p.cfg.Tasks == nil || p.cfg.Processes == nil {
-		return tasks.Info{}
+// processOf finds the program that opened this connection, from the port it came
+// from. The second result says whether the lookup worked; not knowing is normal
+// (the finder is nil in most tests, and lsof can lose a race with a short
+// connection).
+func (p *Proxy) processOf(clientConn net.Conn) (platform.Process, bool) {
+	if p.cfg.Processes == nil {
+		return platform.Process{}, false
 	}
-
 	addr, ok := clientConn.RemoteAddr().(*net.TCPAddr)
 	if !ok {
-		return tasks.Info{}
+		return platform.Process{}, false
 	}
-
 	proc, err := p.cfg.Processes.ByLocalPort(addr.Port)
 	if err != nil {
 		p.log.Debug("could not identify the client process", "port", addr.Port, "err", err)
+		return platform.Process{}, false
+	}
+	return proc, true
+}
+
+// contextOf works out which task a connection belongs to, from the program that
+// opened it. Everything here is best-effort: not knowing is normal and never an
+// error, because plenty of AI traffic comes from a browser or a directory that is
+// not a checkout.
+func (p *Proxy) contextOf(proc platform.Process, found bool) tasks.Info {
+	if !found || p.cfg.Tasks == nil || p.cfg.Processes == nil {
 		return tasks.Info{}
 	}
 

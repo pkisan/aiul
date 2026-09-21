@@ -193,7 +193,10 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		hostport = net.JoinHostPort(hostport, "443")
 	}
 
-	decision := p.cfg.Classifier.Classify(hostport)
+	// Host-level first pass, with no client program yet: this only tells us
+	// whether the host is on the allow-list at all. If it is, we identify the
+	// program below and ask again, because the tunnel list is per program.
+	decision := p.cfg.Classifier.Classify(hostport, "")
 
 	// Hijacking takes the raw TCP connection away from net/http so we can use it as
 	// a pipe. After this, net/http writes nothing to it and we own it entirely.
@@ -235,12 +238,22 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 			clientReader = io.MultiReader(io.LimitReader(bufrw.Reader, int64(buffered)), clientConn)
 		}
 
+		if decision == Capture {
+			// The source port identifies the client process, and through it both
+			// the working directory (the task) and whether THIS program has
+			// already rejected our certificate on this host. Look it up now, while
+			// the connection is open: ports are reused quickly.
+			proc, ok := p.processOf(clientConn)
+			if d := p.cfg.Classifier.Classify(hostport, proc.Name); d == Tunnel {
+				decision = Tunnel
+			} else {
+				p.capture(clientConn, clientReader, upstream, hostport, proc.Name, p.contextOf(proc, ok))
+			}
+		}
+
 		switch decision {
 		case Capture:
-			// The source port identifies the client process, and through it the
-			// working directory and the task. Look it up now, while the connection
-			// is open: ports are reused quickly.
-			p.capture(clientConn, clientReader, upstream, hostport, p.contextOf(clientConn))
+			// Handled above.
 		default:
 			// Pass and tunnel are byte-for-byte identical on the wire. The only
 			// difference is that tunnel means "we know this is an AI host we chose
