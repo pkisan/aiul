@@ -60,6 +60,12 @@ One-click admin reads — DONE 2026-09-21 (demo request): a grant-holding admin
 opens anyone's prompt with no reason typed. Every view is still audit-logged,
 but the "why" may be "no reason given" — recorded in D11 as a deliberate
 weakening to revisit in the employee notice before a pilot.
+"Empty, not purged" — DONE 2026-09-21: the raw page blamed retention for EVERY
+missing body, but rows like #41 never had an answer stored (`answer_chars=0`,
+`BodyStore::put` skips blank text). The page now says "No answer text was
+captured in this exchange" unless chars were recorded and the key is gone.
+Nothing was ever purged early — retention is 90 days, all stored objects verify
+present. 79 backend tests.
 
 ## MILESTONE: the whole pipeline proven through the INSTALLED package, 2026-09-20
 

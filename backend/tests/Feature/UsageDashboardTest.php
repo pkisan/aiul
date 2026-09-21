@@ -276,6 +276,42 @@ class UsageDashboardTest extends TestCase
         $this->assertTrue($recent->contains(fn ($row) => $row['id'] === $interaction->id));
     }
 
+    public function test_a_missing_body_says_empty_when_nothing_was_captured(): void
+    {
+        // An exchange with no text stores no body at all — the page must say
+        // that, not blame the retention policy.
+        $interaction = $this->interaction();
+        $interaction->forceFill([
+            'prompt_object' => null, 'answer_object' => null,
+            'prompt_chars' => 0, 'answer_chars' => 0,
+        ])->save();
+
+        $response = $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
+            ->get("/usage/{$interaction->id}/raw?reason=checking")
+            ->assertOk();
+
+        $props = $response->viewData('page')['props'];
+        $this->assertSame('empty', $props['promptState']);
+        $this->assertSame('empty', $props['answerState']);
+    }
+
+    public function test_a_missing_body_says_purged_when_chars_were_recorded(): void
+    {
+        $interaction = $this->interaction([], 'a prompt about pineapples');
+        $interaction->forceFill([
+            'prompt_object' => null, 'answer_object' => null,
+            'prompt_chars' => 25, 'answer_chars' => 10,
+        ])->save();
+
+        $response = $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
+            ->get("/usage/{$interaction->id}/raw?reason=checking")
+            ->assertOk();
+
+        $props = $response->viewData('page')['props'];
+        $this->assertSame('purged', $props['promptState']);
+        $this->assertSame('purged', $props['answerState']);
+    }
+
     public function test_the_audit_log_lists_who_read_what(): void
     {
         $subject = $this->user();

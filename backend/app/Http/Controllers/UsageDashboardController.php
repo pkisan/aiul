@@ -87,13 +87,31 @@ class UsageDashboardController extends Controller
             'ip' => $request->ip(),
         ]);
 
+        $prompt = $this->bodies->get($interaction->prompt_object);
+        $answer = $this->bodies->get($interaction->answer_object);
+
         return Inertia::render('Usage/Raw', [
             'interaction' => $interaction->only(['id', 'tool', 'model', 'task_id', 'occurred_at', 'redacted']),
-            'prompt' => $this->bodies->get($interaction->prompt_object),
-            'answer' => $this->bodies->get($interaction->answer_object),
+            'prompt' => $prompt,
+            'answer' => $answer,
+            // A missing body has two honest meanings: retention deleted it (chars
+            // were recorded, the key is gone) or nothing was captured (the parser
+            // found no text, so BodyStore never stored one). The page must not
+            // call the second "purged".
+            'promptState' => $this->bodyState($prompt, $interaction->prompt_chars),
+            'answerState' => $this->bodyState($answer, $interaction->answer_chars),
             // Shown on the page: the person reading should know it was recorded.
             'auditNotice' => 'This view has been recorded in the audit log.',
         ]);
+    }
+
+    private function bodyState(?string $text, ?int $chars): string
+    {
+        if ($text !== null) {
+            return 'present';
+        }
+
+        return ($chars ?? 0) > 0 ? 'purged' : 'empty';
     }
 
     /** The audit log itself, so "who looked at what" is not a private matter. */
