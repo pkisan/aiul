@@ -310,3 +310,27 @@ func TestOnlyATLSAlertCountsAsARefusal(t *testing.T) {
 		}
 	}
 }
+
+// Antigravity's hosts, observed 2026-09-22. The point of this test is the
+// NEGATIVE half: allow-listing Google's AI endpoint must not allow-list Google.
+func TestAntigravityHostsAreNarrow(t *testing.T) {
+	c := NewClassifier()
+
+	for _, host := range []string{"cloudcode-pa.googleapis.com", "daily-cloudcode-pa.googleapis.com"} {
+		if got := c.Classify(host, ""); got != Capture {
+			t.Errorf("%s = %v, want capture", host, got)
+		}
+	}
+
+	// Its sign-in, feature flags and updater carry no conversation, and
+	// googleapis.com as a whole is every Google API there is.
+	for _, host := range []string{
+		"googleapis.com", "storage.googleapis.com", "oauth2.googleapis.com",
+		"play.googleapis.com", "antigravity-unleash.goog",
+		"cloudcode-pa.googleapis.com.evil.net",
+	} {
+		if got := c.Classify(host, ""); got == Capture {
+			t.Errorf("%s is captured, and must not be", host)
+		}
+	}
+}

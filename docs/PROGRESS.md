@@ -58,6 +58,44 @@ discards the response. The app's requests are large enough to pass the 4 MiB
 copy cap regularly, and every one of those was costing us an answer we had
 already copied in full.
 
+## Cursor answered no, Antigravity answered where — 2026-09-22
+
+Both experiments run with `scripts/tool-experiment.sh`.
+
+**Cursor pins, and this time it is proven rather than assumed.** Launched from a
+shell with `NODE_EXTRA_CA_CERTS` and `SSL_CERT_FILE` pointed at our CA, with the
+tunnel list cleared first, it still answered:
+
+```
+host=api2.cursor.sh reason="the client rejected our certificate"
+process="Cursor Helper" alpn=h2,http/1.1 err="remote error: tls: unknown certificate"
+hello="tls=0x0a0a/1.3/1.2 ciphers=16(0x7a7a,0x1301,0x1302) curves=5 sigalgs=8"
+```
+
+A real TLS alert, and the GREASE values (`0x0a0a`, `0x7a7a`) identify Chromium's
+network stack — which reads the macOS keychain, where our CA is trusted. It
+rejected anyway. 0 exchanges recorded out of 162 connections to `api2.cursor.sh`.
+Cursor is metadata-only until the vendor offers a trust setting; no parser would
+change that, and the matrix should stop being asked.
+
+**Antigravity's hosts, found by reading what passed sealed:**
+
+```
+8  daily-cloudcode-pa.googleapis.com     the AI backend, daily channel
+4  cloudcode-pa.googleapis.com           the AI backend
+5  oauth2.googleapis.com                 sign-in
+2  antigravity-unleash.goog              feature flags
+1  antigravity-ide-auto-updater-…run.app updates
+```
+
+The two `cloudcode-pa` hosts are allow-listed (AllowListVersion 2 → 3); the other
+three are not, because they carry no conversation. Test asserts the narrowness:
+`googleapis.com`, `storage.googleapis.com`, `oauth2.googleapis.com` and
+`cloudcode-pa.googleapis.com.evil.net` must all stay out.
+
+Untested and next: whether Antigravity accepts our certificate, and what shape
+its Cloud Code requests take.
+
 ## Framing: everything so far is a DEMO — noted 2026-09-22
 
 The owner's words: "This is not the final version. It just for demo. We will

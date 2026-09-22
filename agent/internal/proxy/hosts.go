@@ -10,7 +10,7 @@ import (
 
 // AllowListVersion is bumped whenever the list below changes, so a captured event
 // records which version of the list decided to capture it.
-const AllowListVersion = 2
+const AllowListVersion = 3
 
 // Decision is what the proxy does with one connection.
 type Decision int
@@ -91,6 +91,17 @@ var allowList = []string{
 	"api2direct.cursor.sh",
 	"api3.cursor.sh",
 	"api.origin.cursor.com",
+
+	// Antigravity, Google's agentic IDE (com.google.antigravity-ide). Observed on
+	// the owner's Mac on 2026-09-22: its conversations go to Google's Cloud Code
+	// endpoint, with a "daily" channel alongside the stable one. Narrow hosts
+	// only — never googleapis.com itself, which is every Google API there is.
+	//
+	// Deliberately NOT listed: oauth2.googleapis.com (sign-in),
+	// antigravity-unleash.goog (feature flags) and its auto-updater on run.app.
+	// None of them carry a conversation.
+	"cloudcode-pa.googleapis.com",
+	"daily-cloudcode-pa.googleapis.com",
 
 	// Other providers commonly used from CLIs and IDEs.
 	"api.mistral.ai",

@@ -110,8 +110,8 @@ Run on the owner's Mac with the agent's own research mode, not mitmproxy.
 | **Nine OpenAI-compatible providers** | yes | probably | one parser, never driven live |
 | **Gemini CLI / gemini.google.com** | yes | parser exists, undriven | fixtures in `testdata/gemini`, no live capture |
 | **Copilot in VS Code** | **no — pins** | metadata only | `api.individual.githubcopilot.com` → `remote error: tls: unknown certificate` |
-| **Cursor** | **no — pins** | metadata only | `api2.cursor.sh` → same alert, `alpn=h2,http/1.1` |
-| **Antigravity** | **no** | no | hosts unknown; nobody has captured it |
+| **Cursor** | **no — pins, retested 2026-09-22** | metadata only | refused with our CA named explicitly: `remote error: tls: unknown certificate` from `Cursor Helper`, GREASE values in the hello (`tls=0x0a0a`) identify Chromium's stack, which *does* read the keychain our CA is trusted in |
+| **Antigravity** | hosts found 2026-09-22 | not yet | talks to `cloudcode-pa.googleapis.com` and its `daily-` twin; both now allow-listed, trust and parser untested |
 | **JetBrains AI, Windsurf, Tabnine, Amazon Q** | **no** | no | not allow-listed |
 
 A correction to the earlier version of this table: it said Cursor "never will be"
