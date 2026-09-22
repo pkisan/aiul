@@ -2,35 +2,50 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-21 (HTTP/2 plan written)
+Last updated: 2026-09-22 (Cursor closed, Antigravity hosts allow-listed)
 
-## Session resume 2026-09-21 — read this first
+## Session resume 2026-09-22 — read this first
 
-- `git status` clean, but `main` is 8 commits ahead of `origin/main`
-  (`db05c10`..`c52ff27`): IDE allow-list, chatgpt.com + claude.ai web parsers,
-  `aiul parsers`, brotli/zstd (D15), Codex-via-ChatGPT routing. Last task
-  (`c52ff27`) is COMPLETE, not interrupted — parsers + proxy tests pass.
-- PROGRESS.md was stale: it did not mention `c52ff27`, and it claims the Mac is
-  clean. `aiul status` on 2026-09-21 shows the agent INSTALLED (proxy
-  listening, CA trusted, 4/4 services proxied, 9 env vars,
-  CA at `/var/db/aiul/dev-ca/root.crt`). Owner chose LEAVE INSTALLED.
-- The Claude desktop app is no longer tunnelled as of `611ed48`, and its prompt
-  is captured via `/v1/messages/count_tokens`, but its streamed `/v1/messages`
-  completion still records NOTHING. See "OPEN" below. Cursor still tunnels on a
-  genuine TLS alert, which is correct.
-- NEXT STEP: integration test for the deployment path — install, verify,
-  upgrade, uninstall against real launchd. Plan goes in this file first.
-- Research mode is ON (`/var/db/aiul/research` holds decrypted, redacted
-  exchanges). Turn it off and delete that directory when parser work pauses.
-- AFTER THAT: integration test for the deployment path — install, verify,
-  upgrade, uninstall against real launchd. Unpushed work also needs `git push`
-  with owner approval.
-- Installed binary is `611ed48`, which is also `origin/main`: the 24 unpushed
-  commits were pushed on 2026-09-21 after the desktop-app capture was confirmed.
-- The 76 interactions and 8 sessions written before the UTC fix were shifted
-  back by 5h30m on 2026-09-21; every row's `occurred_at` now sits just before
-  its `created_at`. Pre-shift values: `scratchpad/timestamp-backup.json` (a
-  session-local file, gone when the scratchpad is cleared).
+**Everything below the resume block is history, newest first.** It is long
+because this week found a lot; read the top three sections and stop.
+
+### State of the machine
+
+- Installed agent: `ea254eb`, the same commit as `HEAD`. `main` is **2 commits
+  ahead of `origin/main`** (the allow-list change and this file).
+- Backend running locally: Postgres 5433, Redis 6380, MinIO 9002 in Docker;
+  `php artisan serve` on 8088. 653 interactions, 10 sessions, kinds on 134.
+- Research mode is ON — `/var/db/aiul/research` holds decrypted, redacted
+  exchanges. Turn it off and delete that directory when parser work pauses.
+- Checkouts under `~/Desktop` record no branch until the agent is granted Full
+  Disk Access (see SETUP-MAC.md). `~/Herd` and elsewhere are fine.
+
+### What captures prompt AND answer today
+
+Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claude.ai
+
+### What does not, and why
+
+| Tool | Reason |
+| --- | --- |
+| Codex over WebSocket | `101` upgrade; frames unread. Fixture recorded at `agent/testdata/openai/codex-responses.ws.jsonl` |
+| Cursor | **pins** — proven 2026-09-22 with the CA named explicitly. Metadata only. Stop retesting |
+| Copilot | sends a TLS alert; never retested with the CA named explicitly |
+| Antigravity | hosts found and allow-listed 2026-09-22; trust and parser untested |
+| Gemini | parser exists, never driven live |
+
+### NEXT STEP
+
+1. Install `ea254eb`, run `./scripts/tool-experiment.sh antigravity`, and read the
+   verdict: does it accept our certificate?
+2. If yes — record a fixture through `--research`, write the Cloud Code parser.
+   If it sends an alert — record it in the matrix and move to Copilot and VS Code,
+   which are the last two untested tools on this Mac.
+3. Then `aiul doctor --matrix` (ROADMAP step 1), which makes all of the above
+   checkable by the machine instead of remembered.
+
+Everything is a DEMO, not the product — see the framing note below before
+proposing signing, MDM or a CA chain as blockers.
 
 ## WITHDRAWN: the HTTP/2 plan — the premise was wrong (2026-09-21)
 
