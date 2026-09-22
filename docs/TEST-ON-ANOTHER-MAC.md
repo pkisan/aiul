@@ -1,5 +1,12 @@
 # Testing on another Mac
 
+> **This is a demo path, not the product.** It exists so a colleague can see the
+> thing working on their own machine in ten minutes: their own backend, their own
+> CA, their own data, torn down with one command. The real deployment — a signed
+> package pushed by MDM, a per-tenant CA chain, a hosted backend, an employee
+> notice — is designed in `DECISIONS.md` and not built. Nothing here should be
+> carried into it unexamined.
+
 Two commands, in this order. The first changes nothing outside this checkout; the
 second changes the machine and asks before it does.
 
@@ -116,7 +123,9 @@ Each tester running their own backend means each tester's data stays on their ow
 machine. Pointing several agents at one backend gives a shared dashboard — which
 is what a pilot would do, and what the fleet notes in `SETUP-MAC.md` cover.
 
-## Things this does not do yet
+## Known gaps, deliberate for a demo
+
+None of these block a demo. All of them block a pilot.
 
 - **The package is unsigned and un-notarized.** `sudo installer` accepts it;
   double-clicking warns, and most MDMs refuse to push it. That is Phase 8.

@@ -58,6 +58,22 @@ discards the response. The app's requests are large enough to pass the 4 MiB
 copy cap regularly, and every one of those was costing us an answer we had
 already copied in full.
 
+## Framing: everything so far is a DEMO — noted 2026-09-22
+
+The owner's words: "This is not the final version. It just for demo. We will
+build the final version later on."
+
+So the two-command path (`setup-backend.sh`, `enroll-device.sh`), the per-machine
+dev CA, the unsigned package, the dev logins and the local backend are all there
+to show the thing working on a colleague's Mac in ten minutes — not to become the
+deployment. `docs/TEST-ON-ANOTHER-MAC.md` says so at the top.
+
+What that means for future sessions: stop re-raising signing, MDM, the CA chain
+and the employee notice as blockers on every piece of work. They are listed once,
+in that file and in DECISIONS.md, and they belong to the real build. Judge demo
+work by whether it demonstrates the capture honestly, not by whether it could
+ship.
+
 ## One session layout, labels where they are known — DONE 2026-09-22
 
 Sessions 19 and 20 rendered differently: 20 was captured after kinds existed and
