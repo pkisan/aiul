@@ -4,7 +4,7 @@ import Panel from '@/Components/Usage/Panel.vue';
 import StatCard from '@/Components/Usage/StatCard.vue';
 import Score from '@/Components/Usage/Score.vue';
 import Tag from '@/Components/Usage/Tag.vue';
-import { count, duration, when } from '@/Components/Usage/format';
+import { clock, count, duration, when } from '@/Components/Usage/format';
 import { Head, Link } from '@inertiajs/vue3';
 
 defineProps({
@@ -62,7 +62,11 @@ defineProps({
                                     <Tag v-if="s.tool" :label="s.tool" tone="blue" />
                                 </div>
                                 <div class="mt-0.5 truncate text-xs text-gray-500">
-                                    {{ when(s.started_at) }}
+                                    <!-- Last activity first: it is what a reader
+                                         scans for, and for a session still under
+                                         way the start time is hours stale. -->
+                                    {{ when(s.ended_at) }}
+                                    <template v-if="s.seconds > 0"> · started {{ clock(s.started_at) }}</template>
                                     <template v-if="s.person"> · {{ s.person }}</template>
                                 </div>
                             </div>

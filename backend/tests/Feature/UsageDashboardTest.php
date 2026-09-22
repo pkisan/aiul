@@ -371,6 +371,29 @@ class UsageDashboardTest extends TestCase
         $this->assertSame('ABC-123', $sessions[$first->ai_session_id]['task_id']);
     }
 
+    // A session still being worked in started hours ago. Ordering by start time
+    // buried the one the reader is actually in under every session opened since.
+    public function test_sessions_are_ordered_by_last_activity(): void
+    {
+        $old = $this->interaction();
+        AiSession::withoutGlobalScope('tenant')->where('id', $old->ai_session_id)->update([
+            'started_at' => now()->subHours(4),
+            'ended_at' => now()->subMinute(),   // started long ago, still going
+        ]);
+
+        $recent = $this->interaction();
+        AiSession::withoutGlobalScope('tenant')->where('id', $recent->ai_session_id)->update([
+            'started_at' => now()->subMinutes(30),
+            'ended_at' => now()->subMinutes(20),  // began later, finished earlier
+        ]);
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))
+            ->get('/usage')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('sessions.data.0.id', $old->ai_session_id));
+    }
+
     public function test_a_session_reads_forwards_and_lists_its_interactions(): void
     {
         $interaction = $this->interaction();

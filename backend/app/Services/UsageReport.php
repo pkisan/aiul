@@ -346,7 +346,10 @@ class UsageReport
                 'quality_scores.score'
             )
             ->with('user:id,name')
-            ->latest('started_at')
+            // Ordered by LAST ACTIVITY, not by when it began. A session still
+            // under way started hours ago, and sorting by start buried the one
+            // the reader is in underneath every session opened since.
+            ->latest('ended_at')
             ->paginate($perPage, ['*'], 'sessions_page')
             ->through(fn (AiSession $s) => [
                 'id' => $s->id,

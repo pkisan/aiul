@@ -58,6 +58,21 @@ discards the response. The app's requests are large enough to pass the 4 MiB
 copy cap regularly, and every one of those was costing us an answer we had
 already copied in full.
 
+## Sessions sort by last activity — DONE 2026-09-22
+
+Session 17 sat at the BOTTOM of the list while being actively worked in: 177
+interactions, last one seconds old, started at 09:34. The list was ordered by
+`started_at`, so a long-running session sinks below every session opened since.
+
+`->latest('ended_at')` instead, and the row leads with the last activity, with
+the start time kept beside it. Test sets up the exact shape — one session that
+began four hours ago and is still going, one that began later and finished
+earlier — and fails on the old ordering.
+
+No new session is created for continuing work, and that is deliberate: the idle
+window (30 minutes) is what decides, so a session is one stretch of work rather
+than one calendar day. The list just has to show when it was last touched.
+
 ## No labels where the answer is a guess — DONE 2026-09-22
 
 The owner's point, and it was right for the data in front of them: on session 19
