@@ -58,6 +58,22 @@ discards the response. The app's requests are large enough to pass the 4 MiB
 copy cap regularly, and every one of those was costing us an answer we had
 already copied in full.
 
+## One session layout, labels where they are known — DONE 2026-09-22
+
+Sessions 19 and 20 rendered differently: 20 was captured after kinds existed and
+got the turn view, 19 was legacy and got the flat list. Two pages behind one URL
+shape, which the owner rightly called out.
+
+One layout now, the flat one: every exchange in time order, each with its prompt
+and reply text, model, tokens and score. Where the agent recorded who caused the
+request the row carries a label — "you asked", "agent step", "tool's own call" —
+and where it did not, the row simply has none. The turn grouping is gone from the
+page; `intoTurns()` still runs and still marks the final answer, so nothing was
+lost if a turn view is ever wanted again.
+
+The tiles adapt the same way: "You asked / Tool's own calls" when kinds are
+known, "Exchanges / Tokens" when they are not.
+
 ## Sessions sort by last activity — DONE 2026-09-22
 
 Session 17 sat at the BOTTOM of the list while being actively worked in: 177

@@ -14,50 +14,26 @@ const props = defineProps({
     canViewRaw: Boolean,
 });
 
-// Rows captured before the agent could tell a person's prompt from the agent's
-// own work carry no kind. Guessing one from the old boolean produced confident
-// nonsense — "you asked" on twelve agent steps — so where the answer is unknown
-// this page says nothing rather than something wrong, and falls back to a plain
-// list of exchanges in order.
-const known = computed(() => props.interactions.every((i) => !i.legacy_kind));
+// One layout for every session. Where the agent recorded who caused a request,
+// the row is labelled; where it did not — anything captured before kinds
+// existed — the row simply carries no label. Two different pages for the same
+// URL was worse than either.
+const labelled = computed(() => props.interactions.some((i) => !i.legacy_kind));
 
-const turns = computed(() => {
-    const byTurn = new Map();
+const tone = (kind) => ({ human: 'green', agent: 'gray', utility: 'amber' })[kind] ?? 'gray';
+const label = (kind) => ({ human: 'you asked', agent: 'agent step', utility: "tool's own call" })[kind] ?? kind;
 
-    for (const row of props.interactions) {
-        if (!byTurn.has(row.turn)) {
-            byTurn.set(row.turn, { turn: row.turn, asked: null, steps: [], answer: null });
-        }
-        const turn = byTurn.get(row.turn);
-
-        if (row.kind === 'human' && !turn.asked) turn.asked = row;
-        else if (row.final_answer) turn.answer = row;
-        else turn.steps.push(row);
-    }
-
-    return [...byTurn.values()];
-});
-
-const humanTurns = computed(() => turns.value.filter((t) => t.asked).length);
-const utilityCount = computed(() => props.interactions.filter((i) => i.kind === 'utility').length);
-const agentSteps = computed(() => props.interactions.length - humanTurns.value - utilityCount.value);
-
-// The exchanges worth reading: something was asked, something came back. The
-// rest are the agent's mechanics and sit behind a toggle.
-const withText = computed(() =>
-    props.interactions.filter((i) => (i.answer_chars ?? 0) > 0 || (i.prompt_chars ?? 0) > 0),
-);
+// Exchanges worth reading first: something came back that is more than a token
+// or two. The rest are the agent's mechanics and sit behind the toggle.
 const substantial = computed(() => props.interactions.filter((i) => (i.answer_chars ?? 0) > 40));
-
 const showAll = ref(false);
-const listed = computed(() => (showAll.value ? withText.value : substantial.value));
+const listed = computed(() => (showAll.value ? props.interactions : substantial.value));
 
-const open = ref(new Set());
-const toggle = (turn) => {
-    const next = new Set(open.value);
-    next.has(turn) ? next.delete(turn) : next.add(turn);
-    open.value = next;
-};
+const humanTurns = computed(() => props.interactions.filter((i) => i.kind === 'human' && !i.legacy_kind).length);
+const utilityCount = computed(() => props.interactions.filter((i) => i.kind === 'utility' && !i.legacy_kind).length);
+const tokens = computed(() =>
+    props.interactions.reduce((n, i) => n + (i.prompt_tokens ?? 0) + (i.response_tokens ?? 0), 0),
+);
 </script>
 
 <template>
@@ -78,92 +54,36 @@ const toggle = (turn) => {
         <div class="bg-gray-50 py-8">
             <div class="mx-auto max-w-4xl space-y-6 px-4 sm:px-6 lg:px-8">
                 <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                    <template v-if="known">
-                        <StatCard label="You asked" :value="count(humanTurns)" hint="turns you typed" />
-                        <StatCard label="Agent steps" :value="count(agentSteps)" hint="work done on your behalf" />
-                        <StatCard label="Tool's own calls" :value="count(utilityCount)" hint="grading, titles, suggestions" />
-                    </template>
-                    <template v-else>
-                        <StatCard label="Exchanges" :value="count(interactions.length)" hint="requests in this session" />
-                        <StatCard label="With a reply" :value="count(substantial.length)" hint="more than a token or two back" />
-                        <StatCard
-                            label="Tokens"
-                            :value="count(interactions.reduce((n, i) => n + (i.prompt_tokens ?? 0) + (i.response_tokens ?? 0), 0))"
-                        />
-                    </template>
+                    <StatCard
+                        v-if="labelled"
+                        label="You asked"
+                        :value="count(humanTurns)"
+                        hint="turns you typed"
+                    />
+                    <StatCard v-else label="Exchanges" :value="count(interactions.length)" hint="requests in this session" />
+                    <StatCard label="With a reply" :value="count(substantial.length)" hint="more than a token or two back" />
+                    <StatCard
+                        v-if="labelled"
+                        label="Tool's own calls"
+                        :value="count(utilityCount)"
+                        hint="grading, titles, suggestions"
+                    />
+                    <StatCard v-else label="Tokens" :value="count(tokens)" />
                     <StatCard label="AI time" :value="duration(session.seconds)" :hint="when(session.started_at)" />
                 </div>
 
-                <!-- ============ Sessions captured with kinds: turn by turn ============ -->
-                <Panel v-if="known" title="The session, in order" :subtitle="session.repo ?? undefined">
-                    <ol class="divide-y divide-gray-100">
-                        <li v-for="t in turns" :key="t.turn" class="space-y-2 px-5 py-5">
-                            <div v-if="t.asked">
-                                <div class="flex items-center gap-2">
-                                    <Tag label="you asked" tone="green" />
-                                    <span class="text-xs tabular-nums text-gray-400">
-                                        {{ clock(t.asked.occurred_at) }} · {{ count(t.asked.prompt_chars) }} chars
-                                    </span>
-                                    <Score :value="t.asked.score" class="ml-auto" />
-                                    <Link :href="route('usage.show', t.asked.id)" class="text-xs text-gray-400 hover:text-gray-700">details</Link>
-                                </div>
-                                <p
-                                    v-if="t.asked.prompt_preview"
-                                    class="mt-1 whitespace-pre-wrap break-words rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-900"
-                                >{{ t.asked.prompt_preview }}</p>
-                            </div>
-                            <div v-else class="text-xs text-gray-500">Work already under way when this session began.</div>
-
-                            <div v-if="t.answer">
-                                <div class="flex items-center gap-2">
-                                    <Tag label="reply" tone="blue" />
-                                    <span class="text-xs tabular-nums text-gray-400">
-                                        {{ clock(t.answer.occurred_at) }} · {{ count(t.answer.answer_chars) }} chars
-                                    </span>
-                                    <Link :href="route('usage.show', t.answer.id)" class="ml-auto text-xs text-gray-400 hover:text-gray-700">details</Link>
-                                </div>
-                                <p
-                                    v-if="t.answer.answer_preview"
-                                    class="mt-1 whitespace-pre-wrap break-words rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm text-gray-900"
-                                >{{ t.answer.answer_preview }}</p>
-                            </div>
-
-                            <button
-                                v-if="t.steps.length"
-                                class="text-xs text-gray-500 hover:text-gray-900 hover:underline"
-                                @click="toggle(t.turn)"
-                            >
-                                {{ open.has(t.turn) ? 'Hide' : 'Show' }} {{ t.steps.length }}
-                                {{ t.steps.length === 1 ? 'step' : 'steps' }} in between
-                            </button>
-
-                            <ul v-if="open.has(t.turn)" class="space-y-1">
-                                <li v-for="step in t.steps" :key="step.id" class="rounded-md bg-gray-50 px-3 py-2 text-xs">
-                                    <div class="flex items-center gap-2">
-                                        <span class="tabular-nums text-gray-400">{{ clock(step.occurred_at) }}</span>
-                                        <Tag :label="step.kind" :tone="step.kind === 'utility' ? 'amber' : 'gray'" />
-                                        <span class="text-gray-500">{{ step.model ?? 'unknown model' }}</span>
-                                        <Link :href="route('usage.show', step.id)" class="ml-auto text-gray-400 hover:text-gray-700">details</Link>
-                                    </div>
-                                    <p v-if="step.answer_preview" class="mt-1 truncate text-gray-600">{{ step.answer_preview }}</p>
-                                </li>
-                            </ul>
-                        </li>
-                    </ol>
-                </Panel>
-
-                <!-- ====== Sessions captured before kinds: plain exchanges, no labels ====== -->
-                <Panel v-else title="Exchanges" :subtitle="session.repo ?? undefined">
+                <Panel title="Exchanges, in order" :subtitle="session.repo ?? undefined">
                     <template #actions>
                         <button class="text-gray-500 hover:text-gray-900" @click="showAll = !showAll">
-                            {{ showAll ? 'Only ones with a real reply' : `Show all ${withText.length}` }}
+                            {{ showAll ? 'Only ones with a reply' : `Show all ${interactions.length}` }}
                         </button>
                     </template>
 
                     <ul class="divide-y divide-gray-100">
                         <li v-for="i in listed" :key="i.id" class="px-5 py-4">
-                            <div class="flex items-center gap-2 text-xs text-gray-400">
+                            <div class="flex flex-wrap items-center gap-2 text-xs text-gray-400">
                                 <span class="tabular-nums">{{ clock(i.occurred_at) }}</span>
+                                <Tag v-if="!i.legacy_kind" :label="label(i.kind)" :tone="tone(i.kind)" />
                                 <span>{{ i.model ?? 'unknown model' }}</span>
                                 <span class="tabular-nums">
                                     {{ count(i.prompt_tokens) }}/{{ count(i.response_tokens) }} tokens
@@ -176,12 +96,15 @@ const toggle = (turn) => {
                                 v-if="i.prompt_preview"
                                 class="mt-2 whitespace-pre-wrap break-words rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-900"
                             >{{ i.prompt_preview }}</p>
+                            <p v-else-if="!canViewRaw" class="mt-2 text-xs italic text-gray-400">
+                                You do not have permission to read prompt text.
+                            </p>
 
                             <p
                                 v-if="i.answer_preview"
                                 class="mt-1 whitespace-pre-wrap break-words rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm text-gray-900"
                             >{{ i.answer_preview }}</p>
-                            <p v-else class="mt-1 text-xs italic text-gray-400">No reply text captured.</p>
+                            <p v-else-if="canViewRaw" class="mt-1 text-xs italic text-gray-400">No reply text captured.</p>
                         </li>
 
                         <li v-if="!listed.length" class="px-5 py-10 text-center text-sm text-gray-500">
@@ -191,17 +114,17 @@ const toggle = (turn) => {
                 </Panel>
 
                 <p class="px-1 text-xs leading-relaxed text-gray-500">
-                    <template v-if="known">
-                        <strong class="text-gray-700">What you are reading.</strong> A turn is one message you typed,
-                        the reply you got, and the agent's steps in between.
+                    <template v-if="labelled">
+                        <strong class="text-gray-700">Labels.</strong> "you asked" is a message you typed, "agent step"
+                        is the agent continuing that work on its own, and "tool's own call" is the tool talking to a
+                        model for itself — grading a prompt, naming a conversation.
                     </template>
                     <template v-else>
-                        <strong class="text-gray-700">Why there are no "you"/"agent" labels here.</strong>
-                        This session was captured before the agent could tell your prompts from its own follow-ups,
-                        so every exchange is listed in order and unlabelled. Sessions captured from now on are
-                        grouped into turns.
+                        <strong class="text-gray-700">No labels here.</strong> This session was captured before the
+                        agent could tell your prompts from its own follow-ups, so the exchanges are listed in order
+                        and unlabelled.
                     </template>
-                    Opening the full text of any exchange is recorded in the audit log.
+                    Opening the full text of an exchange is recorded in the audit log.
                 </p>
             </div>
         </div>
