@@ -98,24 +98,28 @@ Run on the owner's Mac with the agent's own research mode, not mitmproxy.
   response stream turned out to be the Messages API's, so the existing reassembly
   was reused. Parser built and verified against the real capture.
 
-## Where it stands
+## Where it stands — updated 2026-09-22
 
-| Surface | Decrypted? | Conversation recorded? | Why |
+| Surface | Decrypted? | Prompt + answer recorded? | Evidence |
 | --- | --- | --- | --- |
-| **CLI** — Claude Code, Codex, OpenCode | yes | **yes**, proven live | parsers exist for the provider APIs |
-| **Direct API** — curl, scripts, SDKs | yes | **yes** | same parsers |
-| **Nine more providers** — Groq, DeepSeek, Mistral, xAI, Together, Perplexity, OpenRouter, Copilot API, Cursor's OpenAI-compatible calls | yes | **probably** — parsed from documented shapes, never driven live | one parser covers the OpenAI format |
-| **chatgpt.com in a browser** | yes | **YES** — parser built 2026-09-21 | its private endpoint and patch-stream protocol are now parsed |
-| **claude.ai in a browser** | yes | **YES** — parser built 2026-09-21 | its stream is the Messages API's; only the request shape differs |
-| **gemini.google.com in a browser** | yes | not yet | nobody has captured it |
-| **Copilot in VS Code** | yes | expected — untested | the real host `api.individual.githubcopilot.com` is now allow-listed; nobody has driven it yet |
-| **JetBrains AI** | no | no | its hosts are not listed; nobody has captured them |
-| **Cursor** | **no, and never will be** | **no** | it pins its certificate: `api2.cursor.sh` rejects ours and is tunneled. Metadata only, permanently |
-| **Windsurf, Tabnine, Amazon Q, Gemini Code Assist** | **NO** | no | same: not listed |
+| **Claude Code CLI** | yes | **yes** | live, continuously |
+| **Claude desktop app** | yes | **yes** | row 420: `prompt_chars=18 answer_chars=110` |
+| **Codex over HTTP** | yes | **yes** | row 452: `gpt-5.6-luna`, 43k prompt, answer, tokens |
+| **Codex over WebSocket** | yes | **no** | `GET /backend-api/codex/responses → 101`; fixture recorded, no frame reader |
+| **chatgpt.com / claude.ai in a browser** | yes | **yes** | parsers built 2026-09-21 |
+| **Nine OpenAI-compatible providers** | yes | probably | one parser, never driven live |
+| **Gemini CLI / gemini.google.com** | yes | parser exists, undriven | fixtures in `testdata/gemini`, no live capture |
+| **Copilot in VS Code** | **no — pins** | metadata only | `api.individual.githubcopilot.com` → `remote error: tls: unknown certificate` |
+| **Cursor** | **no — pins** | metadata only | `api2.cursor.sh` → same alert, `alpn=h2,http/1.1` |
+| **Antigravity** | **no** | no | hosts unknown; nobody has captured it |
+| **JetBrains AI, Windsurf, Tabnine, Amazon Q** | **no** | no | not allow-listed |
 
-Two things to take from that table. Everything on the allow-list is at least
-*seen*. Anything not on it is invisible by design — rule 3 — and adding a host is
-a deliberate act, not an accident.
+A correction to the earlier version of this table: it said Cursor "never will be"
+capturable. That was written before the alert types were distinguishable. Cursor
+sends a real `bad certificate` alert, so it does use a private trust store — but
+whether an environment variable or a setting can point it at ours is **untested**,
+and the difference between "pins" and "has not been asked properly" cost a day
+elsewhere in this project. It is an experiment, not a verdict.
 
 ## The two obstacles, and they are different
 
@@ -125,74 +129,86 @@ undocumented and change without notice. Writing a parser needs real captured
 traffic, and keeping it working needs a test that fails loudly when the shape
 moves.
 
-**Obstacle B: certificate pinning.** Some clients refuse any certificate that is
-not the one they expect, whoever signs it. Your own log has an example already:
+**Obstacle B: certificate pinning — and telling it apart from everything that
+looks like it.** A client that truly refuses our certificate sends a TLS alert:
 
 ```
-level=WARN msg="client rejected our certificate; tunneling this host from now on"
-host=chatgpt.com err=EOF
+level=WARN msg="tunneling this host for this program from now on"
+host=api2.cursor.sh reason="the client rejected our certificate"
+alpn=h2,http/1.1 err="remote error: tls: unknown certificate"
 ```
 
-That is rule 4 working — the tool keeps working, and we record metadata only — but
-it means **some surfaces cannot be captured at all**, no matter what parser is
-written. Browsers are the hard case: Chrome and Firefox have their own trust
-stores, and Chrome enforces pinning for some origins.
+A client that simply died mid-handshake sends nothing — a bare EOF or a TCP reset
+— and for a day that was read as pinning, which silenced the Claude desktop app
+within seconds of every launch. `clientObjected()` now gates rule 4 on an actual
+alert, and `helloFingerprint()` records what the client offered. **Any claim that
+a tool "pins" must cite the alert**, not an EOF.
+
+Where it is real, rule 4 keeps the tool working and records metadata only.
+Browsers are the hard case: Chrome and Firefox have their own trust stores, and
+Chrome enforces pinning for some origins.
 
 This has to be said out loud to whoever buys the product: *usage through a pinning
 client is countable, not readable.*
 
 ## The plan, in order
 
-### Step 1 — Find out what each tool actually talks to (needs you)
+Ordered by what unlocks the most surfaces per unit of work, not by which tool was
+asked about first.
 
-The research workflow in CLAUDE.md, once per tool. For each of Cursor, Copilot in
-VS Code, JetBrains AI, claude.ai in a browser, chatgpt.com in a browser:
+### Step 1 — `aiul doctor --matrix`, so coverage is checked rather than remembered
 
-```sh
-mitmweb                       # terminal 1, and trust its CA for this test only
-HTTPS_PROXY=http://127.0.0.1:8080 <run the tool>
-```
+One command that prints, for every tool it can detect on the machine: allow-listed
+or not, sends us an alert or completes the handshake, parser or no parser, and
+when it was last seen. "Is Cursor covered?" then has an answer nobody has to
+recall, and every step below is measured by how that table changes.
 
-Have a short conversation in the tool, then save what it sent. That gives us:
-the exact hostnames, the endpoint paths, the request and response shapes, and
-whether the tool accepts an inspected certificate at all.
+Cheap, and it should come first because it turns the rest into evidence.
 
-**This is the gate for everything below.** Without captures, any parser I write is
-a guess, and a guess that silently records nothing is worse than an honest gap.
+### Step 2 — Trust experiments: Cursor, Copilot, VS Code
 
-### Step 2 — Extend the allow-list, one host at a time
+Each is one experiment, an hour apiece, and the outcome is binary.
 
-Each addition is versioned (`AllowListVersion`), anchored to whole hostnames, and
-never a broad shared domain. Candidates, pending captures:
-`api2.cursor.sh` · `repo42.cursor.sh` · JetBrains AI hosts · Codeium/Windsurf
-hosts · `q.amazonaws.com` for Amazon Q.
+For each tool: launch it with the CA variable set explicitly for that process —
+`NODE_EXTRA_CA_CERTS` for Electron and VS Code's extension host, `SSL_CERT_FILE`
+and `REQUESTS_CA_BUNDLE` for Python-based extensions, the bundled JDK's `cacerts`
+for JetBrains — then read the log. Either the handshake completes, and a parser is
+all that stands between us and the conversation, or it sends the alert anyway and
+that tool is metadata-only until the vendor offers something.
 
-### Step 3 — A parser per surface, against fixtures
+Record each result in the matrix. Do NOT write a parser for a tool that has not
+completed a handshake first: that was the mistake pattern of 2026-09-21.
 
-One per shape, tested against anonymised captures in `agent/testdata/`, exactly as
-the OpenAI, Anthropic and Gemini parsers are.
+### Step 3 — Two engine capabilities, each unlocking several tools
 
-### Step 4 — A capture matrix, kept honest
+Both are Phase 2 work on `internal/proxy`, both are bigger than any parser, and
+both are prerequisites rather than features:
 
-A table in the docs and a command — `aiul doctor --matrix` — that says for each
-detected tool: allow-listed or not, accepts our certificate or not, parser or not.
-So "is Cursor covered?" has an answer that is checked by the machine rather than
-remembered by a person.
+- **WebSocket** — pass a `101` through while reading frames. Codex needs it
+  today; fixture already recorded at `testdata/openai/codex-responses.ws.jsonl`.
+- **HTTP/2** — we serve `http/1.1` only. No client has yet been proven to need it
+  (`alpn=""` on every failure so far, and Cursor offers both), so this waits for a
+  tool that actually demands it. Plan struck once already for lack of evidence;
+  do not rebuild it on a hunch.
 
-### Step 5 — Make IDEs trust our CA
+### Step 4 — A parser per surface that survived Step 2
 
-An IDE that rejects our certificate gets tunneled and recorded as metadata. Each
-needs its own nudge, and the agent already knows the variable names per tool
-(`TrustVars` in `internal/platform/tools_darwin.go`):
+Cheapest part, and unchanged in method: record a fixture with `mitmweb`, anonymise
+it into `agent/testdata/`, write the parser against the fixture, and never against
+a shape someone described.
 
-- **VS Code / Cursor / Electron apps** — `NODE_EXTRA_CA_CERTS`, which the agent
-  already sets machine-wide
-- **JetBrains IDEs** — the bundled JDK has its own truststore; the CA has to be
-  imported into `cacerts`, or the IDE pointed at the system one
-- **Browsers** — Chrome uses the system keychain on macOS (so it works), Firefox
-  uses its own store and needs a policy file
+### Step 5 — Antigravity, and anything else new
 
----
+Nobody here has seen its traffic. It starts where every other surface started: run
+it through `mitmweb`, find out which hosts it talks to and in what shape, decide
+whether those hosts are narrow enough to allow-list (rule 3 — never a shared
+domain), then Steps 2-4 as usual.
+
+### What to tell a buyer, unchanged
+
+Usage through a pinning client is **countable, not readable**. The dashboard shows
+that a tool was used, when, for how long and by whom, and cannot show what was
+said. Anyone evaluating this should hear that before they see a demo, not after.
 
 # 3. Windows and Linux
 
@@ -230,6 +246,16 @@ surfaces are covered.
 **3. The privilege split changes shape.** systemd has `User=`, `DynamicUser=` and
 socket activation, which make the helper/worker split simpler than it is on macOS.
 Windows Services have their own model. The D6 design holds; the mechanics differ.
+
+## Where a second OS sits against macOS coverage
+
+Ahead of both: macOS is not finished. Cursor and Copilot are on the owner's Mac,
+allow-listed, and recorded as metadata only; Codex's WebSocket transport is
+unread. A Windows port would begin from an engine that cannot yet read a frame.
+
+The honest sequencing is therefore Steps 1-4 above **before** either port, unless
+a customer's fleet forces the question — in which case Linux, for the reasons
+below.
 
 ## Suggested order
 
