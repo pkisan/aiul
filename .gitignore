@@ -32,3 +32,6 @@ spool/
 # Build output: binaries and installer packages are built from source, never committed.
 /dist/
 *.pkg
+
+# JetBrains project files: per-developer editor settings, not project state.
+.idea/
