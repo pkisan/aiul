@@ -9,7 +9,7 @@ import { Head, Link } from '@inertiajs/vue3';
 
 defineProps({
     totals: Object,
-    perTask: Array,
+    perProject: Array,
     perPerson: Array,
     weakest: Array,
     aiTimeDefinition: String,
@@ -35,7 +35,7 @@ defineProps({
                 <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
                     <StatCard label="Interactions" :value="count(totals.interactions)" :hint="`last ${totals.days} days`" />
                     <StatCard label="Human prompts" :value="count(totals.human_prompts)" hint="the rest are automated follow-ups" />
-                    <StatCard label="Untagged" :value="count(totals.untagged)" hint="no task could be determined" />
+                    <StatCard label="No project" :value="count(totals.untagged)" hint="not run inside a checkout" />
                     <StatCard label="Tools in use" :value="count(totals.tools)" />
                 </div>
 
@@ -56,15 +56,14 @@ defineProps({
                             <div class="min-w-0 flex-1">
                                 <div class="flex items-center gap-2">
                                     <span class="truncate text-sm font-medium text-gray-900">
-                                        {{ s.task_id ?? 'Untagged' }}
+                                        {{ s.project ?? 'Unknown project' }}
                                     </span>
-                                    <Tag v-if="s.tool" :label="s.tool" tone="blue" />
                                     <Tag v-if="s.branch" :label="s.branch" />
+                                    <Tag v-if="s.tool" :label="s.tool" tone="blue" />
                                 </div>
                                 <div class="mt-0.5 truncate text-xs text-gray-500">
                                     {{ when(s.started_at) }}
                                     <template v-if="s.person"> · {{ s.person }}</template>
-                                    <template v-if="s.repo"> · {{ s.repo }}</template>
                                 </div>
                             </div>
 
@@ -89,39 +88,36 @@ defineProps({
                 </Panel>
 
                 <div class="grid gap-6 lg:grid-cols-2">
-                    <Panel title="Per task" subtitle="Untagged work is shown, never hidden">
+                    <Panel title="Per project" subtitle="The repository the work happened in">
                         <table class="min-w-full text-sm">
                             <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                                 <tr>
-                                    <th class="px-5 py-2 text-left font-medium">Task</th>
+                                    <th class="px-5 py-2 text-left font-medium">Project</th>
                                     <th class="px-3 py-2 text-right font-medium">Prompts</th>
                                     <th class="px-3 py-2 text-right font-medium">AI time</th>
                                     <th class="px-5 py-2 text-right font-medium">Score</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100">
-                                <tr
-                                    v-for="row in perTask"
-                                    :key="row.task_id ?? 'untagged'"
-                                    class="hover:bg-gray-50"
-                                >
+                                <tr v-for="row in perProject" :key="row.repo ?? 'unknown'" class="hover:bg-gray-50">
                                     <td class="px-5 py-2">
                                         <Link
-                                            :href="route('usage.task', row.untagged ? 'untagged' : row.task_id)"
+                                            :href="route('usage.project', { repo: row.repo ?? '' })"
                                             class="font-medium text-gray-900 hover:underline"
                                         >
-                                            <span v-if="row.untagged" class="text-amber-700">Untagged</span>
-                                            <span v-else>{{ row.task_id }}</span>
+                                            <span v-if="row.unknown" class="text-amber-700">Unknown project</span>
+                                            <span v-else>{{ row.name }}</span>
                                         </Link>
-                                        <span class="block text-xs text-gray-400">
-                                            {{ row.automated_followups }} follow-ups · {{ count(row.tokens) }} tokens
+                                        <span class="block truncate text-xs text-gray-400">
+                                            {{ row.branches }} branches · {{ row.automated_followups }} follow-ups ·
+                                            {{ count(row.tokens) }} tokens
                                         </span>
                                     </td>
                                     <td class="px-3 py-2 text-right tabular-nums">{{ row.human_prompts }}</td>
                                     <td class="px-3 py-2 text-right tabular-nums text-gray-600">{{ duration(row.ai_seconds) }}</td>
                                     <td class="px-5 py-2 text-right"><Score :value="row.average_score" /></td>
                                 </tr>
-                                <tr v-if="!perTask.length">
+                                <tr v-if="!perProject.length">
                                     <td colspan="4" class="px-5 py-10 text-center text-gray-500">Nothing captured yet.</td>
                                 </tr>
                             </tbody>
@@ -179,7 +175,7 @@ defineProps({
                         <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                             <tr>
                                 <th class="px-5 py-2 text-left font-medium">When</th>
-                                <th class="px-3 py-2 text-left font-medium">Task</th>
+                                <th class="px-3 py-2 text-left font-medium">Project</th>
                                 <th class="px-3 py-2 text-left font-medium">Tool</th>
                                 <th class="px-5 py-2 text-right font-medium">Score</th>
                             </tr>
@@ -191,7 +187,7 @@ defineProps({
                                         {{ when(i.occurred_at) }}
                                     </Link>
                                 </td>
-                                <td class="px-3 py-2 text-gray-600">{{ i.task_id ?? 'untagged' }}</td>
+                                <td class="px-3 py-2 text-gray-600">{{ i.project ?? '—' }}</td>
                                 <td class="px-3 py-2"><Tag v-if="i.tool" :label="i.tool" /></td>
                                 <td class="px-5 py-2 text-right"><Score :value="i.score" /></td>
                             </tr>

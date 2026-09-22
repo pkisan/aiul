@@ -102,6 +102,101 @@ class UsageReport
             ->all();
     }
 
+    /**
+     * Usage per project, where a project is the repository the work happened in.
+     *
+     * This is the unit the dashboard is built on. Tickets are not: a ticket key in
+     * a branch name is a convention this team does not follow, and a rule that
+     * only reports for teams who already write "ABC-123" in their branches
+     * reports nothing at all. A checkout is something every interaction has.
+     */
+    public function perProject(): array
+    {
+        $interactions = AiInteraction::query()
+            ->where('occurred_at', '>=', $this->since())
+            ->select([
+                'repo',
+                DB::raw('count(*) as interaction_count'),
+                DB::raw('count(*) filter (where automated = false) as human_prompts'),
+                DB::raw('count(*) filter (where automated = true) as automated_followups'),
+                DB::raw('sum(prompt_tokens + response_tokens) as tokens'),
+                DB::raw('count(distinct branch) as branches'),
+                DB::raw('max(occurred_at) as last_seen'),
+            ])
+            ->groupBy('repo')
+            ->get();
+
+        $time = $this->secondsPerProject();
+        $scores = $this->averageScorePerProject();
+
+        return $interactions->map(function ($row) use ($time, $scores) {
+            $key = (string) ($row->repo ?? '');
+
+            return [
+                'repo' => $row->repo,
+                // The last path segment is what a person calls the project; the
+                // full path is kept because two checkouts can share a name.
+                'name' => $row->repo ? basename($row->repo) : null,
+                'unknown' => blank($row->repo),
+                'interactions' => (int) $row->interaction_count,
+                'human_prompts' => (int) $row->human_prompts,
+                'automated_followups' => (int) $row->automated_followups,
+                'branches' => (int) $row->branches,
+                'tokens' => (int) $row->tokens,
+                'ai_seconds' => (int) ($time[$key] ?? 0),
+                'average_score' => isset($scores[$key]) ? round($scores[$key], 1) : null,
+                'last_seen' => $row->last_seen,
+            ];
+        })->sortByDesc('interactions')->values()->all();
+    }
+
+    private function secondsPerProject(): array
+    {
+        return AiSession::query()
+            ->where('started_at', '>=', $this->since())
+            ->whereNotNull('ended_at')
+            ->select(['repo', DB::raw('sum(extract(epoch from (ended_at - started_at))) as seconds')])
+            ->groupBy('repo')
+            ->pluck('seconds', 'repo')
+            ->mapWithKeys(fn ($seconds, $repo) => [(string) $repo => (int) $seconds])
+            ->all();
+    }
+
+    private function averageScorePerProject(): array
+    {
+        return AiInteraction::query()
+            ->join('quality_scores', 'quality_scores.ai_interaction_id', '=', 'ai_interactions.id')
+            ->where('ai_interactions.occurred_at', '>=', $this->since())
+            ->select(['ai_interactions.repo', DB::raw('avg(quality_scores.score) as average')])
+            ->groupBy('ai_interactions.repo')
+            ->pluck('average', 'repo')
+            ->mapWithKeys(fn ($average, $repo) => [(string) $repo => (float) $average])
+            ->all();
+    }
+
+    /** One project's interactions, newest first. */
+    public function interactionsForProject(?string $repo, int $perPage = 20): LengthAwarePaginator
+    {
+        $query = AiInteraction::query()
+            ->with('score:id,ai_interaction_id,score')
+            ->where('occurred_at', '>=', $this->since())
+            ->latest('occurred_at');
+
+        blank($repo) ? $query->whereNull('repo') : $query->where('repo', $repo);
+
+        return $query->paginate($perPage)->through(fn ($i) => [
+            'id' => $i->id,
+            'tool' => $i->tool,
+            'model' => $i->model,
+            'branch' => $i->branch,
+            'automated' => (bool) $i->automated,
+            'prompt_chars' => $i->prompt_chars,
+            'answer_chars' => $i->answer_chars,
+            'score' => $i->score?->score,
+            'occurred_at' => $i->occurred_at,
+        ]);
+    }
+
     /** Usage per person, for the same period. */
     public function perPerson(): array
     {
@@ -184,7 +279,9 @@ class UsageReport
             'days' => $this->days,
             'interactions' => (clone $interactions)->count(),
             'human_prompts' => (clone $interactions)->where('automated', false)->count(),
-            'untagged' => (clone $interactions)->whereNull('task_id')->count(),
+            // Work outside any checkout: a browser, or a tool run from a
+            // directory that is not a repository. It has no project to belong to.
+            'untagged' => (clone $interactions)->whereNull('repo')->count(),
             'tools' => (clone $interactions)->distinct()->count('tool'),
         ];
     }
@@ -253,7 +350,8 @@ class UsageReport
                 'tool' => $s->tool,
                 'task_id' => $s->task_id,
                 'branch' => $s->branch,
-                'repo' => $s->repo ? basename($s->repo) : null,
+                'repo' => $s->repo,
+                'project' => $s->repo ? basename($s->repo) : null,
                 'person' => $s->user?->name,
                 'interactions' => $s->interaction_count,
                 'human_prompts' => $s->human_prompts,
@@ -300,7 +398,8 @@ class UsageReport
                 'id' => $i->id,
                 'tool' => $i->tool,
                 'model' => $i->model,
-                'task_id' => $i->task_id,
+                'project' => $i->repo ? basename($i->repo) : null,
+                'branch' => $i->branch,
                 'automated' => (bool) $i->automated,
                 'score' => $i->score?->score,
                 'occurred_at' => $i->occurred_at,

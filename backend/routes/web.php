@@ -43,6 +43,7 @@ Route::middleware(['auth', 'verified', SetTenantFromUser::class])->group(functio
     // Two segments, so these never collide with /usage/{interaction} below.
     Route::get('/usage/task/{task}', [UsageDashboardController::class, 'task'])->name('usage.task');
     Route::get('/usage/session/{session}', [UsageDashboardController::class, 'session'])->name('usage.session');
+    Route::get('/usage/project', [UsageDashboardController::class, 'project'])->name('usage.project');
     Route::get('/usage/{interaction}', [UsageDashboardController::class, 'show'])->name('usage.show');
 
     // Raw prompt text: policy-checked and audit-logged on every single view.

@@ -242,13 +242,20 @@ class EventIngestionTest extends TestCase
         $this->assertSame(2, AiSession::withoutGlobalScope('tenant')->first()->interaction_count);
     }
 
-    public function test_a_different_task_starts_a_new_session(): void
+    // Sessions are grouped by the checkout. Two projects worked on inside the
+    // same idle window are two sessions, even though neither carries a ticket —
+    // grouping by task_id merged them, and a session then claimed interactions
+    // from a repository it had nothing to do with.
+    public function test_work_in_another_repository_starts_a_new_session(): void
     {
         Queue::fake();
         [, $token] = $this->newDevice();
 
         $this->withToken($token)->postJson('/api/aiul/events', [
-            'events' => [$this->anEvent(['task_id' => 'ABC-1']), $this->anEvent(['task_id' => 'ABC-2'])],
+            'events' => [
+                $this->anEvent(['repo' => '/Users/dev/one', 'task_id' => null]),
+                $this->anEvent(['repo' => '/Users/dev/two', 'task_id' => null]),
+            ],
         ])->assertOk();
 
         $this->assertSame(2, AiSession::withoutGlobalScope('tenant')->count());

@@ -167,9 +167,13 @@ class EventIngestionController extends Controller
     {
         $idleWindow = now()->parse($occurredAt)->subMinutes(config('aiul.session_idle_minutes', 30));
 
+        // Grouped by the checkout, not the ticket. Two pieces of work in
+        // different repositories within the idle window used to land in one
+        // session, because both had a null task_id — so a session said "Aayatti"
+        // while half its interactions came from another project entirely.
         $session = AiSession::where('device_id', $device->id)
             ->where('tool', $event['tool'] ?? null)
-            ->where('task_id', $event['task_id'] ?? null)
+            ->where('repo', $event['repo'] ?? null)
             ->where('ended_at', '>=', $idleWindow)
             ->latest('ended_at')
             ->first();

@@ -86,32 +86,50 @@ class UsageDashboardTest extends TestCase
         $this->actingAs($this->user())->get('/usage')->assertForbidden();
     }
 
-    public function test_a_manager_sees_usage_per_task(): void
+    // The dashboard reports per project — the repository the work happened in.
+    // Branch names here carry no ticket, which is the normal case and used to
+    // mean nothing was reported at all.
+    public function test_a_manager_sees_usage_per_project(): void
     {
-        $this->interaction(['task_id' => 'ABC-123']);
-        $this->interaction(['task_id' => 'ABC-123']);
-        $this->interaction(['task_id' => 'XYZ-9']);
+        $this->interaction(['repo' => '/Users/dev/plrb-lms', 'branch' => 'feature/revised-wordpress-sso']);
+        $this->interaction(['repo' => '/Users/dev/plrb-lms', 'branch' => 'main']);
+        $this->interaction(['repo' => '/Users/dev/other']);
 
         $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')->assertOk();
 
-        $perTask = collect($response->viewData('page')['props']['perTask']);
+        $perProject = collect($response->viewData('page')['props']['perProject']);
+        $lms = $perProject->firstWhere('repo', '/Users/dev/plrb-lms');
 
-        $this->assertSame('ABC-123', $perTask->first()['task_id']);
-        $this->assertSame(2, $perTask->first()['interactions']);
-        $this->assertTrue($perTask->contains(fn ($row) => $row['task_id'] === 'XYZ-9'));
+        $this->assertSame('plrb-lms', $lms['name']);
+        $this->assertSame(2, $lms['interactions']);
+        $this->assertSame(2, $lms['branches']);
+        $this->assertTrue($perProject->contains(fn ($row) => $row['repo'] === '/Users/dev/other'));
     }
 
-    public function test_untagged_work_gets_its_own_row_rather_than_disappearing(): void
+    public function test_work_outside_a_checkout_gets_its_own_row_rather_than_disappearing(): void
     {
-        $this->interaction(['task_id' => null]);
+        $this->interaction(['repo' => null]);
 
         $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')->assertOk();
-        $perTask = collect($response->viewData('page')['props']['perTask']);
+        $unknown = collect($response->viewData('page')['props']['perProject'])->firstWhere('unknown', true);
 
-        $untagged = $perTask->firstWhere('untagged', true);
+        $this->assertNotNull($unknown, 'work outside a checkout must appear as its own row');
+        $this->assertSame(1, $unknown['interactions']);
+    }
 
-        $this->assertNotNull($untagged, 'untagged work must appear as its own row');
-        $this->assertSame(1, $untagged['interactions']);
+    public function test_a_project_page_lists_only_that_projects_interactions(): void
+    {
+        $mine = $this->interaction(['repo' => '/Users/dev/plrb-lms']);
+        $this->interaction(['repo' => '/Users/dev/other']);
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))
+            ->get('/usage/project?repo='.urlencode('/Users/dev/plrb-lms'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Usage/Project')
+                ->where('name', 'plrb-lms')
+                ->has('interactions.data', 1)
+                ->where('interactions.data.0.id', $mine->id));
     }
 
     public function test_the_dashboard_states_how_ai_time_is_measured(): void

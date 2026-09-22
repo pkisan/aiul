@@ -25,7 +25,7 @@ class UsageDashboardController extends Controller
 
         return Inertia::render('Usage/Index', [
             'totals' => $report->totals(),
-            'perTask' => $report->perTask(),
+            'perProject' => $report->perProject(),
             'perPerson' => $report->perPerson(),
             'weakest' => $report->weakestDimensions(),
             'aiTimeDefinition' => $this->aiTimeDefinition(),
@@ -46,7 +46,7 @@ class UsageDashboardController extends Controller
             'session' => [
                 'id' => $session->id,
                 'tool' => $session->tool,
-                'task_id' => $session->task_id,
+                'project' => $session->repo ? basename($session->repo) : null,
                 'branch' => $session->branch,
                 'repo' => $session->repo,
                 'started_at' => $session->started_at,
@@ -59,7 +59,29 @@ class UsageDashboardController extends Controller
         ]);
     }
 
-    /** One task's interactions: the click between the per-task rows and a prompt. */
+    /**
+     * One project's interactions.
+     *
+     * The repository is a path, so it travels as a query parameter rather than a
+     * path segment — encoding "/Users/x/Herd/plrb-lms" into a URL segment is a
+     * fight with no prize.
+     */
+    public function project(Request $request): Response
+    {
+        abort_unless($request->user()->isManager(), 403);
+
+        $report = new UsageReport(days: (int) $request->integer('days', 30) ?: 30);
+        $repo = $request->string('repo')->toString();
+
+        return Inertia::render('Usage/Project', [
+            'repo' => $repo ?: null,
+            'name' => $repo ? basename($repo) : null,
+            'interactions' => $report->interactionsForProject($repo ?: null),
+            'canViewRaw' => $request->user()->canViewRawPrompts(),
+        ]);
+    }
+
+    /** One task's interactions: kept for links made before projects existed. */
     public function task(Request $request, string $task): Response
     {
         abort_unless($request->user()->isManager(), 403);

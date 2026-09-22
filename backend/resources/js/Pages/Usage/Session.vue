@@ -22,8 +22,9 @@ defineProps({
             <div class="flex items-center gap-3">
                 <Link :href="route('usage.index')" class="text-sm text-gray-500 hover:text-gray-900">← AI usage</Link>
                 <h2 class="text-xl font-semibold leading-tight text-gray-800">
-                    {{ session.task_id ?? 'Untagged session' }}
+                    {{ session.project ?? 'Unknown project' }}
                 </h2>
+                <Tag v-if="session.branch" :label="session.branch" />
                 <Tag v-if="session.tool" :label="session.tool" tone="blue" />
             </div>
         </template>
@@ -37,7 +38,7 @@ defineProps({
                         :value="count(interactions.filter((i) => !i.automated).length)"
                     />
                     <StatCard label="AI time" :value="duration(session.seconds)" />
-                    <StatCard label="Started" :value="when(session.started_at)" :hint="session.branch ?? undefined" />
+                    <StatCard label="Started" :value="when(session.started_at)" />
                 </div>
 
                 <!-- Oldest first: a session is a conversation, and a conversation

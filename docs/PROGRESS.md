@@ -58,6 +58,35 @@ discards the response. The app's requests are large enough to pass the 4 MiB
 copy cap regularly, and every one of those was costing us an answer we had
 already copied in full.
 
+## The unit is the PROJECT, not a ticket — DONE 2026-09-22
+
+Owner's decision: this is not being used for task attribution in the PM tool.
+Repo, project, prompt, answer, score. Tickets are out.
+
+Why they had to go: `task_id` came from a `[A-Z]{2,6}-\d+` match on the branch
+name. `feature/revised-wordpress-sso` is an ordinary branch name and carries no
+key, so on this machine 100% of work was "untagged" — a feature that reported
+nothing. A checkout, unlike a ticket convention, every interaction has.
+
+- `UsageReport::perProject()`, `interactionsForProject()`, `secondsPerProject()`
+  and `averageScorePerProject()` group by `repo`; the project name is its last
+  path segment, the full path kept because two checkouts can share a name.
+- `GET /usage/project?repo=...` (a query parameter: a repo is a path, and
+  encoding one into a path segment is a fight with no prize) and a
+  `Usage/Project` page listing that project's interactions with their branches.
+- `/usage` leads with sessions by project and branch; "Per task" became "Per
+  project"; the "Untagged" tile became "No project — not run inside a checkout".
+- **Sessions are grouped by repo** in `sessionFor`, not by `task_id`. Session 17
+  proved the old bug: 54 interactions from two different repositories in one
+  session, labelled with whichever came first, because both had a null task_id.
+
+`task_id` is still captured and stored — it costs nothing and a team that does
+put keys in branch names still gets them — but nothing in the dashboard reads it.
+
+Tests rewritten: per-project rows with branch counts, work outside a checkout as
+its own row, a project page listing only its own interactions, and a new
+repository starting a new session. 85 backend tests pass.
+
 ## Dashboard: sessions first, pages rebuilt, prompt cap raised — DONE 2026-09-21
 
 Three requests from the owner, all done:
