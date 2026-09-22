@@ -41,6 +41,20 @@ class UsageDashboardController extends Controller
         abort_unless($request->user()->isManager(), 403);
 
         $report = new UsageReport(days: (int) $request->integer('days', 30) ?: 30);
+        $canViewRaw = $request->user()->canViewRawPrompts();
+
+        // One record for the page, not one per row: an audit log with forty
+        // entries for a single visit is an audit log nobody reads.
+        if ($canViewRaw) {
+            ConsentRecord::create([
+                'tenant_id' => $session->tenant_id,
+                'user_id' => $session->user_id ?? $request->user()->id,
+                'kind' => ConsentRecord::KIND_SESSION_VIEW,
+                'actor_user_id' => $request->user()->id,
+                'reason' => 'opened session #'.$session->id,
+                'ip' => $request->ip(),
+            ]);
+        }
 
         return Inertia::render('Usage/Session', [
             'session' => [
@@ -54,8 +68,8 @@ class UsageDashboardController extends Controller
                 'seconds' => $session->durationSeconds(),
                 'interactions' => $session->interaction_count,
             ],
-            'interactions' => $report->interactionsForSession($session),
-            'canViewRaw' => $request->user()->canViewRawPrompts(),
+            'interactions' => $report->interactionsForSession($session, withPreviews: $canViewRaw),
+            'canViewRaw' => $canViewRaw,
         ]);
     }
 

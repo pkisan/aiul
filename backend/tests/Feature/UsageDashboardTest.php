@@ -417,6 +417,35 @@ class UsageDashboardTest extends TestCase
         $this->assertFalse($utility['final_answer'], 'a utility call is not the answer to anything');
     }
 
+    // The session page reads without a trip to another screen for every row, and
+    // that reading is itself recorded — once for the page, not once per row.
+    public function test_opening_a_session_shows_previews_and_is_audited_once(): void
+    {
+        $asked = $this->interaction(['kind' => 'human', 'automated' => false], 'Fix the failing SSO tests.');
+        $this->interaction(['ai_session_id' => $asked->ai_session_id, 'kind' => 'agent', 'automated' => true]);
+
+        // The raw grant only means anything on an admin — see User::canViewRawPrompts.
+        $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
+            ->get('/usage/session/'.$asked->ai_session_id)
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('interactions.0.prompt_preview', 'Fix the failing SSO tests.'));
+
+        $this->assertSame(1, ConsentRecord::where('kind', ConsentRecord::KIND_SESSION_VIEW)->count());
+    }
+
+    public function test_a_manager_without_the_raw_grant_sees_no_prompt_text(): void
+    {
+        $asked = $this->interaction(['kind' => 'human'], 'Fix the failing SSO tests.');
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))
+            ->get('/usage/session/'.$asked->ai_session_id)
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('interactions.0.prompt_preview', null));
+
+        $this->assertSame(0, ConsentRecord::where('kind', ConsentRecord::KIND_SESSION_VIEW)->count());
+    }
+
     public function test_a_member_cannot_open_a_session(): void
     {
         $interaction = $this->interaction();

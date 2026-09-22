@@ -58,6 +58,34 @@ discards the response. The app's requests are large enough to pass the 4 MiB
 copy cap regularly, and every one of those was costing us an answer we had
 already copied in full.
 
+## The session page reads like a conversation — DONE 2026-09-22
+
+The owner opened session 19 and found the page unusable: their own prompt hidden
+under "before your first prompt", the real answer filed as an agent step, the
+recap presented as the reply, twelve rows tagged "you" that were the agent's own
+loop, and every prompt two clicks away behind "Show 1 agent step" → a model name.
+
+Two causes, and only one of them was the page:
+
+1. **The installed agent was `0497227`** — before kinds existed. All 486 rows
+   have `kind = NULL` and fall back to the old boolean, which was backwards. Any
+   session captured before `78ee42c` is installed will keep reading wrongly, and
+   the page now says so in an amber banner instead of presenting a guess as fact
+   (`legacy_kind` on every row).
+2. **The page showed no text.** Fixed: `interactionsForSession($session,
+   withPreviews: true)` returns the first 300 characters of each prompt and
+   answer, flattened to one line. A turn now reads "you asked → the reply →
+   N steps in between", with the text in the page and "details" as a quiet link.
+
+Previews are gated on `canViewRawPrompts()` (admin plus the grant, per
+`User::canViewRawPrompts`) and recorded ONCE per session view as
+`ConsentRecord::KIND_SESSION_VIEW` — not once per row, because an audit log with
+forty entries for one visit is an audit log nobody reads. A manager without the
+grant sees the structure and no text at all.
+
+Tests: previews appear for a grant-holder and are audited exactly once; a
+manager without the grant gets nulls and no audit record. 88 backend tests pass.
+
 ## Whose prompt was it: human, agent, utility — DONE 2026-09-22
 
 Session 19 was forty rows of which two were the owner's. The `automated` flag was

@@ -24,9 +24,9 @@ const turns = computed(() => {
         }
         const turn = byTurn.get(row.turn);
 
-        if (row.kind === 'human') turn.asked = row;
-        if (row.final_answer) turn.answer = row;
-        if (row.kind !== 'human' && !row.final_answer) turn.steps.push(row);
+        if (row.kind === 'human' && !turn.asked) turn.asked = row;
+        else if (row.final_answer) turn.answer = row;
+        else turn.steps.push(row);
     }
 
     return [...byTurn.values()];
@@ -34,6 +34,11 @@ const turns = computed(() => {
 
 const humanTurns = computed(() => turns.value.filter((t) => t.asked).length);
 const utilityCount = computed(() => props.interactions.filter((i) => i.kind === 'utility').length);
+const agentSteps = computed(() => props.interactions.length - humanTurns.value - utilityCount.value);
+
+// Rows captured before kinds existed fall back to the old boolean, which was
+// backwards. Say so on the page rather than letting it read as fact.
+const legacy = computed(() => props.interactions.some((i) => i.legacy_kind));
 
 const open = ref(new Set());
 const toggle = (turn) => {
@@ -62,75 +67,100 @@ const toggle = (turn) => {
             <div class="mx-auto max-w-4xl space-y-6 px-4 sm:px-6 lg:px-8">
                 <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
                     <StatCard label="You asked" :value="count(humanTurns)" hint="turns you typed" />
-                    <StatCard label="Agent steps" :value="count(interactions.length - humanTurns - utilityCount)" hint="work done on your behalf" />
+                    <StatCard label="Agent steps" :value="count(agentSteps)" hint="work done on your behalf" />
                     <StatCard label="Tool's own calls" :value="count(utilityCount)" hint="grading, titles, suggestions" />
                     <StatCard label="AI time" :value="duration(session.seconds)" :hint="when(session.started_at)" />
                 </div>
 
+                <div
+                    v-if="legacy"
+                    class="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900"
+                >
+                    Captured before this agent could tell a person's prompt from the agent's own work. The
+                    turns below are a guess from the old flag, which was often wrong — newer sessions are
+                    grouped correctly.
+                </div>
+
                 <Panel title="The session, in order" :subtitle="session.repo ?? undefined">
                     <ol class="divide-y divide-gray-100">
-                        <li v-for="t in turns" :key="t.turn" class="px-5 py-4">
-                            <!-- What the person typed. -->
-                            <div v-if="t.asked" class="flex items-start gap-3">
-                                <span class="mt-0.5 w-12 shrink-0 text-xs tabular-nums text-gray-400">
-                                    {{ clock(t.asked.occurred_at) }}
-                                </span>
-                                <div class="min-w-0 flex-1">
-                                    <div class="flex items-center gap-2">
-                                        <Tag label="you" tone="green" />
-                                        <Link :href="route('usage.show', t.asked.id)" class="text-sm font-medium text-gray-900 hover:underline">
-                                            Your prompt
-                                        </Link>
-                                        <span class="text-xs tabular-nums text-gray-400">
-                                            {{ count(t.asked.prompt_chars) }} chars
-                                        </span>
-                                    </div>
+                        <li v-for="t in turns" :key="t.turn" class="space-y-2 px-5 py-5">
+                            <!-- What the person typed, in their own words. -->
+                            <div v-if="t.asked">
+                                <div class="flex items-center gap-2">
+                                    <Tag label="you asked" tone="green" />
+                                    <span class="text-xs tabular-nums text-gray-400">
+                                        {{ clock(t.asked.occurred_at) }} · {{ count(t.asked.prompt_chars) }} chars
+                                    </span>
+                                    <Score :value="t.asked.score" class="ml-auto" />
+                                    <Link
+                                        :href="route('usage.show', t.asked.id)"
+                                        class="text-xs text-gray-400 hover:text-gray-700"
+                                    >details</Link>
                                 </div>
-                                <Score :value="t.asked.score" class="shrink-0" />
+                                <p
+                                    v-if="t.asked.prompt_preview"
+                                    class="mt-1 whitespace-pre-wrap break-words rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-900"
+                                >{{ t.asked.prompt_preview }}</p>
+                                <p v-else class="mt-1 text-sm italic text-gray-400">
+                                    {{ canViewRaw ? 'No prompt text was captured.' : 'You cannot read prompt text.' }}
+                                </p>
                             </div>
-                            <div v-else class="flex items-center gap-2 text-sm text-gray-500">
-                                <Tag label="before your first prompt" />
-                                <span class="text-xs">work already under way when this session began</span>
+                            <div v-else class="text-xs text-gray-500">
+                                Work already under way when this session began.
                             </div>
 
-                            <!-- What it did about it, folded away by default. -->
-                            <div v-if="t.steps.length" class="ml-12 mt-2">
-                                <button
-                                    class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200"
-                                    @click="toggle(t.turn)"
+                            <!-- The reply, which is what the person actually read. -->
+                            <div v-if="t.answer">
+                                <div class="flex items-center gap-2">
+                                    <Tag label="reply" tone="blue" />
+                                    <span class="text-xs tabular-nums text-gray-400">
+                                        {{ clock(t.answer.occurred_at) }} · {{ count(t.answer.answer_chars) }} chars ·
+                                        {{ count(t.answer.response_tokens) }} tokens
+                                    </span>
+                                    <Link
+                                        :href="route('usage.show', t.answer.id)"
+                                        class="ml-auto text-xs text-gray-400 hover:text-gray-700"
+                                    >details</Link>
+                                </div>
+                                <p
+                                    v-if="t.answer.answer_preview"
+                                    class="mt-1 whitespace-pre-wrap break-words rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm text-gray-900"
+                                >{{ t.answer.answer_preview }}</p>
+                            </div>
+
+                            <!-- Everything it did in between, folded away. -->
+                            <button
+                                v-if="t.steps.length"
+                                class="text-xs text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline"
+                                @click="toggle(t.turn)"
+                            >
+                                {{ open.has(t.turn) ? 'Hide' : 'Show' }} {{ t.steps.length }}
+                                {{ t.steps.length === 1 ? 'step' : 'steps' }} in between
+                            </button>
+
+                            <ul v-if="open.has(t.turn)" class="space-y-1">
+                                <li
+                                    v-for="step in t.steps"
+                                    :key="step.id"
+                                    class="rounded-md bg-gray-50 px-3 py-2 text-xs"
                                 >
-                                    {{ open.has(t.turn) ? 'Hide' : 'Show' }} {{ t.steps.length }} agent
-                                    {{ t.steps.length === 1 ? 'step' : 'steps' }}
-                                </button>
-
-                                <ul v-if="open.has(t.turn)" class="mt-2 space-y-1">
-                                    <li
-                                        v-for="step in t.steps"
-                                        :key="step.id"
-                                        class="flex items-center gap-3 rounded-md bg-gray-50 px-3 py-1.5 text-xs"
-                                    >
-                                        <span class="w-10 shrink-0 tabular-nums text-gray-400">{{ clock(step.occurred_at) }}</span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="tabular-nums text-gray-400">{{ clock(step.occurred_at) }}</span>
                                         <Tag :label="step.kind" :tone="step.kind === 'utility' ? 'amber' : 'gray'" />
-                                        <Link :href="route('usage.show', step.id)" class="text-gray-600 hover:underline">
-                                            {{ step.model ?? 'unknown model' }}
-                                        </Link>
+                                        <span class="text-gray-500">{{ step.model ?? 'unknown model' }}</span>
                                         <span class="ml-auto tabular-nums text-gray-400">
                                             {{ count(step.prompt_tokens) }}/{{ count(step.response_tokens) }} tokens
                                         </span>
-                                    </li>
-                                </ul>
-                            </div>
-
-                            <!-- The answer the person actually read. -->
-                            <div
-                                v-if="t.answer"
-                                class="ml-12 mt-2 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"
-                            >
-                                <Tag label="answer" tone="green" />
-                                <Link :href="route('usage.show', t.answer.id)" class="min-w-0 flex-1 text-sm text-emerald-900 hover:underline">
-                                    Reply at {{ clock(t.answer.occurred_at) }} · {{ count(t.answer.answer_chars) }} chars
-                                </Link>
-                            </div>
+                                        <Link
+                                            :href="route('usage.show', step.id)"
+                                            class="text-gray-400 hover:text-gray-700"
+                                        >details</Link>
+                                    </div>
+                                    <p v-if="step.answer_preview" class="mt-1 truncate text-gray-600">
+                                        {{ step.answer_preview }}
+                                    </p>
+                                </li>
+                            </ul>
                         </li>
 
                         <li v-if="!interactions.length" class="px-5 py-10 text-center text-sm text-gray-500">
@@ -140,9 +170,9 @@ const toggle = (turn) => {
                 </Panel>
 
                 <p class="px-1 text-xs leading-relaxed text-gray-500">
-                    <strong class="text-gray-700">Turns.</strong> A turn is one message you typed, every request the
-                    agent made working on it, and the reply it came back with. Rows captured before this distinction
-                    existed fall back to the old automated flag and may be grouped wrongly.
+                    <strong class="text-gray-700">What you are reading.</strong> A turn is one message you typed,
+                    the reply you got, and the agent's own steps in between. The first lines are shown here;
+                    opening the full text is recorded separately in the audit log.
                 </p>
             </div>
         </div>
