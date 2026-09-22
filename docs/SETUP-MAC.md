@@ -88,6 +88,47 @@ decrypted and re-encrypted by the proxy rather than coming straight from the sit
 Without `--cacert` the same command fails with a certificate error, which is the
 correct, safe behaviour.
 
+## Full Disk Access, and why a branch goes missing without it
+
+The agent's root helper reads `.git/HEAD` to work out which branch an interaction
+belongs to. On macOS, `~/Desktop`, `~/Documents`, `~/Downloads`, iCloud Drive and
+removable volumes are protected by TCC, and the protection is not ordinary file
+permissions: a process without Full Disk Access can **stat** `.git` — so the
+repository is found — and is **denied** when it opens `.git/HEAD`.
+
+The symptom is quiet. Every interaction in such a checkout is stored with the
+repository set and the branch empty, and the dashboard shows the project with no
+branches at all. Observed on this machine: 291 interactions in a checkout under
+`~/Desktop` with `branch=NULL`, while a checkout under `~/Herd` recorded its
+branches perfectly.
+
+The helper now logs it:
+
+```
+level=WARN msg="found the repository but could not read its branch"
+  repo=/Users/you/Desktop/project err="open ...: operation not permitted"
+  hint="grant Full Disk Access to /usr/local/bin/aiul (PPPC profile)"
+```
+
+### Granting it
+
+By hand, for a development machine:
+
+1. System Settings → Privacy & Security → Full Disk Access
+2. Add `/usr/local/bin/aiul` (⌘⇧G in the file picker to type the path)
+3. `sudo launchctl kickstart -k system/com.aiul.agent`
+
+On a managed fleet this belongs in the MDM, not in a person's hands: push a PPPC
+(Privacy Preferences Policy Control) profile granting `SystemPolicyAllFiles` to
+the helper, identified by its code signature. That requires the binary to be
+signed with a Developer ID, which is Phase 8 and not done yet — so until then,
+either grant it by hand or accept that checkouts in protected directories record
+no branch.
+
+Nothing else in the product needs this permission. Capture, redaction, task
+tagging from directories outside the protected set, and everything the backend
+does all work without it.
+
 ## Safety rules while working in this repo
 
 - Nothing is set machine-wide without the exact commands being shown first and an

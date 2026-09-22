@@ -327,8 +327,12 @@ class UsageReport
      * A flat list of interactions buries the shape of the work — one message to
      * an agent produces a dozen rows — so the dashboard leads with sessions and
      * lets a reader open one.
+     *
+     * Paginated, because 25 rows is only the newest work: older sessions were
+     * unreachable until this returned a paginator. The page name is custom so
+     * the `page` parameter stays free for other lists on the same view.
      */
-    public function sessions(int $limit = 25): array
+    public function sessions(int $perPage = 15): LengthAwarePaginator
     {
         return AiSession::query()
             ->where('started_at', '>=', $this->since())
@@ -343,9 +347,8 @@ class UsageReport
             )
             ->with('user:id,name')
             ->latest('started_at')
-            ->limit($limit)
-            ->get()
-            ->map(fn (AiSession $s) => [
+            ->paginate($perPage, ['*'], 'sessions_page')
+            ->through(fn (AiSession $s) => [
                 'id' => $s->id,
                 'tool' => $s->tool,
                 'task_id' => $s->task_id,
@@ -361,7 +364,7 @@ class UsageReport
                 // The model owns this definition, so the session list and the
                 // per-task "AI time" can never drift apart.
                 'seconds' => $s->durationSeconds(),
-            ])->all();
+            ]);
     }
 
     /** One session's interactions, oldest first: a conversation reads forwards. */

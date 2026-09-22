@@ -144,7 +144,16 @@ func (s *Server) answer(line string) string {
 		// .git/HEAD itself. This is a file read of a path the worker did not
 		// choose — the directory came from the process that opened the connection
 		// — and the task ID is still worked out in the worker.
-		repo, branch := tasks.CheckoutAt(dir)
+		repo, branch, readErr := tasks.CheckoutAtVerbose(dir)
+		if repo != "" && branch == "" && readErr != nil {
+			// Worth a warning, not silence: on macOS ~/Desktop, ~/Documents and
+			// ~/Downloads are protected by TCC, and a daemon without Full Disk
+			// Access can stat .git but not open .git/HEAD. Every interaction in
+			// such a checkout is then recorded with no branch at all.
+			s.log.Warn("found the repository but could not read its branch",
+				"repo", repo, "err", readErr,
+				"hint", "grant Full Disk Access to /usr/local/bin/aiul (PPPC profile), see docs/SETUP-MAC.md")
+		}
 
 		// The executable, not just the process name: the Claude desktop app
 		// bundles its own Claude Code, and both are called "claude".

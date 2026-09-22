@@ -13,6 +13,7 @@
 package tasks
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -128,16 +129,34 @@ func (r *Resolver) ResolveWith(dir string, checkout func(string) (repo, branch s
 // where the configurable pattern lives — the privileged half does the file read
 // and nothing more.
 func CheckoutAt(dir string) (repo, branch string) {
+	repo, branch, _ = checkoutAt(dir)
+	return repo, branch
+}
+
+// CheckoutAtVerbose is CheckoutAt with the reason a branch could not be read.
+//
+// It exists because of a silent failure worth an hour: on macOS, ~/Desktop,
+// ~/Documents and ~/Downloads are protected by TCC. A daemon without Full Disk
+// Access can STAT .git — so the repository is found — and is denied when it OPENS
+// .git/HEAD. Every interaction in such a checkout was recorded with an empty
+// branch and nothing said why.
+func CheckoutAtVerbose(dir string) (repo, branch string, err error) {
+	return checkoutAt(dir)
+}
+
+func checkoutAt(dir string) (repo, branch string, err error) {
 	if dir == "" {
-		return "", ""
+		return "", "", nil
 	}
 
 	repo, ok := findRepo(dir)
 	if !ok {
-		return "", ""
+		return "", "", nil
 	}
 
-	return repo, branchOf(repo)
+	branch, err = branchOfWithError(repo)
+
+	return repo, branch, err
 }
 
 // TaskIDFrom pulls the ticket out of a branch name.
@@ -175,21 +194,26 @@ func findRepo(dir string) (string, bool) {
 //
 // or, on a detached HEAD, a bare commit hash — in which case there is no branch.
 func branchOf(repo string) string {
+	branch, _ := branchOfWithError(repo)
+	return branch
+}
+
+func branchOfWithError(repo string) (string, error) {
 	gitPath := filepath.Join(repo, ".git")
 
 	info, err := os.Stat(gitPath)
 	if err != nil {
-		return ""
+		return "", err
 	}
 	// In a worktree or a submodule, .git is a FILE pointing at the real directory.
 	if !info.IsDir() {
 		data, err := os.ReadFile(gitPath)
 		if err != nil {
-			return ""
+			return "", err
 		}
 		target := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(data)), "gitdir:"))
 		if target == "" {
-			return ""
+			return "", fmt.Errorf("%s names no gitdir", gitPath)
 		}
 		if !filepath.IsAbs(target) {
 			target = filepath.Join(repo, target)
@@ -199,12 +223,13 @@ func branchOf(repo string) string {
 
 	head, err := os.ReadFile(filepath.Join(gitPath, "HEAD"))
 	if err != nil {
-		return ""
+		return "", err
 	}
 	line := strings.TrimSpace(string(head))
 	ref, found := strings.CutPrefix(line, "ref: refs/heads/")
 	if !found {
-		return "" // detached HEAD: a commit hash, no branch
+		return "", nil // detached HEAD: a commit hash, no branch, and not an error
 	}
-	return ref
+
+	return ref, nil
 }

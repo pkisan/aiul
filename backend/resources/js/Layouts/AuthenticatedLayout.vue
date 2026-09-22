@@ -39,6 +39,23 @@ const showingNavigationDropdown = ref(false);
                                 >
                                     Dashboard
                                 </NavLink>
+                                <NavLink
+                                    v-if="
+                                        $page.props.auth.user &&
+                                        ['manager', 'admin'].includes($page.props.auth.user.role)
+                                    "
+                                    :href="route('usage.index')"
+                                    :active="route().current('usage.*')"
+                                >
+                                    AI usage
+                                </NavLink>
+                                <NavLink
+                                    v-if="$page.props.auth.user"
+                                    :href="route('usage.my-data')"
+                                    :active="route().current('usage.my-data')"
+                                >
+                                    My data
+                                </NavLink>
                             </div>
                         </div>
 
@@ -145,6 +162,23 @@ const showingNavigationDropdown = ref(false);
                             :active="route().current('dashboard')"
                         >
                             Dashboard
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            v-if="
+                                $page.props.auth.user &&
+                                ['manager', 'admin'].includes($page.props.auth.user.role)
+                            "
+                            :href="route('usage.index')"
+                            :active="route().current('usage.*')"
+                        >
+                            AI usage
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            v-if="$page.props.auth.user"
+                            :href="route('usage.my-data')"
+                            :active="route().current('usage.my-data')"
+                        >
+                            My data
                         </ResponsiveNavLink>
                     </div>
 

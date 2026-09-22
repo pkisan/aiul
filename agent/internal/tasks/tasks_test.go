@@ -205,3 +205,45 @@ func TestCacheExpiresSoTaskFollowsTheBranch(t *testing.T) {
 		t.Errorf("after the cache expires the task must follow the branch, got %q", got)
 	}
 }
+
+// A repository whose HEAD cannot be read must say so. On macOS, ~/Desktop,
+// ~/Documents and ~/Downloads are protected by TCC: a daemon without Full Disk
+// Access can stat .git and is denied when it opens .git/HEAD, so every
+// interaction in that checkout was recorded with an empty branch and no reason.
+func TestAnUnreadableHeadIsReportedRatherThanSwallowed(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	head := filepath.Join(dir, ".git", "HEAD")
+	if err := os.WriteFile(head, []byte("ref: refs/heads/main\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file permissions, so this cannot be tested as root")
+	}
+
+	repo, branch, err := CheckoutAtVerbose(dir)
+
+	if repo != dir {
+		t.Errorf("repo = %q, want %q — the repository is still found", repo, dir)
+	}
+	if branch != "" {
+		t.Errorf("branch = %q, want empty", branch)
+	}
+	if err == nil {
+		t.Error("an unreadable HEAD must come back as an error, not as silence")
+	}
+
+	// A detached HEAD is NOT an error: there is genuinely no branch.
+	detached := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(detached, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(detached, ".git", "HEAD"), []byte("9f2c1a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, branch, err := CheckoutAtVerbose(detached); branch != "" || err != nil {
+		t.Errorf("detached HEAD = %q, err %v; want empty and no error", branch, err)
+	}
+}

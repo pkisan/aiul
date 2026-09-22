@@ -69,7 +69,7 @@ func (directOps) ProcessOnPort(port int) (int, string, string, string, string, s
 
 	// Running by hand, this process is the person using the machine, so it can
 	// read the checkout itself.
-	repo, branch := tasks.CheckoutAt(dir)
+	repo, branch, _ := tasks.CheckoutAtVerbose(dir)
 
 	return process.PID, process.Name, dir, repo, branch, process.Path, nil
 }

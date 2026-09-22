@@ -15,7 +15,7 @@ defineProps({
     aiTimeDefinition: String,
     canViewRaw: Boolean,
     recent: Array,
-    sessions: Array,
+    sessions: Object,
 });
 </script>
 
@@ -48,7 +48,7 @@ defineProps({
                 >
                     <div class="divide-y divide-gray-100">
                         <Link
-                            v-for="s in sessions"
+                            v-for="s in sessions.data"
                             :key="s.id"
                             :href="route('usage.session', s.id)"
                             class="flex items-center gap-4 px-5 py-3 transition hover:bg-gray-50"
@@ -81,9 +81,35 @@ defineProps({
                             </div>
                         </Link>
 
-                        <p v-if="!sessions.length" class="px-5 py-10 text-center text-sm text-gray-500">
+                        <p v-if="!sessions.data.length" class="px-5 py-10 text-center text-sm text-gray-500">
                             Nothing captured yet.
                         </p>
+                    </div>
+
+                    <div
+                        v-if="sessions.last_page > 1"
+                        class="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-sm"
+                    >
+                        <span class="text-gray-500"
+                            >Page {{ sessions.current_page }} of {{ sessions.last_page }} ·
+                            {{ sessions.total }} sessions</span
+                        >
+                        <span class="flex gap-1">
+                            <Link
+                                v-for="link in sessions.links"
+                                :key="link.label"
+                                :href="link.url ?? ''"
+                                :only="['sessions']"
+                                :preserve-scroll="true"
+                                v-html="link.label"
+                                class="rounded-md px-2 py-1"
+                                :class="{
+                                    'bg-gray-900 text-white': link.active,
+                                    'text-gray-600 hover:bg-gray-100': !link.active && link.url,
+                                    'text-gray-300': !link.url,
+                                }"
+                            />
+                        </span>
                     </div>
                 </Panel>
 

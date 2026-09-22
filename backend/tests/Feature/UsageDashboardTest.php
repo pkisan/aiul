@@ -364,7 +364,7 @@ class UsageDashboardTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page->has('sessions'));
 
-        $sessions = collect((new \App\Services\UsageReport(30))->sessions())
+        $sessions = collect((new \App\Services\UsageReport(30))->sessions()->items())
             ->keyBy('id');
 
         $this->assertSame(1, $sessions[$first->ai_session_id]['human_prompts']);
