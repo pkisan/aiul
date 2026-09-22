@@ -60,11 +60,32 @@ type Result struct {
 	// Streamed records whether the answer arrived as a stream.
 	Streamed bool
 
-	// Automated marks a request the format shows is not a fresh human prompt —
-	// a tool-result follow-up, for instance, where the agent is continuing on its
-	// own. Only set when the format makes it visible.
+	// Automated marks a request that is not a fresh human prompt. Kept in step
+	// with Kind: anything but KindHuman is automated.
 	Automated bool
+
+	// Kind says who caused this request, which a flat "automated" flag could not.
+	// One message typed by a person produces one KindHuman request, a dozen
+	// KindAgent ones as the agent works through its tools, and a scattering of
+	// KindUtility calls the tool makes for itself.
+	Kind string
 }
+
+// What caused a request. Stored on the event, so the dashboard can show a
+// person's turn and everything the agent did on their behalf underneath it.
+const (
+	// KindHuman: the newest message is text a person typed.
+	KindHuman = "human"
+
+	// KindAgent: the newest message is a tool result — the agent feeding itself
+	// the output of the last thing it ran, continuing work already asked for.
+	KindAgent = "agent"
+
+	// KindUtility: the tool talking to a model about its own housekeeping —
+	// grading a prompt, naming a conversation, suggesting a next action. No
+	// conversation, no tools offered, and nobody waiting on the answer.
+	KindUtility = "utility"
+)
 
 // Parser reads one provider's format.
 type Parser interface {

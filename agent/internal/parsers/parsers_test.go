@@ -644,3 +644,67 @@ func TestCodexResponsesStreamIsReassembled(t *testing.T) {
 		t.Errorf("model = %q", res.Model)
 	}
 }
+
+// One message typed by a person produces three shapes of request, and telling
+// them apart is the difference between "you sent 40 prompts today" and the truth.
+func TestWhoCausedTheRequestIsReadFromItsShape(t *testing.T) {
+	tools := `"tools":[{"name":"Bash"}]`
+	head := http.Header{"X-App": []string{"cli"}}
+
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			// What the person typed. Tools offered, newest message is their text.
+			name: "a person's turn",
+			body: `{"model":"claude-opus-5",` + tools + `,"messages":[{"role":"user","content":"fix the failing tests"}]}`,
+			want: KindHuman,
+		},
+		{
+			// The agent continuing on its own: the newest message is the output of
+			// the tool it just ran. The person typed nothing here.
+			name: "the agent continuing",
+			body: `{"model":"claude-opus-5",` + tools + `,"messages":[` +
+				`{"role":"user","content":"fix the failing tests"},` +
+				`{"role":"assistant","content":[{"type":"tool_use","name":"Bash"}]},` +
+				`{"role":"user","content":[{"type":"tool_result","content":"8 failures"}]}]}`,
+			want: KindAgent,
+		},
+		{
+			// The tool's own housekeeping: no tools offered, one fresh message.
+			// This is the shape that used to be recorded as a human prompt.
+			name: "the tool's housekeeping",
+			body: `{"model":"claude-sonnet-5","messages":[{"role":"user","content":"Grade this. Respond with <severity>N</severity> ONLY."}]}`,
+			want: KindUtility,
+		},
+	}
+
+	for _, c := range cases {
+		res, err := Anthropic{}.Parse(Exchange{
+			Host: "api.anthropic.com", Path: "/v1/messages",
+			ReqHead: head, ReqBody: []byte(c.body),
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if res.Kind != c.want {
+			t.Errorf("%s: kind = %q, want %q", c.name, res.Kind, c.want)
+		}
+		if res.Automated != (c.want != KindHuman) {
+			t.Errorf("%s: automated = %v for kind %q", c.name, res.Automated, res.Kind)
+		}
+	}
+
+	// A browser or a plain SDK call offers no tools either, and that is simply
+	// what an ordinary question looks like there — it must not become utility.
+	res, _ := Anthropic{}.Parse(Exchange{
+		Host: "api.anthropic.com", Path: "/v1/messages",
+		ReqHead: http.Header{"User-Agent": []string{"Mozilla/5.0"}},
+		ReqBody: []byte(`{"model":"claude-opus-5","messages":[{"role":"user","content":"what is a proxy?"}]}`),
+	})
+	if res.Kind != KindHuman {
+		t.Errorf("a browser question = %q, want %q", res.Kind, KindHuman)
+	}
+}

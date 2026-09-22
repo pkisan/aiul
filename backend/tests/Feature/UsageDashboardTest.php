@@ -385,6 +385,38 @@ class UsageDashboardTest extends TestCase
                 ->where('interactions.0.id', $interaction->id));
     }
 
+    // Session 19 was forty rows of which two were the owner's. A turn is one
+    // message they typed, every request the agent made about it, and the reply.
+    public function test_a_session_groups_interactions_into_turns(): void
+    {
+        $asked = $this->interaction(['kind' => 'human', 'automated' => false, 'answer_chars' => 0,
+            'occurred_at' => now()->subMinutes(9)]);
+        $session = $asked->ai_session_id;
+
+        $this->interaction(['ai_session_id' => $session, 'kind' => 'utility', 'automated' => true,
+            'answer_chars' => 11, 'occurred_at' => now()->subMinutes(8)]);
+        $this->interaction(['ai_session_id' => $session, 'kind' => 'agent', 'automated' => true,
+            'answer_chars' => 0, 'occurred_at' => now()->subMinutes(7)]);
+        $reply = $this->interaction(['ai_session_id' => $session, 'kind' => 'agent', 'automated' => true,
+            'answer_chars' => 3051, 'occurred_at' => now()->subMinutes(6)]);
+
+        $rows = collect((new \App\Services\UsageReport(30))
+            ->interactionsForSession(AiSession::withoutGlobalScope('tenant')->find($session)))
+            ->keyBy('id');
+
+        // Everything after the person's message belongs to their turn.
+        $this->assertSame(1, $rows[$asked->id]['turn']);
+        $this->assertSame(1, $rows[$reply->id]['turn']);
+
+        // The answer they read is the last row of the turn that carries text,
+        // and the tool's own housekeeping can never be it.
+        $this->assertTrue($rows[$reply->id]['final_answer']);
+        $this->assertFalse($rows[$asked->id]['final_answer']);
+
+        $utility = $rows->firstWhere('kind', 'utility');
+        $this->assertFalse($utility['final_answer'], 'a utility call is not the answer to anything');
+    }
+
     public function test_a_member_cannot_open_a_session(): void
     {
         $interaction = $this->interaction();

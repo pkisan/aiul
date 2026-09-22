@@ -4,6 +4,26 @@
   "stream": true,
   "system": "You are a helpful assistant for a PHP team.",
   "messages": [
-    {"role": "user", "content": "Explain what a TLS proxy does in two sentences."}
+    {
+      "role": "user",
+      "content": "Explain what a TLS proxy does in two sentences."
+    }
+  ],
+  "tools": [
+    {
+      "name": "Bash",
+      "description": "Run a shell command",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    }
   ]
 }

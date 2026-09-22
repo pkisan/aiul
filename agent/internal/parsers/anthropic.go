@@ -20,9 +20,10 @@ func (p Anthropic) Parse(ex Exchange) (Result, error) {
 	res.Tool = toolFromHeaders(ex.ReqHead)
 
 	var req struct {
-		Model    string          `json:"model"`
-		Stream   bool            `json:"stream"`
-		System   json.RawMessage `json:"system"`
+		Model    string            `json:"model"`
+		Stream   bool              `json:"stream"`
+		System   json.RawMessage   `json:"system"`
+		Tools    []json.RawMessage `json:"tools"`
 		Messages []struct {
 			Role    string          `json:"role"`
 			Content json.RawMessage `json:"content"`
@@ -38,19 +39,24 @@ func (p Anthropic) Parse(ex Exchange) (Result, error) {
 	res.Streamed = req.Stream
 	res.System = textFromContent(req.System)
 
+	// Only the LAST user message says what caused THIS request. Every earlier one
+	// is history that the client re-sends every turn, so "any message contains a
+	// tool_result" marked a person's own prompt as automated the moment their
+	// conversation had used a single tool.
+	lastUserIsToolResult := false
+
 	for _, m := range req.Messages {
 		if m.Role != "user" {
 			continue
 		}
-		// A user message whose content is a tool_result block is the agent feeding
-		// itself the output of a tool, not a human typing a new prompt.
-		if containsBlockType(m.Content, "tool_result") {
-			res.Automated = true
-		}
+		lastUserIsToolResult = containsBlockType(m.Content, "tool_result")
 		if text := textFromContent(m.Content); text != "" {
 			res.Prompt = text
 		}
 	}
+
+	res.Kind = kindOf(lastUserIsToolResult, len(req.Tools) > 0, res.Tool)
+	res.Automated = res.Kind != KindHuman
 
 	if len(ex.SSE) > 0 {
 		res.Streamed = true

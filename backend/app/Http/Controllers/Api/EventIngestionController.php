@@ -130,6 +130,9 @@ class EventIngestionController extends Controller
             'duration_ms' => $event['duration_ms'] ?? 0,
             'streamed' => (bool) ($event['streamed'] ?? false),
             'automated' => (bool) ($event['automated'] ?? false),
+            // "human", "agent" or "utility" — see the migration. Older agents
+            // send no kind at all, and a null kind is honest about that.
+            'kind' => $event['kind'] ?? null,
             'redacted' => $event['redacted'] ?? null,
             'redaction_rules_version' => $event['redaction_rules_version'] ?? 0,
             'allowlist_version' => $event['allowlist_version'] ?? 0,

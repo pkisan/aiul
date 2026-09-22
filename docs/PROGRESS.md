@@ -58,6 +58,45 @@ discards the response. The app's requests are large enough to pass the 4 MiB
 copy cap regularly, and every one of those was costing us an answer we had
 already copied in full.
 
+## Whose prompt was it: human, agent, utility — DONE 2026-09-22
+
+Session 19 was forty rows of which two were the owner's. The `automated` flag was
+not just unhelpful, it was backwards:
+
+```
+#643  "fix the problems of both the commits"   automated=1   <- the owner's own prompt
+#660  "<severity>N ONLY"                       automated=0   <- a grader the tool ran
+```
+
+Because it was set when ANY message contained a `tool_result`, and a client
+re-sends the whole conversation every turn — so a person's prompt was marked
+automated the moment their conversation had used one tool, while the tool's own
+fresh side-calls looked human.
+
+Requests are now classified by their shape, from two facts the body states:
+
+| Kind | Rule | What it is |
+| --- | --- | --- |
+| `human` | the newest message is text | what the person typed |
+| `agent` | the newest message is a `tool_result` | the agent continuing work already asked for |
+| `utility` | an agent client offered NO tools | the tool grading a prompt, naming a chat, suggesting a next action |
+
+The tools test is applied only to agent clients: a browser or a plain SDK call
+offers no tools either, and there that is simply what a question looks like.
+
+`Result.Kind` and `Event.Kind` carry it, a nullable `kind` column stores it, and
+old rows keep a null kind rather than a guess computed from a rule known to be
+wrong.
+
+On top of it, turns: `UsageReport::intoTurns()` numbers each row with the turn it
+belongs to and marks the one row carrying the reply the person actually read (the
+turn's last row with answer text; a utility call can never be it). The session
+page now shows a turn as "you asked → N agent steps, folded away → the answer",
+with the fixed fixture's tools array so the parser tests exercise real shapes.
+
+Not stored, computed: a turn id in the database would be wrong the moment the
+rule improves.
+
 ## The unit is the PROJECT, not a ticket — DONE 2026-09-22
 
 Owner's decision: this is not being used for task attribution in the PM tool.

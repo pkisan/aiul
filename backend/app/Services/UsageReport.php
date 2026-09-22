@@ -367,18 +367,30 @@ class UsageReport
             ]);
     }
 
-    /** One session's interactions, oldest first: a conversation reads forwards. */
+    /**
+     * One session's interactions, oldest first and grouped into turns.
+     *
+     * A turn is one thing a person asked for: the message they typed, every
+     * request the agent made working on it, and the answer it came back with.
+     * Without this the session is forty rows of which two are the person's —
+     * which is what the owner saw in session 19.
+     *
+     * The grouping is computed here rather than stored: it is a reading of the
+     * sequence, and a stored turn id would be wrong the moment the rule improves.
+     */
     public function interactionsForSession(AiSession $session): array
     {
-        return $session->interactions()
+        $rows = $session->interactions()
             ->with('score:id,ai_interaction_id,score')
             ->orderBy('occurred_at')
+            ->orderBy('id')
             ->get()
             ->map(fn (AiInteraction $i) => [
                 'id' => $i->id,
                 'tool' => $i->tool,
                 'model' => $i->model,
-                'automated' => (bool) $i->automated,
+                // Rows captured before kinds existed only have the old boolean.
+                'kind' => $i->kind ?? ($i->automated ? 'agent' : 'human'),
                 'prompt_chars' => $i->prompt_chars,
                 'answer_chars' => $i->answer_chars,
                 'prompt_tokens' => $i->prompt_tokens,
@@ -386,6 +398,42 @@ class UsageReport
                 'score' => $i->score?->score,
                 'occurred_at' => $i->occurred_at,
             ])->all();
+
+        return $this->intoTurns($rows);
+    }
+
+    /**
+     * Number each row with the turn it belongs to, and mark the row that carries
+     * the answer the person actually read.
+     *
+     * The final answer of a turn is its LAST row with any answer text: an agent
+     * ends a turn by writing a reply rather than calling another tool. Utility
+     * calls belong to no turn — they are the tool talking to itself — so they
+     * keep the current turn number but can never be its answer.
+     */
+    private function intoTurns(array $rows): array
+    {
+        $turn = 0;
+        $lastAnswerIndex = [];
+
+        foreach ($rows as $index => $row) {
+            if ($row['kind'] === 'human') {
+                $turn++;
+            }
+
+            $rows[$index]['turn'] = $turn;
+            $rows[$index]['final_answer'] = false;
+
+            if ($turn > 0 && $row['kind'] !== 'utility' && ($row['answer_chars'] ?? 0) > 0) {
+                $lastAnswerIndex[$turn] = $index;
+            }
+        }
+
+        foreach ($lastAnswerIndex as $index) {
+            $rows[$index]['final_answer'] = true;
+        }
+
+        return $rows;
     }
 
     /** The newest interactions across tasks, for the dashboard's recent list. */

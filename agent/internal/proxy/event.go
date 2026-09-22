@@ -80,6 +80,10 @@ type Event struct {
 	// (a tool result, say) rather than something a person typed.
 	Automated bool `json:"automated,omitempty"`
 
+	// Kind says who caused the request: "human", "agent" or "utility". Automated
+	// is kept in step with it for anything already reading that field.
+	Kind string `json:"kind,omitempty"`
+
 	PromptTokens   int `json:"prompt_tokens,omitempty"`
 	ResponseTokens int `json:"response_tokens,omitempty"`
 
@@ -183,6 +187,7 @@ func (p *Proxy) record(in interaction) {
 		ev.Answer = res.Answer
 		ev.Streamed = res.Streamed
 		ev.Automated = res.Automated
+		ev.Kind = res.Kind
 		ev.PromptTokens = res.PromptTokens
 		ev.ResponseTokens = res.ResponseTokens
 	}

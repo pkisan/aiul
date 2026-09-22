@@ -52,6 +52,44 @@ func textFromContent(raw json.RawMessage) string {
 	return b.String()
 }
 
+// kindOf decides who caused a request from two facts the body makes plain: is the
+// newest message a tool result, and did the caller offer the model any tools?
+//
+// A tool result means the agent is continuing work already asked for. No tools at
+// all means nobody is waiting for the model to DO anything — that is the shape of
+// the housekeeping calls an agent makes for itself (grading a prompt, naming a
+// conversation), which arrive with a fresh single message and used to look
+// exactly like a person typing.
+func kindOf(lastMessageIsToolResult, offersTools bool, tool string) string {
+	switch {
+	case lastMessageIsToolResult:
+		return KindAgent
+
+	// An agent always offers its model tools on a real turn — that is how it
+	// works. A request from an agent with NO tools is the tool talking to a model
+	// about its own housekeeping: grading a prompt, naming a conversation,
+	// suggesting a next action. Those arrive as a fresh single message and used to
+	// look exactly like a person typing.
+	//
+	// The same test must not be applied to a browser or a plain SDK call, where no
+	// tools is simply what an ordinary question looks like.
+	case isAgent(tool) && !offersTools:
+		return KindUtility
+
+	default:
+		return KindHuman
+	}
+}
+
+// isAgent reports whether this client runs a tool-using loop of its own.
+func isAgent(tool string) bool {
+	switch tool {
+	case "claude-code", "cli", "codex", "gemini-cli", "opencode", "cursor", "vscode":
+		return true
+	}
+	return false
+}
+
 // containsBlockType reports whether a content list holds a block of this type,
 // used to spot tool results — the sign of an automated follow-up.
 func containsBlockType(raw json.RawMessage, want string) bool {
