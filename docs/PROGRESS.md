@@ -58,6 +58,30 @@ discards the response. The app's requests are large enough to pass the 4 MiB
 copy cap regularly, and every one of those was costing us an answer we had
 already copied in full.
 
+## No labels where the answer is a guess — DONE 2026-09-22
+
+The owner's point, and it was right for the data in front of them: on session 19
+there is no way to tell their prompt from the agent's. Every row there predates
+kind detection, and labelling them from the old boolean produced confident
+nonsense — "you asked" on twelve agent steps, an 11-character `<severity>15` as
+the reply, their real prompt filed under "before your first prompt".
+
+So the page now has two modes, chosen by the data rather than by hope:
+
+- **Every row has a kind** (captured by `78ee42c` or later): turns, as built —
+  you asked → the reply → N steps in between.
+- **Any row is legacy**: no "you"/"agent" tags at all, no turn grouping. A plain
+  list of exchanges in time order, each showing the prompt and the reply text,
+  model, tokens and score. Defaults to exchanges with a real reply (more than 40
+  characters back), with "Show all N" for the rest. The footnote says why the
+  labels are missing.
+
+Saying nothing beats saying something wrong, and this is the second time today
+that principle has been earned the hard way.
+
+Still not installed: `78ee42c` is built in `dist/`. Until it is, every new
+session is legacy too.
+
 ## The session page reads like a conversation — DONE 2026-09-22
 
 The owner opened session 19 and found the page unusable: their own prompt hidden

@@ -14,7 +14,13 @@ const props = defineProps({
     canViewRaw: Boolean,
 });
 
-// One thing the person asked for, and everything the agent did about it.
+// Rows captured before the agent could tell a person's prompt from the agent's
+// own work carry no kind. Guessing one from the old boolean produced confident
+// nonsense — "you asked" on twelve agent steps — so where the answer is unknown
+// this page says nothing rather than something wrong, and falls back to a plain
+// list of exchanges in order.
+const known = computed(() => props.interactions.every((i) => !i.legacy_kind));
+
 const turns = computed(() => {
     const byTurn = new Map();
 
@@ -36,9 +42,15 @@ const humanTurns = computed(() => turns.value.filter((t) => t.asked).length);
 const utilityCount = computed(() => props.interactions.filter((i) => i.kind === 'utility').length);
 const agentSteps = computed(() => props.interactions.length - humanTurns.value - utilityCount.value);
 
-// Rows captured before kinds existed fall back to the old boolean, which was
-// backwards. Say so on the page rather than letting it read as fact.
-const legacy = computed(() => props.interactions.some((i) => i.legacy_kind));
+// The exchanges worth reading: something was asked, something came back. The
+// rest are the agent's mechanics and sit behind a toggle.
+const withText = computed(() =>
+    props.interactions.filter((i) => (i.answer_chars ?? 0) > 0 || (i.prompt_chars ?? 0) > 0),
+);
+const substantial = computed(() => props.interactions.filter((i) => (i.answer_chars ?? 0) > 40));
+
+const showAll = ref(false);
+const listed = computed(() => (showAll.value ? withText.value : substantial.value));
 
 const open = ref(new Set());
 const toggle = (turn) => {
@@ -66,25 +78,26 @@ const toggle = (turn) => {
         <div class="bg-gray-50 py-8">
             <div class="mx-auto max-w-4xl space-y-6 px-4 sm:px-6 lg:px-8">
                 <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                    <StatCard label="You asked" :value="count(humanTurns)" hint="turns you typed" />
-                    <StatCard label="Agent steps" :value="count(agentSteps)" hint="work done on your behalf" />
-                    <StatCard label="Tool's own calls" :value="count(utilityCount)" hint="grading, titles, suggestions" />
+                    <template v-if="known">
+                        <StatCard label="You asked" :value="count(humanTurns)" hint="turns you typed" />
+                        <StatCard label="Agent steps" :value="count(agentSteps)" hint="work done on your behalf" />
+                        <StatCard label="Tool's own calls" :value="count(utilityCount)" hint="grading, titles, suggestions" />
+                    </template>
+                    <template v-else>
+                        <StatCard label="Exchanges" :value="count(interactions.length)" hint="requests in this session" />
+                        <StatCard label="With a reply" :value="count(substantial.length)" hint="more than a token or two back" />
+                        <StatCard
+                            label="Tokens"
+                            :value="count(interactions.reduce((n, i) => n + (i.prompt_tokens ?? 0) + (i.response_tokens ?? 0), 0))"
+                        />
+                    </template>
                     <StatCard label="AI time" :value="duration(session.seconds)" :hint="when(session.started_at)" />
                 </div>
 
-                <div
-                    v-if="legacy"
-                    class="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900"
-                >
-                    Captured before this agent could tell a person's prompt from the agent's own work. The
-                    turns below are a guess from the old flag, which was often wrong — newer sessions are
-                    grouped correctly.
-                </div>
-
-                <Panel title="The session, in order" :subtitle="session.repo ?? undefined">
+                <!-- ============ Sessions captured with kinds: turn by turn ============ -->
+                <Panel v-if="known" title="The session, in order" :subtitle="session.repo ?? undefined">
                     <ol class="divide-y divide-gray-100">
                         <li v-for="t in turns" :key="t.turn" class="space-y-2 px-5 py-5">
-                            <!-- What the person typed, in their own words. -->
                             <div v-if="t.asked">
                                 <div class="flex items-center gap-2">
                                     <Tag label="you asked" tone="green" />
@@ -92,35 +105,22 @@ const toggle = (turn) => {
                                         {{ clock(t.asked.occurred_at) }} · {{ count(t.asked.prompt_chars) }} chars
                                     </span>
                                     <Score :value="t.asked.score" class="ml-auto" />
-                                    <Link
-                                        :href="route('usage.show', t.asked.id)"
-                                        class="text-xs text-gray-400 hover:text-gray-700"
-                                    >details</Link>
+                                    <Link :href="route('usage.show', t.asked.id)" class="text-xs text-gray-400 hover:text-gray-700">details</Link>
                                 </div>
                                 <p
                                     v-if="t.asked.prompt_preview"
                                     class="mt-1 whitespace-pre-wrap break-words rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-900"
                                 >{{ t.asked.prompt_preview }}</p>
-                                <p v-else class="mt-1 text-sm italic text-gray-400">
-                                    {{ canViewRaw ? 'No prompt text was captured.' : 'You cannot read prompt text.' }}
-                                </p>
                             </div>
-                            <div v-else class="text-xs text-gray-500">
-                                Work already under way when this session began.
-                            </div>
+                            <div v-else class="text-xs text-gray-500">Work already under way when this session began.</div>
 
-                            <!-- The reply, which is what the person actually read. -->
                             <div v-if="t.answer">
                                 <div class="flex items-center gap-2">
                                     <Tag label="reply" tone="blue" />
                                     <span class="text-xs tabular-nums text-gray-400">
-                                        {{ clock(t.answer.occurred_at) }} · {{ count(t.answer.answer_chars) }} chars ·
-                                        {{ count(t.answer.response_tokens) }} tokens
+                                        {{ clock(t.answer.occurred_at) }} · {{ count(t.answer.answer_chars) }} chars
                                     </span>
-                                    <Link
-                                        :href="route('usage.show', t.answer.id)"
-                                        class="ml-auto text-xs text-gray-400 hover:text-gray-700"
-                                    >details</Link>
+                                    <Link :href="route('usage.show', t.answer.id)" class="ml-auto text-xs text-gray-400 hover:text-gray-700">details</Link>
                                 </div>
                                 <p
                                     v-if="t.answer.answer_preview"
@@ -128,10 +128,9 @@ const toggle = (turn) => {
                                 >{{ t.answer.answer_preview }}</p>
                             </div>
 
-                            <!-- Everything it did in between, folded away. -->
                             <button
                                 v-if="t.steps.length"
-                                class="text-xs text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline"
+                                class="text-xs text-gray-500 hover:text-gray-900 hover:underline"
                                 @click="toggle(t.turn)"
                             >
                                 {{ open.has(t.turn) ? 'Hide' : 'Show' }} {{ t.steps.length }}
@@ -139,40 +138,70 @@ const toggle = (turn) => {
                             </button>
 
                             <ul v-if="open.has(t.turn)" class="space-y-1">
-                                <li
-                                    v-for="step in t.steps"
-                                    :key="step.id"
-                                    class="rounded-md bg-gray-50 px-3 py-2 text-xs"
-                                >
+                                <li v-for="step in t.steps" :key="step.id" class="rounded-md bg-gray-50 px-3 py-2 text-xs">
                                     <div class="flex items-center gap-2">
                                         <span class="tabular-nums text-gray-400">{{ clock(step.occurred_at) }}</span>
                                         <Tag :label="step.kind" :tone="step.kind === 'utility' ? 'amber' : 'gray'" />
                                         <span class="text-gray-500">{{ step.model ?? 'unknown model' }}</span>
-                                        <span class="ml-auto tabular-nums text-gray-400">
-                                            {{ count(step.prompt_tokens) }}/{{ count(step.response_tokens) }} tokens
-                                        </span>
-                                        <Link
-                                            :href="route('usage.show', step.id)"
-                                            class="text-gray-400 hover:text-gray-700"
-                                        >details</Link>
+                                        <Link :href="route('usage.show', step.id)" class="ml-auto text-gray-400 hover:text-gray-700">details</Link>
                                     </div>
-                                    <p v-if="step.answer_preview" class="mt-1 truncate text-gray-600">
-                                        {{ step.answer_preview }}
-                                    </p>
+                                    <p v-if="step.answer_preview" class="mt-1 truncate text-gray-600">{{ step.answer_preview }}</p>
                                 </li>
                             </ul>
-                        </li>
-
-                        <li v-if="!interactions.length" class="px-5 py-10 text-center text-sm text-gray-500">
-                            This session has no interactions.
                         </li>
                     </ol>
                 </Panel>
 
+                <!-- ====== Sessions captured before kinds: plain exchanges, no labels ====== -->
+                <Panel v-else title="Exchanges" :subtitle="session.repo ?? undefined">
+                    <template #actions>
+                        <button class="text-gray-500 hover:text-gray-900" @click="showAll = !showAll">
+                            {{ showAll ? 'Only ones with a real reply' : `Show all ${withText.length}` }}
+                        </button>
+                    </template>
+
+                    <ul class="divide-y divide-gray-100">
+                        <li v-for="i in listed" :key="i.id" class="px-5 py-4">
+                            <div class="flex items-center gap-2 text-xs text-gray-400">
+                                <span class="tabular-nums">{{ clock(i.occurred_at) }}</span>
+                                <span>{{ i.model ?? 'unknown model' }}</span>
+                                <span class="tabular-nums">
+                                    {{ count(i.prompt_tokens) }}/{{ count(i.response_tokens) }} tokens
+                                </span>
+                                <Score :value="i.score" class="ml-auto" />
+                                <Link :href="route('usage.show', i.id)" class="text-gray-400 hover:text-gray-700">details</Link>
+                            </div>
+
+                            <p
+                                v-if="i.prompt_preview"
+                                class="mt-2 whitespace-pre-wrap break-words rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-900"
+                            >{{ i.prompt_preview }}</p>
+
+                            <p
+                                v-if="i.answer_preview"
+                                class="mt-1 whitespace-pre-wrap break-words rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm text-gray-900"
+                            >{{ i.answer_preview }}</p>
+                            <p v-else class="mt-1 text-xs italic text-gray-400">No reply text captured.</p>
+                        </li>
+
+                        <li v-if="!listed.length" class="px-5 py-10 text-center text-sm text-gray-500">
+                            Nothing with text in this session.
+                        </li>
+                    </ul>
+                </Panel>
+
                 <p class="px-1 text-xs leading-relaxed text-gray-500">
-                    <strong class="text-gray-700">What you are reading.</strong> A turn is one message you typed,
-                    the reply you got, and the agent's own steps in between. The first lines are shown here;
-                    opening the full text is recorded separately in the audit log.
+                    <template v-if="known">
+                        <strong class="text-gray-700">What you are reading.</strong> A turn is one message you typed,
+                        the reply you got, and the agent's steps in between.
+                    </template>
+                    <template v-else>
+                        <strong class="text-gray-700">Why there are no "you"/"agent" labels here.</strong>
+                        This session was captured before the agent could tell your prompts from its own follow-ups,
+                        so every exchange is listed in order and unlabelled. Sessions captured from now on are
+                        grouped into turns.
+                    </template>
+                    Opening the full text of any exchange is recorded in the audit log.
                 </p>
             </div>
         </div>
