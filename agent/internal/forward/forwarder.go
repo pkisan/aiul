@@ -71,6 +71,11 @@ type batch struct {
 // only those files are deleted.
 type response struct {
 	Accepted []string `json:"accepted"`
+
+	// Discarded is set when the backend confirmed the events but threw them away:
+	// the device is not linked to anyone who accepted the capture notice. The
+	// events are gone either way, so this must never be silent.
+	Discarded string `json:"discarded"`
 }
 
 // NewForwarder builds a forwarder over a spool.
@@ -197,6 +202,12 @@ func (f *Forwarder) sendBatch(ctx context.Context, files []string) (int, error) 
 		// The backend took them but we cannot read its reply. Keep the files: a
 		// duplicate is recoverable, a lost prompt is not.
 		return 0, fmt.Errorf("read the backend's reply: %w", err)
+	}
+
+	if r.Discarded != "" {
+		f.log.Warn("the backend DISCARDED these events: nothing from this device is being recorded",
+			"events", len(r.Accepted), "reason", r.Discarded,
+			"fix", "run `sudo aiul login`, or have the linked person sign in and accept the notice")
 	}
 
 	deleted := 0

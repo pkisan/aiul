@@ -41,6 +41,11 @@ class EventIngestionController extends Controller
         // or whose person has not accepted the current notice, has its events
         // confirmed — so the agent deletes them — and thrown away unread.
         if (! $device->user?->hasConsented()) {
+            \Illuminate\Support\Facades\Log::warning('Discarded events from a device with no consented person', [
+                'device_id' => $device->id, 'hostname' => $device->hostname,
+                'user_id' => $device->user_id, 'events' => count($data['events']),
+            ]);
+
             return response()->json([
                 'accepted' => collect($data['events'])->pluck('id')->filter()->values(),
                 'rejected' => [],
