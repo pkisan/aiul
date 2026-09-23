@@ -321,7 +321,10 @@ func (p *Proxy) exchange(in interaction) parsers.Exchange {
 			for _, e := range parseSSE(respBody) {
 				ex.SSE = append(ex.SSE, e.Data)
 			}
-		} else {
+		}
+		// Cursor labels its stream text/event-stream but sends binary Connect
+		// frames with no "data:" lines. Keep the raw body rather than nothing.
+		if len(ex.SSE) == 0 {
 			ex.RespBody = respBody
 		}
 	}

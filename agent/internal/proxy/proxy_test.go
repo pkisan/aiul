@@ -1026,3 +1026,17 @@ func TestResearchDumpKeepsBinaryBodies(t *testing.T) {
 		t.Errorf("binary body did not survive: %q (%v)", got, err)
 	}
 }
+
+// Cursor's RunSSE says text/event-stream but carries binary Connect frames. With
+// no "data:" events found, the raw body must be kept, not dropped.
+func TestEventStreamWithoutEventsKeepsBody(t *testing.T) {
+	frame := string([]byte{0x00, 0x00, 0x00, 0x00, 0x03, 0x0a, 0x01, 'H'})
+	ex := (&Proxy{}).exchange(interaction{
+		RequestHeader: http.Header{},
+		ResponseHead:  http.Header{"Content-Type": {"text/event-stream"}},
+		ResponseCopy:  []byte(frame),
+	})
+	if string(ex.RespBody) != frame {
+		t.Errorf("body dropped: %q", ex.RespBody)
+	}
+}
