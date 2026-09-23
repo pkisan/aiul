@@ -88,8 +88,23 @@ func helloFingerprint(hello *tls.ClientHelloInfo) string {
 		hello.ServerName, len(hello.SupportedProtos))
 }
 
+// onlyOtherProtocols reports a client that offered ALPN but not http/1.1 — in
+// practice one that speaks only HTTP/2. We cannot serve it, so the handshake
+// fails on OUR side with no alert from the client.
+func onlyOtherProtocols(offeredALPN []string) bool {
+	return len(offeredALPN) > 0 && !slices.Contains(offeredALPN, "http/1.1")
+}
+
+// shouldTunnel decides whether a failed handshake means "pass this program
+// through sealed from now on" (rule 4). Either the client objected with an alert,
+// or it wants a protocol we do not serve. Without the second case a client like
+// Cursor's h2-only call to api2direct.cursor.sh failed on every retry, forever.
+func shouldTunnel(err error, offeredALPN []string) bool {
+	return clientObjected(err) || onlyOtherProtocols(offeredALPN)
+}
+
 func handshakeFailure(offeredALPN []string) (reason, hint string) {
-	if len(offeredALPN) > 0 && !slices.Contains(offeredALPN, "http/1.1") {
+	if onlyOtherProtocols(offeredALPN) {
 		return "the client speaks none of the protocols we serve (we serve http/1.1 only)",
 			"this is not a certificate problem: the proxy has to speak HTTP/2 to capture this tool"
 	}
@@ -148,7 +163,7 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 	})
 
 	if err := clientTLS.HandshakeContext(handshakeContext()); err != nil {
-		if !clientObjected(err) {
+		if !shouldTunnel(err, offeredALPN) {
 			// The connection died without the client ever saying it disliked
 			// anything: a bare EOF or a TCP reset, which is what the kernel sends
 			// for the sockets of a process that has exited. The Claude desktop app

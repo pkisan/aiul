@@ -47,6 +47,25 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 Everything is a DEMO, not the product — see the framing note below before
 proposing signing, MDM or a CA chain as blockers.
 
+## Both tools now decrypt; h2-only clients tunnelled — 2026-09-23
+
+Installed `e8e425e` and ran the trust experiment for both. **Zero TLS alerts.**
+
+- **Antigravity:** decrypted on `cloudcode-pa` and `daily-cloudcode-pa`. The chat
+  endpoint is `POST /v1internal:streamGenerateContent` (200, seen twice), plus
+  noise: `loadCodeAssist`, `fetchUserInfo`, `listExperiments`,
+  `fetchAvailableModels`, `recordCodeAssistMetrics`, `writeTrajectoryAcls`.
+  "no parser for this endpoint". NEXT: fixture from `/var/db/aiul/research`
+  (research mode is on; needs sudo to read), then a Cloud Code parser.
+- **Cursor:** `api2.cursor.sh` decrypts (155 handshakes), but only
+  `aiserver.v1.*` metadata calls (DashboardService, AnalyticsService,
+  ReportClientNumericMetrics) — Connect RPC over HTTP/1.1. No chat seen there.
+  A `node` process calls `api2direct.cursor.sh` offering ONLY `h2`, and we
+  refused it 21/21 with no tunnel, breaking that client (rule 4 violation).
+  Fixed: `shouldTunnel()` tunnels a client that offers ALPN without http/1.1,
+  test `TestH2OnlyClientIsTunnelled`. Cursor chat likely rides that h2 path, so
+  capturing it needs HTTP/2 in the proxy — the first real evidence for it.
+
 ## Cursor and Antigravity were never pinning: our leaf was invalid — FIX BUILT 2026-09-23, awaiting install
 
 The owner asked to retry both. Before launching anything, stock Go on this Mac

@@ -311,6 +311,22 @@ func TestOnlyATLSAlertCountsAsARefusal(t *testing.T) {
 	}
 }
 
+// An h2-only client fails OUR side of the handshake with no alert, so it must be
+// tunnelled like a refusal or it breaks on every retry (rule 4). Cursor's call to
+// api2direct.cursor.sh did exactly that, 21 times out of 21, on 2026-09-23.
+func TestH2OnlyClientIsTunnelled(t *testing.T) {
+	ours := errors.New("tls: client requested unsupported application protocols ([h2])")
+	if !shouldTunnel(ours, []string{"h2"}) {
+		t.Error("an h2-only client must be passed through sealed")
+	}
+	if shouldTunnel(io.EOF, []string{"h2", "http/1.1"}) {
+		t.Error("a client that also offers http/1.1 and just died must not be tunnelled")
+	}
+	if shouldTunnel(io.EOF, nil) {
+		t.Error("a client that offered no ALPN and just died must not be tunnelled")
+	}
+}
+
 // Antigravity's hosts, observed 2026-09-22. The point of this test is the
 // NEGATIVE half: allow-listing Google's AI endpoint must not allow-list Google.
 func TestAntigravityHostsAreNarrow(t *testing.T) {
