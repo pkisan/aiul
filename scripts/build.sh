@@ -44,6 +44,12 @@ lipo -create -output "$BINARY" "$OUT_DIR/aiul-arm64" "$OUT_DIR/aiul-amd64"
 rm -f "$OUT_DIR/aiul-arm64" "$OUT_DIR/aiul-amd64"
 chmod 755 "$BINARY"
 
+# Windows x64: copy dist/aiul.exe to the Windows PC. Unsigned, like the darwin
+# binary without AIUL_SIGN_IDENTITY; SmartScreen may warn on first run.
+echo "   windows/amd64"
+(cd "$AGENT_DIR" && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+  go build -trimpath -ldflags "$LDFLAGS" -o "../$OUT_DIR/aiul.exe" ./cmd/aiul)
+
 if [ -n "${AIUL_SIGN_IDENTITY:-}" ]; then
   # --options runtime turns on the hardened runtime, which notarization requires.
   echo "Signing with $AIUL_SIGN_IDENTITY"

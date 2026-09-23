@@ -2,6 +2,8 @@
 
 package platform
 
+import "os"
+
 // Windows stubs. Each has a note on what the real implementation will do, so the
 // port is a matter of filling these in rather than rediscovering the design.
 
@@ -35,6 +37,9 @@ type WindowsMDM struct{}
 func MDM() MDMChecker { return WindowsMDM{} }
 
 func (WindowsMDM) Enrolled() (bool, string, error) {
+	if os.Getenv(DevAllowUnmanagedVar) == "1" {
+		return true, "DEVELOPER OVERRIDE: " + DevAllowUnmanagedVar + "=1 is set, so the MDM check was skipped. This must never be set on a real device.", nil
+	}
 	return false, "MDM detection is not implemented on Windows yet", ErrUnsupported
 }
 

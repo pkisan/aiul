@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 )
 
 // StateDirEnv overrides the location entirely. The installed launchd jobs set it,
@@ -34,6 +35,14 @@ const serviceUserName = "_aiul"
 func State() (string, error) {
 	if dir := os.Getenv(StateDirEnv); dir != "" {
 		return dir, nil
+	}
+
+	// Windows keeps per-user application state in %LOCALAPPDATA%, which is
+	// readable only by that user by default.
+	if runtime.GOOS == "windows" {
+		if dir, err := os.UserCacheDir(); err == nil {
+			return filepath.Join(dir, "AIUL"), nil
+		}
 	}
 
 	// Running as the service account: it has no usable home by design.
