@@ -1,0 +1,46 @@
+{
+ "model": "mai-code-1.1-flash",
+ "input": [
+  {
+   "type": "message",
+   "role": "system",
+   "content": [
+    {
+     "type": "input_text",
+     "text": "You are an expert AI programming assistant, working with a user in the VS Code editor. [truncated for the fixture]"
+    }
+   ]
+  },
+  {
+   "type": "message",
+   "role": "user",
+   "content": [
+    {
+     "type": "input_text",
+     "text": "<environment_info>\nThe user's current OS is: macOS\n</environment_info>\n<workspace_info>\nThere is no workspace currently open.\n</workspace_info>"
+    }
+   ]
+  },
+  {
+   "type": "message",
+   "role": "user",
+   "content": [
+    {
+     "type": "input_text",
+     "text": "<attachments>\n<attachment id=\"file:Untitled-2\">\n[selection removed for the fixture]\n</attachment>\n</attachments>\n<reminderInstructions>\n[truncated]\n</reminderInstructions>\n<userRequest>\nHi\n</userRequest>\n"
+    }
+   ]
+  }
+ ],
+ "stream": true,
+ "tools": [],
+ "max_output_tokens": 128000,
+ "store": false,
+ "truncation": "disabled",
+ "reasoning": {
+  "effort": "medium"
+ },
+ "include": [
+  "reasoning.encrypted_content"
+ ]
+}

@@ -84,7 +84,7 @@ func kindOf(lastMessageIsToolResult, offersTools bool, tool string) string {
 // isAgent reports whether this client runs a tool-using loop of its own.
 func isAgent(tool string) bool {
 	switch tool {
-	case "claude-code", "cli", "codex", "gemini-cli", "opencode", "cursor", "vscode", "antigravity":
+	case "claude-code", "cli", "codex", "gemini-cli", "opencode", "cursor", "vscode", "copilot-vscode", "antigravity":
 		return true
 	}
 	return false
@@ -136,6 +136,8 @@ func toolFromHeaders(h http.Header) string {
 		return "opencode"
 	case strings.Contains(ua, "cursor"):
 		return "cursor"
+	case strings.Contains(ua, "githubcopilotchat"):
+		return "copilot-vscode"
 	case strings.Contains(ua, "vscode"):
 		return "vscode"
 	case strings.Contains(ua, "mozilla"):

@@ -72,6 +72,9 @@ func (OpenAI) Handles(host, path string) bool {
 		"/v1/completions",
 		"/api/v1/chat/completions",
 		"/chat/completions",
+		// Copilot Chat in VS Code sends its main turn to the Responses API with no
+		// /v1 prefix: api.individual.githubcopilot.com/responses.
+		"/responses",
 	} {
 		if strings.HasPrefix(path, prefix) {
 			return true
@@ -93,8 +96,9 @@ type openAIRequest struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"messages"`
 	// The Responses API uses "input" and "instructions" instead of "messages".
-	Input        json.RawMessage `json:"input"`
-	Instructions string          `json:"instructions"`
+	Input        json.RawMessage   `json:"input"`
+	Instructions string            `json:"instructions"`
+	Tools        []json.RawMessage `json:"tools"`
 }
 
 func (p OpenAI) Parse(ex Exchange) (Result, error) {
@@ -128,6 +132,26 @@ func (p OpenAI) Parse(ex Exchange) (Result, error) {
 	}
 	if res.Prompt == "" && len(req.Input) > 0 {
 		res.Prompt = textFromContent(req.Input)
+	}
+
+	// In the Responses API a tool result is an input item of its own type.
+	var items []struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(req.Input, &items) == nil && len(items) > 0 &&
+		items[len(items)-1].Type == "function_call_output" {
+		res.Automated = true
+	}
+	res.Kind = kindOf(res.Automated, len(req.Tools) > 0, res.Tool)
+	res.Automated = res.Kind != KindHuman
+
+	// Copilot Chat in VS Code wraps what the person typed in <userRequest>,
+	// after attachments, context and reminder blocks. The last one is this turn.
+	if res.Tool == "copilot-vscode" {
+		if i := strings.LastIndex(res.Prompt, "<userRequest>"); i >= 0 {
+			inside, _, _ := strings.Cut(res.Prompt[i+len("<userRequest>"):], "</userRequest>")
+			res.Prompt = strings.TrimSpace(inside)
+		}
 	}
 
 	if len(ex.SSE) > 0 {

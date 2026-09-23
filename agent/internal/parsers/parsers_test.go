@@ -908,3 +908,51 @@ func TestCopilotWebTurn(t *testing.T) {
 		t.Error("the CORS preflight must not become a row")
 	}
 }
+
+// Copilot Chat in VS Code, recorded 2026-09-23: the Responses API at
+// <host>.githubcopilot.com/responses (no /v1), with what the person typed inside
+// <userRequest> after attachments and reminders.
+func TestCopilotVSCodeResponses(t *testing.T) {
+	if got := For("api.individual.githubcopilot.com", "/responses"); got == nil || got.Name() != "openai" {
+		t.Fatalf("For() = %v, want the openai parser", got)
+	}
+	res, err := OpenAI{}.Parse(Exchange{
+		Host:    "api.individual.githubcopilot.com",
+		Path:    "/responses",
+		ReqHead: http.Header{"User-Agent": {"GitHubCopilotChat/0.66.0"}},
+		ReqBody: fixture(t, "openai/copilot-vscode-responses.request.json"),
+		SSE:     sseData(t, "openai/copilot-vscode-responses.response.sse"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Tool != "copilot-vscode" || res.Prompt != "Hi" {
+		t.Errorf("tool=%q prompt=%q, want the text inside <userRequest> only", res.Tool, res.Prompt)
+	}
+	if res.Answer != "## Hi\n\nHow can I help today?" || res.Model != "mai-code-1.1-flash" {
+		t.Errorf("answer=%q model=%q", res.Answer, res.Model)
+	}
+	if res.PromptTokens != 23588 || res.ResponseTokens != 13 {
+		t.Errorf("tokens = %d/%d", res.PromptTokens, res.ResponseTokens)
+	}
+	// The fixture's tool list is emptied to keep it small, so give the real turn
+	// its tools back: a turn that offers tools is the person's.
+	body := strings.Replace(string(fixture(t, "openai/copilot-vscode-responses.request.json")),
+		`"tools": []`, `"tools": [{"type":"function","name":"read_file"}]`, 1)
+	human, _ := OpenAI{}.Parse(Exchange{
+		ReqHead: http.Header{"User-Agent": {"GitHubCopilotChat/0.66.0"}},
+		ReqBody: []byte(body),
+	})
+	if human.Kind != KindHuman {
+		t.Errorf("kind = %q for a turn with tools, want human", human.Kind)
+	}
+
+	// Copilot's own side calls (a title, progress messages) offer no tools.
+	title, _ := OpenAI{}.Parse(Exchange{
+		ReqHead: http.Header{"User-Agent": {"GitHubCopilotChat/0.66.0"}},
+		ReqBody: []byte(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Please write a brief title for the following request:\n\nHi"}]}`),
+	})
+	if title.Kind != KindUtility || !title.Automated {
+		t.Errorf("title call: kind=%q automated=%v, want utility", title.Kind, title.Automated)
+	}
+}
