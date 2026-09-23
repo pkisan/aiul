@@ -111,6 +111,7 @@ func All() []Parser {
 		CloudCode{},
 		ChatGPTWeb{},
 		ClaudeWeb{},
+		Cursor{},
 	}
 }
 

@@ -800,3 +800,44 @@ func TestCloudCodeIgnoresRemindersAndThoughts(t *testing.T) {
 		t.Errorf("tool result followed by a reminder: kind=%q, want agent", res.Kind)
 	}
 }
+
+// Cursor's RunSSE: a Connect stream of protobuf frames, recorded 2026-09-23 and
+// cut down to the prompt, answer and usage frames. The usage frame is re-gzipped
+// in the fixture so the compressed-frame path is covered too.
+func TestCursorRunSSE(t *testing.T) {
+	c := Cursor{}
+	if !c.Handles("api2.cursor.sh", "/agent.v1.AgentService/RunSSE") ||
+		c.Handles("api2.cursor.sh", "/aiserver.v1.AnalyticsService/Batch") ||
+		c.Handles("cursor.sh.evil.net", "/agent.v1.AgentService/RunSSE") {
+		t.Error("Handles matches the wrong exchanges")
+	}
+
+	res, err := c.Parse(Exchange{
+		Host:     "api2.cursor.sh",
+		Path:     "/agent.v1.AgentService/RunSSE",
+		ReqBody:  fixture(t, "cursor/runsse.request.bin"),
+		RespBody: fixture(t, "cursor/runsse.response.bin"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Prompt != "Glad to meet you." {
+		t.Errorf("prompt = %q", res.Prompt)
+	}
+	if res.Answer != "Glad to meet you too. What can I help you with?" {
+		t.Errorf("answer = %q", res.Answer)
+	}
+	if res.Tool != "cursor" || res.Kind != KindHuman || res.Automated || !res.Streamed {
+		t.Errorf("tool=%q kind=%q automated=%v streamed=%v", res.Tool, res.Kind, res.Automated, res.Streamed)
+	}
+	if res.PromptTokens != 23491 || res.ResponseTokens != 26 {
+		t.Errorf("tokens = %d/%d", res.PromptTokens, res.ResponseTokens)
+	}
+
+	// A cut-off stream keeps what it read and says so.
+	whole := fixture(t, "cursor/runsse.response.bin")
+	part, err := c.Parse(Exchange{RespBody: whole[:len(whole)-3]})
+	if err == nil || part.Prompt != "Glad to meet you." {
+		t.Errorf("truncated stream: err=%v prompt=%q", err, part.Prompt)
+	}
+}
