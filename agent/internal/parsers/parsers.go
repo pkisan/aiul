@@ -57,6 +57,11 @@ type Result struct {
 	PromptTokens   int
 	ResponseTokens int
 
+	// WorkDir is the workspace the tool names in the body, for tools whose
+	// connecting process runs somewhere meaningless (Cursor's extension host
+	// runs in /). Used only when the process itself gave no repository.
+	WorkDir string
+
 	// Streamed records whether the answer arrived as a stream.
 	Streamed bool
 

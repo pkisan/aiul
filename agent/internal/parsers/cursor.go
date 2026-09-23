@@ -41,6 +41,9 @@ var (
 	cursorPromptPath = []int{1, 6, 1, 1} // the user's message, echoed back
 	cursorDeltaPath  = []int{1, 1, 1}    // a piece of the answer text
 	cursorUsagePath  = []int{1, 14}      // token counts: 1 = input, 2 = output
+
+	// Conversation checkpoints repeat the workspace (field 21.1) in two shapes.
+	cursorWorkDirPaths = [][]int{{3, 21, 1}, {4, 3, 2, 21, 1}}
 )
 
 func (Cursor) Parse(ex Exchange) (Result, error) {
@@ -54,6 +57,11 @@ func (Cursor) Parse(ex Exchange) (Result, error) {
 		}
 		if s, ok := pbString(msg, cursorDeltaPath); ok {
 			answer.WriteString(s)
+		}
+		for _, path := range cursorWorkDirPaths {
+			if s, ok := pbString(msg, path); ok && res.WorkDir == "" {
+				res.WorkDir = s
+			}
 		}
 		if usage, ok := pbBytes(msg, cursorUsagePath); ok {
 			res.PromptTokens = int(pbVarint(usage, 1))

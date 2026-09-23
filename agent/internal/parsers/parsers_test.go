@@ -833,6 +833,9 @@ func TestCursorRunSSE(t *testing.T) {
 	if res.PromptTokens != 23491 || res.ResponseTokens != 26 {
 		t.Errorf("tokens = %d/%d", res.PromptTokens, res.ResponseTokens)
 	}
+	if res.WorkDir != "/Users/dev/shop" {
+		t.Errorf("workdir = %q, want the workspace from the checkpoint frame", res.WorkDir)
+	}
 
 	// A cut-off stream keeps what it read and says so.
 	whole := fixture(t, "cursor/runsse.response.bin")

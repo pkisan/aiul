@@ -190,6 +190,14 @@ func (p *Proxy) record(in interaction) {
 		ev.Kind = res.Kind
 		ev.PromptTokens = res.PromptTokens
 		ev.ResponseTokens = res.ResponseTokens
+
+		// Cursor's extension host runs in /, so its process says nothing about the
+		// task, but the body names the workspace. Trust that only when the
+		// connection gave no repository of its own.
+		if ev.Repo == "" && res.WorkDir != "" && p.cfg.Tasks != nil {
+			info := p.resolveDir(res.WorkDir)
+			ev.TaskID, ev.Branch, ev.Repo, ev.WorkDir = info.TaskID, info.Branch, info.Repo, info.Dir
+		}
 	}
 
 	// What the parser actually made of the exchange, and what it was given.
@@ -442,6 +450,18 @@ func (p *Proxy) processOf(clientConn net.Conn) (platform.Process, bool) {
 	return proc, true
 }
 
+// resolveDir reads the repository, branch and task for one directory.
+func (p *Proxy) resolveDir(dir string) tasks.Info {
+	if p.cfg.Tasks == nil {
+		return tasks.Info{}
+	}
+	read := p.cfg.Checkout
+	if read == nil {
+		read = tasks.CheckoutAt
+	}
+	return p.cfg.Tasks.ResolveWith(dir, read)
+}
+
 // contextOf works out which task a connection belongs to, from the program that
 // opened it. Everything here is best-effort: not knowing is normal and never an
 // error, because plenty of AI traffic comes from a browser or a directory that is
@@ -456,12 +476,7 @@ func (p *Proxy) contextOf(proc platform.Process, found bool) tasks.Info {
 		return tasks.Info{Process: proc.Name}
 	}
 
-	read := p.cfg.Checkout
-	if read == nil {
-		read = tasks.CheckoutAt
-	}
-
-	info := p.cfg.Tasks.ResolveWith(dir, read)
+	info := p.resolveDir(dir)
 	info.Process = proc.Name
 
 	if info.TaskID == "" {

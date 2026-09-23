@@ -1040,3 +1040,51 @@ func TestEventStreamWithoutEventsKeepsBody(t *testing.T) {
 		t.Errorf("body dropped: %q", ex.RespBody)
 	}
 }
+
+// Cursor's extension host runs in /, so the process names no checkout. The task
+// must come from the workspace Cursor puts in the body instead.
+func TestTaskFromWorkspaceInBody(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "testdata", "cursor", "runsse.response.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := &collector{}
+	p, err := New(Config{
+		Issuer: newTestRoot(t),
+		Sink:   sink,
+		Logger: quietLogger(),
+		Tasks:  tasks.NewResolver(),
+		Checkout: func(dir string) (string, string) {
+			if dir == "/Users/dev/shop" {
+				return dir, "feature/SHOP-42-cart"
+			}
+			return "", ""
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p.record(interaction{
+		Host:          "api2.cursor.sh",
+		Method:        "POST",
+		Path:          "/agent.v1.AgentService/RunSSE",
+		Status:        200,
+		RequestHeader: http.Header{},
+		ResponseHead:  http.Header{"Content-Type": {"text/event-stream"}},
+		ResponseCopy:  body,
+		Task:          tasks.Info{Dir: "/", Process: "Cursor Helper (Plugin)"},
+	})
+
+	events := sink.all()
+	if len(events) != 1 {
+		t.Fatalf("got %d events", len(events))
+	}
+	e := events[0]
+	if e.TaskID != "SHOP-42" || e.Branch != "feature/SHOP-42-cart" || e.WorkDir != "/Users/dev/shop" {
+		t.Errorf("task=%q branch=%q dir=%q", e.TaskID, e.Branch, e.WorkDir)
+	}
+	if e.Process != "Cursor Helper (Plugin)" {
+		t.Errorf("process = %q, want it kept from the connection", e.Process)
+	}
+}
