@@ -66,6 +66,13 @@ produced two chat candidates, both "no parser":
 - `POST /agent.v1.AgentService/RunSSE` → 200, once (12:07:10)
 - `GET /agent/v1/run` → 101 WebSocket upgrade, 40 times (from 12:07:46)
 
+Research mode was OFF during that run (`/var/db/aiul/research` absent), so no
+bodies exist yet. `70dbd85` makes the dump fit for Cursor: binary (protobuf)
+bodies are written as `base64:<bytes>` instead of being mangled to U+FFFD, and
+`proto` content types are no longer skipped. The WebSocket frames after `101`
+are still not read by anything. Awaiting: owner builds + installs `70dbd85`,
+turns research mode on (docs/TESTING.md), sends one Cursor prompt.
+
 HTTP/2 in the proxy is therefore NOT needed for Cursor. NEXT: read the research
 dump for `RunSSE` (and any `/agent/v1/run`) under `/var/db/aiul/research`
 (needs sudo), decide which carries the prompt and answer, anonymise a fixture,
