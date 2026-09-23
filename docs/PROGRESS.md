@@ -41,6 +41,8 @@ Not done / next:
 - R1.7 step 2: account names for Claude Code, claude.ai, Cursor, Copilot need
   research captures of their profile endpoints.
 - Agent must be rebuilt + reinstalled for `aiul login` and `account`.
+- Research mode was found OFF on 2026-09-23 (directory absent), despite the
+  Copilot note below saying ON. Owner re-enabling it for the account research.
 
 ## Copilot web parser — 2026-09-23 17:10
 
