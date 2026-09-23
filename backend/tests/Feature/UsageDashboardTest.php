@@ -40,9 +40,9 @@ class UsageDashboardTest extends TestCase
         ]);
     }
 
-    private function user(string $role = User::ROLE_MEMBER, bool $raw = false, ?Tenant $tenant = null): User
+    private function user(string $role = User::ROLE_MEMBER, bool $raw = false, ?Tenant $tenant = null, bool $consented = true): User
     {
-        return User::create([
+        $user = User::create([
             'tenant_id' => ($tenant ?? $this->tenant)->id,
             'name' => ucfirst($role),
             'email' => $role.'-'.uniqid().'@example.com',
@@ -50,6 +50,15 @@ class UsageDashboardTest extends TestCase
             'role' => $role,
             'can_view_raw_prompts' => $raw,
         ]);
+
+        if ($consented) {
+            ConsentRecord::withoutGlobalScope('tenant')->create([
+                'tenant_id' => $user->tenant_id, 'user_id' => $user->id, 'kind' => ConsentRecord::KIND_CAPTURE,
+                'policy_version' => config('aiul.consent_version'), 'granted_at' => now(),
+            ]);
+        }
+
+        return $user;
     }
 
     private function interaction(array $overrides = [], string $prompt = 'Explain this function.'): AiInteraction
@@ -153,7 +162,7 @@ class UsageDashboardTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page->missing('prompt')->where('canViewRaw', false));
 
-        $this->assertSame(0, ConsentRecord::withoutGlobalScope('tenant')->count());
+        $this->assertSame(0, ConsentRecord::withoutGlobalScope('tenant')->where('kind', ConsentRecord::KIND_RAW_VIEW)->count());
     }
 
     public function test_an_admin_without_the_flag_still_cannot_read_prompt_text(): void
@@ -178,7 +187,7 @@ class UsageDashboardTest extends TestCase
 
         $this->assertSame('a prompt about pineapples', $response->viewData('page')['props']['prompt']);
 
-        $record = ConsentRecord::withoutGlobalScope('tenant')->first();
+        $record = ConsentRecord::withoutGlobalScope('tenant')->where('kind', ConsentRecord::KIND_RAW_VIEW)->first();
 
         $this->assertNotNull($record, 'every raw view must be recorded');
         $this->assertSame(ConsentRecord::KIND_RAW_VIEW, $record->kind);
@@ -197,7 +206,7 @@ class UsageDashboardTest extends TestCase
         // A grant-holding admin opens with one click: no reason typed.
         $this->actingAs($admin)->get("/usage/{$interaction->id}")->assertOk();
 
-        $record = ConsentRecord::withoutGlobalScope('tenant')->first();
+        $record = ConsentRecord::withoutGlobalScope('tenant')->where('kind', ConsentRecord::KIND_RAW_VIEW)->first();
         $this->assertNotNull($record, 'every raw view must be recorded');
         $this->assertSame('no reason given', $record->reason);
     }
@@ -210,7 +219,7 @@ class UsageDashboardTest extends TestCase
         $response = $this->actingAs($member)->get("/usage/{$interaction->id}")->assertOk();
 
         $this->assertSame('my own words', $response->viewData('page')['props']['prompt']);
-        $this->assertSame(1, ConsentRecord::withoutGlobalScope('tenant')->count());
+        $this->assertSame(1, ConsentRecord::withoutGlobalScope('tenant')->where('kind', ConsentRecord::KIND_RAW_VIEW)->count());
     }
 
     public function test_nobody_can_reach_another_tenants_interaction(): void
@@ -551,5 +560,17 @@ class UsageDashboardTest extends TestCase
         $this->actingAs($this->user(User::ROLE_MANAGER))
             ->get('/usage?tool=claude-code')
             ->assertInertia(fn ($page) => $page->where('totals.interactions', 1));
+    }
+
+    public function test_first_sign_in_asks_for_consent_and_records_it(): void
+    {
+        $member = $this->user(consented: false);
+
+        $this->actingAs($member)->get('/dashboard')->assertRedirect('/consent');
+        $this->actingAs($member)->post('/consent', [])->assertSessionHasErrors('accept');
+        $this->actingAs($member)->post('/consent', ['accept' => true])->assertRedirect();
+
+        $this->assertTrue($member->fresh()->hasConsented());
+        $this->actingAs($member)->get('/dashboard')->assertOk();
     }
 }

@@ -14,4 +14,11 @@ return [
      * in production.
      */
     'body_disk' => env('AIUL_BODY_DISK', 's3'),
+
+    /*
+     * The capture notice a person accepts on first sign-in. Change it when the
+     * notice changes: everyone is asked again, and each acceptance is recorded
+     * against the version they saw.
+     */
+    'consent_version' => env('AIUL_CONSENT_VERSION', '2026-09-23'),
 ];

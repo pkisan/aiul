@@ -53,6 +53,18 @@ class User extends Authenticatable
         return $this->isAdmin() && (bool) $this->can_view_raw_prompts;
     }
 
+    /** Whether this person accepted the current capture notice and has not withdrawn. */
+    public function hasConsented(): bool
+    {
+        return ConsentRecord::withoutGlobalScope('tenant')
+            ->where('user_id', $this->id)
+            ->where('kind', ConsentRecord::KIND_CAPTURE)
+            ->where('policy_version', config('aiul.consent_version'))
+            ->whereNotNull('granted_at')
+            ->whereNull('revoked_at')
+            ->exists();
+    }
+
     /**
      * Get the attributes that should be cast.
      *

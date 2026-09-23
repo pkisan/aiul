@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\ConsentController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Middleware\EnsureConsented;
 use Illuminate\Foundation\Application;
 use App\Http\Controllers\UsageDashboardController;
 use App\Http\Middleware\SetTenantFromUser;
@@ -18,7 +20,13 @@ Route::get('/', function () {
 
 Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+})->middleware(['auth', 'verified', EnsureConsented::class])->name('dashboard');
+
+// The capture notice, accepted once per version before anything else is usable.
+Route::middleware('auth')->group(function () {
+    Route::get('/consent', [ConsentController::class, 'show'])->name('consent.show');
+    Route::post('/consent', [ConsentController::class, 'store'])->name('consent.store');
+});
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -33,7 +41,7 @@ require __DIR__.'/auth.php';
  * The AI usage dashboard. SetTenantFromUser confines every query below to the
  * signed-in person's tenant.
  */
-Route::middleware(['auth', 'verified', SetTenantFromUser::class])->group(function () {
+Route::middleware(['auth', 'verified', SetTenantFromUser::class, EnsureConsented::class])->group(function () {
     // Anyone: what was captured about me.
     Route::get('/my-data', [UsageDashboardController::class, 'myData'])->name('usage.my-data');
 
