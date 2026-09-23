@@ -13,8 +13,17 @@ Copilot work is done): github.com/copilot posts to
 `/github/chat/threads/<id>/messages`, JSON request `{"content","model":"auto"}`,
 SSE response `routedModel` / `content` / `complete` (usage). `parsers.CopilotWeb`
 + `testdata/copilot/web-turn.*` + `TestCopilotWebTurn`. OPTIONS preflight is
-Skip. NEXT: owner installs, one live prompt; then VS Code Copilot Chat (seen so
-far: /models, /agents, /github/chat/models decrypted — no chat call yet).
+Skip. **LIVE 17:07: recorded, parser=copilot-web, model=mai-code-1.1-flash.**
+
+VS Code Copilot Chat (research 17:08): main turn is `POST /responses` (Responses
+API, no /v1), UA `GitHubCopilotChat/0.66.0`, 84 tools, prompt inside the last
+`<userRequest>`. Plus four `gpt-4o-mini` `/chat/completions` side calls (title,
+progress messages, tool grouping) already parsed by `openai` — but with NO
+kind, so they would have counted as human prompts. Fixed: OpenAI parser matches
+`/responses`, tool `copilot-vscode`, `<userRequest>` extraction, and `kindOf`
+(utility for tool-less agent calls). `TestCopilotVSCodeResponses`. Checked
+against all five real calls. NEXT: install, one VS Code Copilot prompt, expect
+one human row + utility rows. Then turn research mode OFF.
 
 ## PLAN: Windows port — started 2026-09-23
 
@@ -100,7 +109,7 @@ chatgpt.com on Windows (W1, spool only)
 | --- | --- |
 | Codex over WebSocket | `101` upgrade; frames unread. Fixture recorded at `agent/testdata/openai/codex-responses.ws.jsonl` |
 | Cursor | captured live 2026-09-23 (RunSSE) with the settings in "RESULT: Cursor settings"; branch confirmed; model joined from BidiAppend (`d577eae`, not yet seen live) |
-| Copilot | web: parser written (`CopilotWeb`), awaiting live row. VS Code: handshakes succeed, chat call not yet seen |
+| Copilot | web: captured live 2026-09-23. VS Code Copilot Chat: parser written, awaiting live row |
 | Gemini | parser exists, never driven live |
 
 ### NEXT STEP
