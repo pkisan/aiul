@@ -47,6 +47,34 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 Everything is a DEMO, not the product — see the framing note below before
 proposing signing, MDM or a CA chain as blockers.
 
+## FINDING: Cursor's chat bypasses the proxy entirely — 2026-09-23 11:45
+
+Research run gave an empty `/tmp/aiul-cursor.flows`: Cursor downloaded a 298 MB
+update at 11:41:38 and restarted itself at 11:41:48, dropping the mitmweb env.
+The owner's "Hello fellas" was still answered. `lsof` on the live processes shows
+why nothing reached us either: the **extension hosts** (`Cursor Helper (Plugin)`)
+connect DIRECTLY to port 443 — not through 127.0.0.1:8899 — although their
+environment carries `HTTPS_PROXY=http://127.0.0.1:8899`:
+
+```
+34.229.67.192, 98.95.185.24  agentn.api5.cursor.sh   (the agent/chat backend)
+13.223.143.97                api2direct.cursor.sh
+13.248.241.7                 api4.cursor.sh
+104.18.19.125                api3.cursor.sh
+```
+
+`agentn.api5`, `agent.api5` and `api4` have never appeared in our log. So HTTP/2
+in the proxy (plan below) would NOT capture Cursor's chat by itself: the traffic
+never arrives. The plan is ON HOLD until an experiment gets the chat to the proxy.
+
+Experiment next (Cursor's own settings, reversible, no system change):
+`"cursor.general.disableHttp2": true`, `"http.proxy": "http://127.0.0.1:8899"`,
+`"http.proxySupport": "override"` in Cursor's user settings.json, restart Cursor,
+send one prompt, grep the agent log for `api5`. If it arrives: allow-list the
+hosts that carry chat, and it may even be HTTP/1.1. If it still goes direct, the
+only route left is transparent interception (a Network Extension — needs the
+Apple entitlement, Phase 8 territory) and Cursor stays metadata-less.
+
 ## PLAN: HTTP/2 for Cursor — started 2026-09-23
 
 Evidence: Cursor's chat runs on `api2direct.cursor.sh`, whose client offers ONLY
