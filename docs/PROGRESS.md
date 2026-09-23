@@ -29,7 +29,7 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 | Tool | Reason |
 | --- | --- |
 | Codex over WebSocket | `101` upgrade; frames unread. Fixture recorded at `agent/testdata/openai/codex-responses.ws.jsonl` |
-| Cursor | captured live 2026-09-23 (RunSSE) with the settings in "RESULT: Cursor settings"; model not captured; branch from workspace confirmed |
+| Cursor | captured live 2026-09-23 (RunSSE) with the settings in "RESULT: Cursor settings"; branch confirmed; model joined from BidiAppend (`d577eae`, not yet seen live) |
 | Copilot | sends a TLS alert; never retested with the CA named explicitly |
 | Antigravity | trust OK 2026-09-23 after the leaf fix; `cloudcode` parser written, not yet seen live |
 | Gemini | parser exists, never driven live |
@@ -98,11 +98,16 @@ the parser returns the workspace from checkpoint field 21.1 as
 gave no repo. Tests `TestCursorRunSSE`, `TestTaskFromWorkspaceInBody`.
 
 CONFIRMED LIVE 12:39: dashboard session 27 shows `plrb-lms · feature/filamentv5
-· cursor`. Cursor capture DONE except the model (in BidiAppend, not joined).
+· cursor`. Research mode turned OFF by the owner afterwards.
 
-NEXT: turn research mode off and delete `/var/db/aiul/research`. Then the
-original queue: Copilot / VS Code trust retest, `aiul doctor --matrix`. Then: turn research mode off and delete
-`/var/db/aiul/research`; decide whether the model is worth joining in.
+MODEL JOINED `d577eae`: the turn's first BidiAppend names the model (hex-wrapped
+inner 1.9.1) under the conversation id (2.1) that RunSSE's request also sends.
+`parsers.Cursor` remembers id -> model (bounded map) and returns the new
+`Result.Skip` for BidiAppend, so it is never a row. Checked against the live
+recording: `grok-4.6`. Awaiting install for a live row with a model.
+
+NEXT: Copilot in VS Code trust retest — `./scripts/tool-experiment.sh vscode`
+(owner). Then `aiul doctor --matrix`.
 
 ### Research run 12:22 — the prompt decoded (installed `4538b77`)
 
