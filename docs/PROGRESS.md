@@ -4,6 +4,30 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-23 (Windows W1 passed on the PC)
 
+## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
+
+Owner decisions: employee login is `aiul login` on the device (short code,
+confirmed in the web app after sign-in + first-login consent; device bound to
+that user). AI-tool account names in two steps: now what is already on the wire
+(JWT claims: ChatGPT web, Codex); then research captures for Claude Code,
+claude.ai, Cursor, Copilot.
+
+Steps (commit each):
+- [ ] R1.1 Prompt cleaning (item 8): backend `PromptText::clean()` strips harness
+      wrappers (<system-reminder>, <local-command-*>, <command-*>,
+      <EPHEMERAL_MESSAGE>, <environment_context>...) at ingestion AND on display
+      (old rows). Test.
+- [ ] R1.2 Interaction page shows prompt + answer inline (item 6); /raw redirects.
+      Every open still writes the raw_view audit record.
+- [ ] R1.3 Session page as a chat (items 5, 7): your message right, final answer
+      left, agent steps collapsed between, tool's own calls hidden.
+- [ ] R1.4 /usage filters by person/tool/days (item 4); "My data" off the menu.
+- [ ] R1.5 First-login consent screen (item 1, web half).
+- [ ] R1.6 `aiul login` device pairing (item 1, device half, and item 3 fallback).
+      Events from a device with no consented user are discarded.
+- [ ] R1.7 AI-tool account name (item 2): `account` on event + column; JWT claims
+      in the agent; UI shows account, else the device user's name (item 3).
+
 ## Copilot web parser — 2026-09-23 17:10
 
 Chrome's old "rejections" of `api.individual.githubcopilot.com` (09-21, 09-22)
