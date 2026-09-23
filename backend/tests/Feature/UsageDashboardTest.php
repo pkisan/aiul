@@ -573,4 +573,16 @@ class UsageDashboardTest extends TestCase
         $this->assertTrue($member->fresh()->hasConsented());
         $this->actingAs($member)->get('/dashboard')->assertOk();
     }
+
+    public function test_old_agent_written_prompts_can_be_reclassified(): void
+    {
+        $suggestion = $this->interaction(['kind' => 'human'], '[SUGGESTION MODE: Suggest what the user might type next');
+        $real = $this->interaction(['kind' => 'human'], 'Fix the login bug.');
+
+        $this->artisan('aiul:reclassify-prompts')->assertSuccessful();
+
+        $this->assertSame('utility', $suggestion->fresh()->kind);
+        $this->assertTrue($suggestion->fresh()->automated);
+        $this->assertSame('human', $real->fresh()->kind);
+    }
 }

@@ -36,8 +36,8 @@ linked to a person who accepted the notice. On this Mac device 1 is linked to
 "Dev Member", who has not consented yet — sign in as dev@example.com once and
 accept, or run `aiul login` and link it to another account.
 Not done / next:
-- Old rows keep their old kind in totals (suggestion/recap rows count as human
-  prompts on /usage); only the session page reclassifies them.
+- Old suggestion/recap rows fixed by `php artisan aiul:reclassify-prompts`
+  (ran locally 2026-09-23: 95 rows now utility). Safe to rerun.
 - R1.7 step 2: account names for Claude Code, claude.ai, Cursor, Copilot need
   research captures of their profile endpoints.
 - Agent must be rebuilt + reinstalled for `aiul login` and `account`.
