@@ -2,7 +2,38 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-23 (Cursor captured live with branch)
+Last updated: 2026-09-23 (Windows port planned; W1 in progress)
+
+## PLAN: Windows port — started 2026-09-23
+
+Owner decisions (2026-09-23): test machine is a **Windows x64 PC**;
+`golang.org/x/sys/windows` is **allowed** (D16); first milestone is a **manual
+capture with no system changes**. macOS work is paused, not finished: the Mac
+mini install failure (worker not starting, log not yet read) and the Copilot
+retest are both still open below.
+
+Today `GOOS=windows` compiles, but every platform piece is a stub returning
+ErrUnsupported. Milestones, each stops for the owner's confirmation (rule 13):
+
+- **W1 — manual capture, no system changes.** `dist/aiul.exe` from build.sh;
+  `scripts/killswitch.ps1` first (rule 2), idempotent, removes everything later
+  milestones add; state dir `%LOCALAPPDATA%\AIUL`; key-permission check
+  skipped on Windows (ACLs, not mode bits); MDM stub honours the dev override.
+  Verify: `aiul.exe ca init`, `aiul.exe run` in one PowerShell, Claude Code in a
+  SECOND PowerShell with `$env:HTTPS_PROXY` and `$env:NODE_EXTRA_CA_CERTS` set
+  for that window only; the prompt reaches the dashboard (backend on the
+  MacBook, reached over the LAN).
+- **W2 — attribution.** GetExtendedTcpTable (x/sys/windows) maps a port to a
+  PID and executable. Working directory of another process is hard on Windows
+  (PEB read); fall back to the workspace a parser reports (Cursor already does).
+- **W3 — trust + proxy + env, by hand, with confirmation.** CurrentUser\Root
+  via certutil; WinINET proxy in HKCU Internet Settings (+ refresh); user env
+  vars in HKCU\Environment (+ WM_SETTINGCHANGE). Killswitch undoes each.
+- **W4 — service.** Windows Service via x/sys/windows/svc, virtual account,
+  token in DPAPI / Credential Manager, fail-open health loop.
+- **W5 — MDM gate + tools.** Enrollment from HKLM\SOFTWARE\Microsoft\Enrollments
+  or `dsregcmd /status`; tool detection.
+- Packaging (MSI) stays with Phase 8.
 
 ## Session resume 2026-09-22 — read this first
 

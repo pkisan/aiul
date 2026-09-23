@@ -574,3 +574,16 @@ the standard library has neither codec.
 
 **What is still true from D12:** the debug line that produced this evidence stays.
 It is what turned "we think this is fine" into "here is the host and the encoding".
+
+## D16 — golang.org/x/sys/windows for the Windows port (2026-09-23)
+
+The Windows agent needs system calls the standard library does not wrap:
+GetExtendedTcpTable (which process owns a connection), the Service Control
+Manager, DPAPI / Credential Manager for the device token. The alternative was
+shelling out to netstat, sc.exe, certutil and reg.exe and parsing their output,
+as darwin does with lsof and networksetup.
+
+Chosen: `golang.org/x/sys/windows`, maintained by the Go team and used by the
+standard library's own tooling. Owner approved 2026-09-23. Shell tools stay
+where they are the documented interface (certutil for the trust store). Added
+to go.mod only when the first code needing it lands (W2), not before.
