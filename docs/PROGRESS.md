@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-23 (Cursor captured live; branch fix awaiting install)
+Last updated: 2026-09-23 (Cursor captured live with branch)
 
 ## Session resume 2026-09-22 — read this first
 
@@ -29,7 +29,7 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 | Tool | Reason |
 | --- | --- |
 | Codex over WebSocket | `101` upgrade; frames unread. Fixture recorded at `agent/testdata/openai/codex-responses.ws.jsonl` |
-| Cursor | captured live 2026-09-23 (RunSSE) with the settings in "RESULT: Cursor settings"; model not captured; branch from workspace awaiting live check |
+| Cursor | captured live 2026-09-23 (RunSSE) with the settings in "RESULT: Cursor settings"; model not captured; branch from workspace confirmed |
 | Copilot | sends a TLS alert; never retested with the CA named explicitly |
 | Antigravity | trust OK 2026-09-23 after the leaf fix; `cloudcode` parser written, not yet seen live |
 | Gemini | parser exists, never driven live |
@@ -97,8 +97,11 @@ the parser returns the workspace from checkpoint field 21.1 as
 `Result.WorkDir`, and `record()` resolves the task from it when the connection
 gave no repo. Tests `TestCursorRunSSE`, `TestTaskFromWorkspaceInBody`.
 
-NEXT: owner installs the WorkDir commit, sends one Cursor prompt from
-`~/Herd/plrb-lms`, expects branch `feature/filamentv5` on the row. Then: turn research mode off and delete
+CONFIRMED LIVE 12:39: dashboard session 27 shows `plrb-lms · feature/filamentv5
+· cursor`. Cursor capture DONE except the model (in BidiAppend, not joined).
+
+NEXT: turn research mode off and delete `/var/db/aiul/research`. Then the
+original queue: Copilot / VS Code trust retest, `aiul doctor --matrix`. Then: turn research mode off and delete
 `/var/db/aiul/research`; decide whether the model is worth joining in.
 
 ### Research run 12:22 — the prompt decoded (installed `4538b77`)
