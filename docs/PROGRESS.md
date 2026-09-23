@@ -50,8 +50,10 @@ Not done / next:
   in the browser still falls back to the device's person.
   NOTE: b2379c3/3496fff edited capture.go by mistake — Event/record live in
   event.go — so no account reached events until the fix commit after them.
-  Copilot web: the owner's 18:35 use predates research mode (18:39); needs one
-  more run with research on.
+  Copilot web (research run, 9 dumps on api.individual.githubcopilot.com):
+  threads/messages/models carry thread and message ids only, no user. The
+  profile lives on github.com, never decrypted (rule 3). Copilot falls back to
+  the device's person. Research mode can go OFF now.
   Antigravity fetchUserInfo: no name. Copilot: no github traffic in the run.
 - Agent must be rebuilt + reinstalled for `aiul login` and `account`.
 - Research mode was found OFF on 2026-09-23 (directory absent), despite the
