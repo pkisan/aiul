@@ -78,7 +78,9 @@ because this week found a lot; read the top three sections and stop.
 
 ### What captures prompt AND answer today
 
-Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claude.ai
+Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claude.ai ·
+Antigravity (row 1004, 2026-09-23) · Cursor (with its settings, see below) ·
+chatgpt.com on Windows (W1, spool only)
 
 ### What does not, and why
 
@@ -87,7 +89,6 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 | Codex over WebSocket | `101` upgrade; frames unread. Fixture recorded at `agent/testdata/openai/codex-responses.ws.jsonl` |
 | Cursor | captured live 2026-09-23 (RunSSE) with the settings in "RESULT: Cursor settings"; branch confirmed; model joined from BidiAppend (`d577eae`, not yet seen live) |
 | Copilot | sends a TLS alert; never retested with the CA named explicitly |
-| Antigravity | trust OK 2026-09-23 after the leaf fix; `cloudcode` parser written, not yet seen live |
 | Gemini | parser exists, never driven live |
 
 ### NEXT STEP
