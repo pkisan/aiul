@@ -28,6 +28,9 @@ if [ ! -x "$BINARY" ]; then
   exit 1
 fi
 
+# Keep only the package about to be built, so dist/ never offers an old one.
+rm -f "$OUT_DIR"/aiul-*.pkg
+
 # The payload is assembled in a temporary root that mirrors the destination
 # filesystem, which is how pkgbuild decides where files land.
 ROOT="$(mktemp -d)"
