@@ -35,6 +35,10 @@ IMPORTANT side effect: the backend now DISCARDS events from any device not
 linked to a person who accepted the notice. On this Mac device 1 is linked to
 "Dev Member", who has not consented yet — sign in as dev@example.com once and
 accept, or run `aiul login` and link it to another account.
+INCIDENT 19:15: owner's prompts from ~18:18 to ~19:10 discarded exactly as
+warned above (device 1 -> Dev Member, no consent); lost, the agent deleted them
+from its spool. Both sides now log discards (`dae5d75`). Owner to link the
+device to a consented account.
 Not done / next:
 - Old suggestion/recap rows fixed by `php artisan aiul:reclassify-prompts`
   (ran locally 2026-09-23: 95 rows now utility). Safe to rerun.
