@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-23 (Windows port planned; W1 in progress)
+Last updated: 2026-09-23 (Windows W1 passed on the PC)
 
 ## PLAN: Windows port — started 2026-09-23
 
@@ -35,6 +35,19 @@ ErrUnsupported. Milestones, each stops for the owner's confirmation (rule 13):
   chose ChatGPT web instead: needs our root in CurrentUser\Root (certutil
   -user -addstore) — the FIRST Windows system change, asked for explicitly —
   and Edge with its own profile and `--proxy-server`.
+  **W1 PASSED 16:52** (owner confirmed on the PC): Edge with its own profile and
+  `--proxy-server`, our root in CurrentUser\Root, signed-in ChatGPT. Spool
+  event: tool=chatgpt-web model=gpt-5-6, prompt and full answer, streamed,
+  6074 ms. Not uploaded — the PC is on a different network from the MacBook's
+  backend; the spool keeps it. Follow-ups, not blockers:
+  - `ca init` prints "Nothing on this Mac trusts it" on Windows too.
+  - `ws.chatgpt.com` logs `malformed HTTP` after decrypting; ChatGPT still
+    answered normally (the answer came over /backend-api/f/conversation).
+    Check whether macOS logs the same before touching it.
+  - PowerShell 5.1 shows the UTF-8 spool file as mojibake; the file is fine.
+  - Every new window needs the four env vars again; a run-dev.ps1 was offered.
+  - Dashboard for Windows rows needs the same network, a tunnel, or a backend
+    on the PC — owner's call.
 - **W2 — attribution.** GetExtendedTcpTable (x/sys/windows) maps a port to a
   PID and executable. Working directory of another process is hard on Windows
   (PEB read); fall back to the workspace a parser reports (Cursor already does).
