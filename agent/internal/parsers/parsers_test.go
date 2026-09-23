@@ -1,6 +1,7 @@
 package parsers
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -750,5 +751,52 @@ func TestCloudCodeAntigravityTurn(t *testing.T) {
 	}
 	if title.Kind != KindUtility || title.Answer != "Initial Greeting Conversation" {
 		t.Errorf("title call: kind=%q answer=%q, want utility and the generated title", title.Kind, title.Answer)
+	}
+}
+
+// The live shape from 2026-09-23 that the first version got wrong: Antigravity
+// appends an <EPHEMERAL_MESSAGE> reminder after the person's message, and a
+// thinking model streams a "thought" part before its reply. The reminder is not
+// the prompt, the thought is not the answer, and a reminder after a tool result
+// must not turn an agent step into a human one.
+func TestCloudCodeIgnoresRemindersAndThoughts(t *testing.T) {
+	var env map[string]any
+	if err := json.Unmarshal(fixture(t, "cloudcode/agent-turn.request.json"), &env); err != nil {
+		t.Fatal(err)
+	}
+	reminder := map[string]any{"role": "user", "parts": []any{map[string]any{
+		"text": "The following is an <EPHEMERAL_MESSAGE> not actually sent by the user.",
+	}}}
+	req := env["request"].(map[string]any)
+	first := req["contents"].([]any)
+	req["contents"] = append(append([]any{}, first...), reminder)
+	human, _ := json.Marshal(env)
+
+	req["contents"] = append(append([]any{}, first...),
+		map[string]any{"role": "model", "parts": []any{map[string]any{"functionCall": map[string]any{"name": "view_file"}}}},
+		map[string]any{"role": "user", "parts": []any{map[string]any{"functionResponse": map[string]any{"name": "view_file"}}}},
+		reminder)
+	step, _ := json.Marshal(env)
+
+	sse := []string{
+		`{"response":{"candidates":[{"content":{"role":"model","parts":[{"text":"**Planning**","thought":true}]}}]}}`,
+		`{"response":{"candidates":[{"content":{"role":"model","parts":[{"text":"Hello again!"}]}}]}}`,
+	}
+	head := http.Header{"User-Agent": {"antigravity/ide/2.5.5"}}
+
+	res, err := CloudCode{}.Parse(Exchange{Path: "/v1internal:streamGenerateContent", ReqHead: head, ReqBody: human, SSE: sse})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Prompt != "Hello" || res.Answer != "Hello again!" || res.Kind != KindHuman {
+		t.Errorf("prompt=%q answer=%q kind=%q", res.Prompt, res.Answer, res.Kind)
+	}
+
+	res, err = CloudCode{}.Parse(Exchange{Path: "/v1internal:streamGenerateContent", ReqHead: head, ReqBody: step, SSE: sse})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Kind != KindAgent {
+		t.Errorf("tool result followed by a reminder: kind=%q, want agent", res.Kind)
 	}
 }

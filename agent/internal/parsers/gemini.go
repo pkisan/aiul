@@ -81,6 +81,9 @@ type geminiResponse struct {
 		Content struct {
 			Parts []struct {
 				Text string `json:"text"`
+				// Thought marks the model's reasoning summary, which thinking
+				// models stream before the reply. It is not the answer.
+				Thought bool `json:"thought"`
 			} `json:"parts"`
 		} `json:"content"`
 	} `json:"candidates"`
@@ -94,7 +97,9 @@ func (r geminiResponse) text() string {
 	var b strings.Builder
 	for _, c := range r.Candidates {
 		for _, p := range c.Content.Parts {
-			b.WriteString(p.Text)
+			if !p.Thought {
+				b.WriteString(p.Text)
+			}
 		}
 	}
 	return b.String()

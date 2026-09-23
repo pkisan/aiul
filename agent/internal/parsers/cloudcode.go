@@ -49,15 +49,15 @@ func (CloudCode) Parse(ex Exchange) (Result, error) {
 	}
 
 	// Antigravity wraps what the person typed in <USER_REQUEST>, followed by
-	// metadata blocks (open files, local time, settings changes) we do not want
-	// as the prompt.
-	if inside, ok := between(res.Prompt, "<USER_REQUEST>", "</USER_REQUEST>"); ok {
-		res.Prompt = strings.TrimSpace(inside)
-	}
-
+	// metadata blocks (open files, local time, settings changes). It also appends
+	// <EPHEMERAL_MESSAGE> reminders as extra user messages, "not actually sent by
+	// the user" in its own words; those are dropped before anything is decided,
+	// or the reminder becomes the prompt and hides a tool result behind it.
 	var req struct {
 		Contents []struct {
+			Role  string `json:"role"`
 			Parts []struct {
+				Text             string          `json:"text"`
 				FunctionResponse json.RawMessage `json:"functionResponse"`
 			} `json:"parts"`
 		} `json:"contents"`
@@ -66,13 +66,34 @@ func (CloudCode) Parse(ex Exchange) (Result, error) {
 	_ = json.Unmarshal(env.Request, &req) // already decoded once by Gemini{}.Parse
 
 	lastIsToolResult := false
-	if n := len(req.Contents); n > 0 {
-		for _, p := range req.Contents[n-1].Parts {
+	userRequest := ""
+	for _, c := range req.Contents {
+		real := false
+		for _, p := range c.Parts {
+			if strings.Contains(p.Text, "<EPHEMERAL_MESSAGE>") {
+				continue
+			}
+			real = true
+			if inside, ok := between(p.Text, "<USER_REQUEST>", "</USER_REQUEST>"); ok && c.Role != "model" {
+				userRequest = strings.TrimSpace(inside)
+			}
+		}
+		if !real {
+			continue
+		}
+		lastIsToolResult = false
+		for _, p := range c.Parts {
 			if len(p.FunctionResponse) > 0 {
 				lastIsToolResult = true
 			}
 		}
 	}
+	if userRequest != "" {
+		res.Prompt = userRequest
+	} else if strings.Contains(res.Prompt, "<EPHEMERAL_MESSAGE>") {
+		res.Prompt = ""
+	}
+
 	// The title generator and other housekeeping calls offer no tools, which
 	// kindOf reads as utility for an agent like this one.
 	res.Kind = kindOf(lastIsToolResult, len(req.Tools) > 0, res.Tool)

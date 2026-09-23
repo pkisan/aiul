@@ -47,6 +47,44 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 Everything is a DEMO, not the product — see the framing note below before
 proposing signing, MDM or a CA chain as blockers.
 
+## PLAN: HTTP/2 for Cursor — started 2026-09-23
+
+Evidence: Cursor's chat runs on `api2direct.cursor.sh`, whose client offers ONLY
+`h2` (tunnelled sealed since `c724681`). The owner's "Hi there" was answered and
+nothing of it reached us.
+
+Steps, each its own commit:
+
+1. **Research first (owner, mitmweb).** `mitmweb` speaks HTTP/2. Run
+   `./scripts/tool-experiment.sh cursor --research`, send one prompt, save the
+   flows. We need: the chat path, and the body format. Cursor uses Connect RPC
+   (`/aiserver.v1.*`), so the body is very likely **protobuf** — binary, with no
+   published schema. If so the parser reads the wire format without a .proto
+   (strings by field number), which is fragile and must be tested against the
+   fixture. That answer decides whether steps 2-4 are worth it.
+2. **Serve h2 only to clients that offer nothing else.** `GetConfigForClient`
+   returns `NextProtos: ["h2"]` when http/1.1 is absent. Every client that works
+   today keeps HTTP/1.1, so no current capture can regress.
+3. **Stdlib h2, no new dependency.** A one-connection listener handed to
+   `http.Server.Serve` (which sets up h2 itself for a `*tls.Conn` that negotiated
+   it), and a handler that forwards upstream through an `http.Transport` with
+   system roots (rule 5), flushing every chunk (rule 6) and copying bodies on the
+   side to the same `record()` path as HTTP/1.1.
+4. **Connect/protobuf parser** for the chat endpoint, from the step 1 fixture.
+
+Research mode must be ON for step 1 and OFF again after it.
+
+## Antigravity live row, and two parser fixes — 2026-09-23
+
+Row 1004 from `9cf51d6`: `tool=antigravity model=gemini-3.1-pro-low kind=human`,
+17755/21 tokens. But the stored prompt was Antigravity's `<EPHEMERAL_MESSAGE>`
+reminder (appended as a later user message, "not actually sent by the user")
+and the answer began with the model's thought summary. Fixed: reminders are
+skipped when choosing the prompt and deciding the kind; Gemini `thought: true`
+parts are no longer part of the answer (applies to the Gemini parser too).
+Test `TestCloudCodeIgnoresRemindersAndThoughts`. Research dumps were deleted by
+the owner; research mode still has to be removed from `/etc/aiul/agent.conf`.
+
 ## Antigravity parser written — 2026-09-23
 
 Research captures showed Cloud Code is Gemini's generateContent inside an
