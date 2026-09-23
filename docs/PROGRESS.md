@@ -72,7 +72,7 @@ Steps, each its own commit:
    side to the same `record()` path as HTTP/1.1.
 4. **Connect/protobuf parser** for the chat endpoint, from the step 1 fixture.
 
-Research mode must be ON for step 1 and OFF again after it.
+Step 1 goes through mitmweb, not our agent, so the agent's research mode stays OFF.
 
 ## Antigravity live row, and two parser fixes — 2026-09-23
 
