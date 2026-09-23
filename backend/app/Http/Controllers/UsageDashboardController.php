@@ -23,9 +23,20 @@ class UsageDashboardController extends Controller
     {
         abort_unless($request->user()->isManager(), 403);
 
-        $report = new UsageReport(days: (int) $request->integer('days', 30) ?: 30);
+        $filters = [
+            'days' => (int) $request->integer('days', 30) ?: 30,
+            'person' => $request->integer('person') ?: null,
+            'tool' => $request->string('tool')->toString() ?: null,
+        ];
+
+        $report = new UsageReport(days: $filters['days'], userId: $filters['person'], tool: $filters['tool']);
 
         return Inertia::render('Usage/Index', [
+            'filters' => $filters,
+            // Everyone in the tenant, and every tool seen: the choices for the filters.
+            'people' => \App\Models\User::where('tenant_id', $request->user()->tenant_id)
+                ->orderBy('name')->get(['id', 'name', 'email']),
+            'tools' => AiInteraction::query()->whereNotNull('tool')->distinct()->orderBy('tool')->pluck('tool'),
             'totals' => $report->totals(),
             'perProject' => $report->perProject(),
             'perPerson' => $report->perPerson(),

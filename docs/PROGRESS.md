@@ -21,7 +21,7 @@ Steps (commit each):
       Every open still writes the raw_view audit record.
 - [x] R1.3 Session page as a chat (items 5, 7): your message right, final answer
       left, agent steps collapsed between, tool's own calls hidden.
-- [ ] R1.4 /usage filters by person/tool/days (item 4); "My data" off the menu.
+- [x] R1.4 /usage filters by person/tool/days (item 4); "My data" off the menu.
 - [ ] R1.5 First-login consent screen (item 1, web half).
 - [ ] R1.6 `aiul login` device pairing (item 1, device half, and item 3 fallback).
       Events from a device with no consented user are discarded.

@@ -534,4 +534,22 @@ class UsageDashboardTest extends TestCase
         $this->actingAs($member)->get("/usage/{$interaction->id}")
             ->assertInertia(fn ($page) => $page->where('prompt', 'Hi'));
     }
+
+    public function test_the_dashboard_filters_by_person_and_tool(): void
+    {
+        $alex = $this->user();
+        $this->interaction(['user_id' => $alex->id, 'tool' => 'cursor']);
+        $this->interaction(['tool' => 'claude-code']);
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))
+            ->get("/usage?person={$alex->id}")
+            ->assertInertia(fn ($page) => $page
+                ->where('totals.interactions', 1)
+                ->where('filters.person', $alex->id)
+                ->has('people'));
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))
+            ->get('/usage?tool=claude-code')
+            ->assertInertia(fn ($page) => $page->where('totals.interactions', 1));
+    }
 }

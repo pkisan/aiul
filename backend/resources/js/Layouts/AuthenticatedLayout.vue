@@ -49,13 +49,6 @@ const showingNavigationDropdown = ref(false);
                                 >
                                     AI usage
                                 </NavLink>
-                                <NavLink
-                                    v-if="$page.props.auth.user"
-                                    :href="route('usage.my-data')"
-                                    :active="route().current('usage.my-data')"
-                                >
-                                    My data
-                                </NavLink>
                             </div>
                         </div>
 
@@ -172,13 +165,6 @@ const showingNavigationDropdown = ref(false);
                             :active="route().current('usage.*')"
                         >
                             AI usage
-                        </ResponsiveNavLink>
-                        <ResponsiveNavLink
-                            v-if="$page.props.auth.user"
-                            :href="route('usage.my-data')"
-                            :active="route().current('usage.my-data')"
-                        >
-                            My data
                         </ResponsiveNavLink>
                     </div>
 

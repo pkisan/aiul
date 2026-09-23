@@ -5,9 +5,13 @@ import StatCard from '@/Components/Usage/StatCard.vue';
 import Score from '@/Components/Usage/Score.vue';
 import Tag from '@/Components/Usage/Tag.vue';
 import { clock, count, duration, when } from '@/Components/Usage/format';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { reactive } from 'vue';
 
-defineProps({
+const props = defineProps({
+    filters: Object,
+    people: Array,
+    tools: Array,
     totals: Object,
     perProject: Array,
     perPerson: Array,
@@ -17,6 +21,15 @@ defineProps({
     recent: Array,
     sessions: Object,
 });
+
+// Every change reloads the page with the filters in the URL, so a filtered view
+// can be bookmarked or shared.
+const form = reactive({ ...props.filters });
+const apply = () =>
+    router.get(route('usage.index'), Object.fromEntries(Object.entries(form).filter(([, v]) => v)), {
+        preserveState: true,
+        preserveScroll: true,
+    });
 </script>
 
 <template>
@@ -32,6 +45,33 @@ defineProps({
 
         <div class="bg-gray-50 py-8">
             <div class="mx-auto max-w-6xl space-y-6 px-4 sm:px-6 lg:px-8">
+                <div class="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+                    <label class="text-xs text-gray-500">
+                        Person
+                        <select v-model="form.person" class="mt-1 block w-56 rounded-lg border-gray-300 text-sm" @change="apply">
+                            <option :value="null">Everyone</option>
+                            <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
+                        </select>
+                    </label>
+                    <label class="text-xs text-gray-500">
+                        Tool
+                        <select v-model="form.tool" class="mt-1 block w-44 rounded-lg border-gray-300 text-sm" @change="apply">
+                            <option :value="null">All tools</option>
+                            <option v-for="t in tools" :key="t" :value="t">{{ t }}</option>
+                        </select>
+                    </label>
+                    <label class="text-xs text-gray-500">
+                        Period
+                        <select v-model="form.days" class="mt-1 block w-36 rounded-lg border-gray-300 text-sm" @change="apply">
+                            <option :value="1">Today</option>
+                            <option :value="7">Last 7 days</option>
+                            <option :value="30">Last 30 days</option>
+                            <option :value="90">Last 90 days</option>
+                            <option :value="365">Last year</option>
+                        </select>
+                    </label>
+                </div>
+
                 <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
                     <StatCard label="Interactions" :value="count(totals.interactions)" :hint="`last ${totals.days} days`" />
                     <StatCard label="Human prompts" :value="count(totals.human_prompts)" hint="the rest are automated follow-ups" />
@@ -167,7 +207,12 @@ defineProps({
                             <tbody class="divide-y divide-gray-100">
                                 <tr v-for="row in perPerson" :key="row.user_id ?? 'none'" class="hover:bg-gray-50">
                                     <td class="px-5 py-2">
-                                        <span class="font-medium text-gray-900">{{ row.name }}</span>
+                                        <Link
+                                            v-if="row.user_id"
+                                            :href="route('usage.index', { ...filters, person: row.user_id })"
+                                            class="font-medium text-gray-900 hover:underline"
+                                        >{{ row.name }}</Link>
+                                        <span v-else class="font-medium text-gray-900">{{ row.name }}</span>
                                         <span class="block text-xs text-gray-400">{{ row.tasks }} tasks</span>
                                     </td>
                                     <td class="px-3 py-2 text-right tabular-nums">{{ count(row.interactions) }}</td>

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AiInteraction;
 use App\Models\AiSession;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -16,11 +17,33 @@ use Illuminate\Support\Facades\DB;
  */
 class UsageReport
 {
-    public function __construct(private readonly int $days = 30) {}
+    /**
+     * @param  ?int  $userId  only this person's work (the admin's person filter)
+     * @param  ?string  $tool  only this tool
+     */
+    public function __construct(
+        private readonly int $days = 30,
+        private readonly ?int $userId = null,
+        private readonly ?string $tool = null,
+    ) {}
 
     private function since(): Carbon
     {
         return now()->subDays($this->days);
+    }
+
+    /**
+     * The period and the page's filters, in one place so no query can forget one.
+     * $column is the time column, table-qualified when the query joins: the
+     * filters use the same table.
+     */
+    private function inRange(Builder $query, string $column): Builder
+    {
+        $table = str_contains($column, '.') ? strstr($column, '.', true).'.' : '';
+
+        return $query->where($column, '>=', $this->since())
+            ->when($this->userId, fn ($q) => $q->where($table.'user_id', $this->userId))
+            ->when($this->tool, fn ($q) => $q->where($table.'tool', $this->tool));
     }
 
     /**
@@ -32,7 +55,7 @@ class UsageReport
     public function perTask(): array
     {
         $interactions = AiInteraction::query()
-            ->where('occurred_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
             ->select([
                 'task_id',
                 DB::raw('count(*) as interaction_count'),
@@ -78,7 +101,7 @@ class UsageReport
     private function secondsPerTask(): array
     {
         return AiSession::query()
-            ->where('started_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'started_at'))
             ->whereNotNull('ended_at')
             ->select([
                 'task_id',
@@ -94,7 +117,7 @@ class UsageReport
     {
         return AiInteraction::query()
             ->join('quality_scores', 'quality_scores.ai_interaction_id', '=', 'ai_interactions.id')
-            ->where('ai_interactions.occurred_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'ai_interactions.occurred_at'))
             ->select(['ai_interactions.task_id', DB::raw('avg(quality_scores.score) as average')])
             ->groupBy('ai_interactions.task_id')
             ->pluck('average', 'task_id')
@@ -113,7 +136,7 @@ class UsageReport
     public function perProject(): array
     {
         $interactions = AiInteraction::query()
-            ->where('occurred_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
             ->select([
                 'repo',
                 DB::raw('count(*) as interaction_count'),
@@ -153,7 +176,7 @@ class UsageReport
     private function secondsPerProject(): array
     {
         return AiSession::query()
-            ->where('started_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'started_at'))
             ->whereNotNull('ended_at')
             ->select(['repo', DB::raw('sum(extract(epoch from (ended_at - started_at))) as seconds')])
             ->groupBy('repo')
@@ -166,7 +189,7 @@ class UsageReport
     {
         return AiInteraction::query()
             ->join('quality_scores', 'quality_scores.ai_interaction_id', '=', 'ai_interactions.id')
-            ->where('ai_interactions.occurred_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'ai_interactions.occurred_at'))
             ->select(['ai_interactions.repo', DB::raw('avg(quality_scores.score) as average')])
             ->groupBy('ai_interactions.repo')
             ->pluck('average', 'repo')
@@ -179,7 +202,7 @@ class UsageReport
     {
         $query = AiInteraction::query()
             ->with('score:id,ai_interaction_id,score')
-            ->where('occurred_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
             ->latest('occurred_at');
 
         blank($repo) ? $query->whereNull('repo') : $query->where('repo', $repo);
@@ -203,7 +226,7 @@ class UsageReport
         $rows = AiInteraction::query()
             ->leftJoin('users', 'users.id', '=', 'ai_interactions.user_id')
             ->leftJoin('quality_scores', 'quality_scores.ai_interaction_id', '=', 'ai_interactions.id')
-            ->where('ai_interactions.occurred_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'ai_interactions.occurred_at'))
             ->select([
                 'ai_interactions.user_id',
                 DB::raw('max(users.name) as name'),
@@ -215,7 +238,7 @@ class UsageReport
             ->get();
 
         $time = AiSession::query()
-            ->where('started_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'started_at'))
             ->whereNotNull('ended_at')
             ->select(['user_id', DB::raw('sum(extract(epoch from (ended_at - started_at))) as seconds')])
             ->groupBy('user_id')
@@ -239,7 +262,7 @@ class UsageReport
     public function weakestDimensions(): array
     {
         $scores = \App\Models\QualityScore::query()
-            ->whereHas('interaction', fn ($q) => $q->where('occurred_at', '>=', $this->since()))
+            ->whereHas('interaction', fn ($q) => $q->tap(fn ($q) => $this->inRange($q, 'occurred_at')))
             ->get(['dimensions']);
 
         $totals = [];
@@ -273,7 +296,7 @@ class UsageReport
 
     public function totals(): array
     {
-        $interactions = AiInteraction::where('occurred_at', '>=', $this->since());
+        $interactions = AiInteraction::query()->tap(fn ($q) => $this->inRange($q, 'occurred_at'));
 
         return [
             'days' => $this->days,
@@ -298,7 +321,7 @@ class UsageReport
     {
         $query = AiInteraction::query()
             ->with('score:id,ai_interaction_id,score')
-            ->where('occurred_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
             ->latest('occurred_at');
 
         if ($task === 'untagged') {
@@ -335,7 +358,7 @@ class UsageReport
     public function sessions(int $perPage = 15): LengthAwarePaginator
     {
         return AiSession::query()
-            ->where('started_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'started_at'))
             ->withCount([
                 'interactions as human_prompts' => fn ($q) => $q->where('automated', false),
             ])
@@ -351,6 +374,7 @@ class UsageReport
             // the reader is in underneath every session opened since.
             ->latest('ended_at')
             ->paginate($perPage, ['*'], 'sessions_page')
+            ->withQueryString()
             ->through(fn (AiSession $s) => [
                 'id' => $s->id,
                 'tool' => $s->tool,
@@ -488,7 +512,7 @@ class UsageReport
     {
         return AiInteraction::query()
             ->with('score:id,ai_interaction_id,score')
-            ->where('occurred_at', '>=', $this->since())
+            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
             ->latest('occurred_at')
             ->limit($limit)
             ->get()
