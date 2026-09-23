@@ -70,6 +70,11 @@ const tokens = (rows) => rows.reduce((n, i) => n + (i.prompt_tokens ?? 0) + (i.r
                 </h2>
                 <Tag v-if="session.branch" :label="session.branch" />
                 <Tag v-if="session.tool" :label="session.tool" tone="blue" />
+                <span class="text-sm text-gray-500">
+                    <template v-if="session.accounts.length">as {{ session.accounts.join(', ') }}</template>
+                    <template v-if="session.person">
+                        {{ session.accounts.length ? '·' : '' }} device of {{ session.person }}</template>
+                </span>
             </div>
         </template>
 
@@ -98,7 +103,7 @@ const tokens = (rows) => rows.reduce((n, i) => n + (i.prompt_tokens ?? 0) + (i.r
                             <!-- What the person typed -->
                             <template v-if="t.asked">
                                 <div class="flex items-center justify-end gap-2 text-[11px] text-gray-400">
-                                    <span class="font-medium uppercase tracking-wide text-gray-500">You</span>
+                                    <span class="font-medium text-gray-600">{{ t.asked.account ?? session.person ?? 'Person' }}</span>
                                     <span class="tabular-nums">{{ clock(t.asked.occurred_at) }}</span>
                                     <Score :value="t.asked.score" />
                                     <Link :href="route('usage.show', t.asked.id)" class="hover:text-gray-700">details</Link>

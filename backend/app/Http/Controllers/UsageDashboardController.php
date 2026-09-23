@@ -80,6 +80,10 @@ class UsageDashboardController extends Controller
                 'ended_at' => $session->ended_at,
                 'seconds' => $session->durationSeconds(),
                 'interactions' => $session->interaction_count,
+                // Who did the work: the AI accounts the tool named, and the person
+                // the device is linked to (the fallback when the tool named none).
+                'accounts' => $session->interactions()->whereNotNull('account')->distinct()->pluck('account'),
+                'person' => $session->user?->name,
             ],
             'interactions' => $report->interactionsForSession($session, withPreviews: $canViewRaw),
             'canViewRaw' => $canViewRaw,
@@ -136,12 +140,13 @@ class UsageDashboardController extends Controller
 
         $props = [
             'interaction' => $interaction->only([
-                'id', 'host', 'path', 'tool', 'model', 'kind', 'task_id', 'branch', 'repo',
+                'id', 'host', 'path', 'tool', 'account', 'model', 'kind', 'task_id', 'branch', 'repo',
                 'prompt_chars', 'answer_chars', 'prompt_tokens', 'response_tokens',
                 'duration_ms', 'streamed', 'automated', 'redacted', 'occurred_at', 'ai_session_id',
             ]),
             'score' => $interaction->score?->only(['score', 'rubric_version', 'dimensions', 'reasons']),
             'canViewRaw' => Gate::allows('viewRaw', $interaction),
+            'person' => $interaction->user_id ? \App\Models\User::find($interaction->user_id)?->name : null,
         ];
 
         if ($props['canViewRaw']) {

@@ -107,7 +107,7 @@ const apply = () =>
                                          way the start time is hours stale. -->
                                     {{ when(s.ended_at) }}
                                     <template v-if="s.seconds > 0"> · started {{ clock(s.started_at) }}</template>
-                                    <template v-if="s.person"> · {{ s.person }}</template>
+                                    <template v-if="s.account || s.person"> · {{ s.account ?? s.person }}</template>
                                 </div>
                             </div>
 

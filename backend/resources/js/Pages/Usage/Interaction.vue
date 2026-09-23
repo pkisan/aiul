@@ -11,6 +11,7 @@ const props = defineProps({
     interaction: Object,
     score: Object,
     canViewRaw: Boolean,
+    person: String,
     // Present only when canViewRaw: the view was audit-logged before they were sent.
     prompt: String,
     answer: String,
@@ -64,6 +65,13 @@ const missing = (state, what) =>
                         <div>
                             <dt class="text-xs uppercase tracking-wide text-gray-500">Tool</dt>
                             <dd class="mt-0.5 text-gray-900">{{ interaction.tool ?? '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs uppercase tracking-wide text-gray-500">AI account</dt>
+                            <dd class="mt-0.5 truncate text-gray-900">
+                                {{ interaction.account ?? person ?? '—' }}
+                                <span v-if="!interaction.account && person" class="text-xs text-gray-400">(device's person)</span>
+                            </dd>
                         </div>
                         <div>
                             <dt class="text-xs uppercase tracking-wide text-gray-500">Model</dt>

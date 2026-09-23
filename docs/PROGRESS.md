@@ -25,8 +25,22 @@ Steps (commit each):
 - [x] R1.5 First-login consent screen (item 1, web half).
 - [x] R1.6 `aiul login` device pairing (item 1, device half, and item 3 fallback).
       Events from a device with no consented user are discarded.
-- [ ] R1.7 AI-tool account name (item 2): `account` on event + column; JWT claims
+- [x] R1.7 AI-tool account name (item 2): `account` on event + column; JWT claims
       in the agent; UI shows account, else the device user's name (item 3).
+
+**R1 BUILT, awaiting the owner's check (rule 13).** Backend migrated locally
+(pairing columns, `account`). 103 PHP tests, Go tests green. Browser check not
+done by Claude (Chrome extension not connected).
+IMPORTANT side effect: the backend now DISCARDS events from any device not
+linked to a person who accepted the notice. On this Mac device 1 is linked to
+"Dev Member", who has not consented yet — sign in as dev@example.com once and
+accept, or run `aiul login` and link it to another account.
+Not done / next:
+- Old rows keep their old kind in totals (suggestion/recap rows count as human
+  prompts on /usage); only the session page reclassifies them.
+- R1.7 step 2: account names for Claude Code, claude.ai, Cursor, Copilot need
+  research captures of their profile endpoints.
+- Agent must be rebuilt + reinstalled for `aiul login` and `account`.
 
 ## Copilot web parser — 2026-09-23 17:10
 

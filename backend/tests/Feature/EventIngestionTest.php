@@ -337,4 +337,14 @@ class EventIngestionTest extends TestCase
 
         Queue::assertPushed(ScoreInteraction::class, 1);
     }
+
+    public function test_the_ai_account_is_stored(): void
+    {
+        [, $token] = $this->newDevice();
+
+        $this->withToken($token)->postJson('/api/aiul/events', ['events' => [$this->anEvent(['account' => 'alex@example.com'])]])
+            ->assertOk();
+
+        $this->assertSame('alex@example.com', AiInteraction::withoutGlobalScope('tenant')->value('account'));
+    }
 }

@@ -369,6 +369,11 @@ class UsageReport
                 'quality_scores.score'
             )
             ->with('user:id,name')
+            // The AI account the tool named, if any; the person is the fallback.
+            ->addSelect(['account' => AiInteraction::select('account')
+                ->whereColumn('ai_session_id', 'ai_sessions.id')
+                ->whereNotNull('account')
+                ->limit(1)])
             // Ordered by LAST ACTIVITY, not by when it began. A session still
             // under way started hours ago, and sorting by start buried the one
             // the reader is in underneath every session opened since.
@@ -383,6 +388,7 @@ class UsageReport
                 'repo' => $s->repo,
                 'project' => $s->repo ? basename($s->repo) : null,
                 'person' => $s->user?->name,
+                'account' => $s->account,
                 'interactions' => $s->interaction_count,
                 'human_prompts' => $s->human_prompts,
                 'avg_score' => $s->avg_score === null ? null : round((float) $s->avg_score, 1),
@@ -417,6 +423,7 @@ class UsageReport
             'id' => $i->id,
             'tool' => $i->tool,
             'model' => $i->model,
+            'account' => $i->account,
             // Rows captured before kinds existed only have the old boolean,
             // and that boolean was backwards — so the page says so rather
             // than presenting a guess as fact.
