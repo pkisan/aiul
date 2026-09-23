@@ -114,6 +114,10 @@ type Process struct {
 	// is "claude". Anything that has to tell two programs apart — the proxy's
 	// tunnel list, for one — must use this.
 	Path string
+
+	// Account is the AI account the program is signed in with, when the machine
+	// says so locally (Claude Code's ~/.claude.json). Empty otherwise.
+	Account string
 }
 
 // Identity returns the most specific stable name we have for a program: its

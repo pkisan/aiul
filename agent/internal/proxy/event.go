@@ -61,20 +61,26 @@ type Sink interface {
 // Event is the structured record of one AI interaction. Parsers fill in the model,
 // prompt and response; the proxy fills in everything observable from the wire.
 type Event struct {
-	Schema   int       `json:"schema"`
-	ID       string    `json:"id"`
-	Time     time.Time `json:"time"`
-	Host     string    `json:"host"`
-	Method   string    `json:"method"`
-	Path     string    `json:"path"`
-	Status   int       `json:"status"`
-	Tool     string    `json:"tool,omitempty"`
-	Model    string    `json:"model,omitempty"`
-	Parser   string    `json:"parser,omitempty"`
-	Prompt   string    `json:"prompt,omitempty"`
-	System   string    `json:"system,omitempty"`
-	Answer   string    `json:"answer,omitempty"`
-	Streamed bool      `json:"streamed,omitempty"`
+	Schema int       `json:"schema"`
+	ID     string    `json:"id"`
+	Time   time.Time `json:"time"`
+	Host   string    `json:"host"`
+	Method string    `json:"method"`
+	Path   string    `json:"path"`
+	Status int       `json:"status"`
+	Tool   string    `json:"tool,omitempty"`
+
+	// Account is the AI account the request was made with ("Alex John"), when
+	// the traffic or the machine names it. Empty means unknown, and the backend
+	// then shows the person the device is linked to.
+	Account string `json:"account,omitempty"`
+
+	Model    string `json:"model,omitempty"`
+	Parser   string `json:"parser,omitempty"`
+	Prompt   string `json:"prompt,omitempty"`
+	System   string `json:"system,omitempty"`
+	Answer   string `json:"answer,omitempty"`
+	Streamed bool   `json:"streamed,omitempty"`
 
 	// Automated marks a request the wire format shows is an agent's own follow-up
 	// (a tool result, say) rather than something a person typed.
@@ -147,6 +153,12 @@ func (p *Proxy) record(in interaction) {
 	// parse actually sent, so a parser can be written against it.
 	p.dumpForResearch(in, parser)
 
+	// Profile responses name who is signed in to a tool. They are never recorded
+	// themselves, only remembered so the conversations that follow carry the name.
+	if parsers.IsIdentityEndpoint(in.Host, in.Path) {
+		parsers.NoteIdentity(p.exchange(in))
+	}
+
 	if parser == nil {
 		// An allow-listed host makes plenty of calls that are not conversations:
 		// registry lookups, account settings, telemetry batches, and — for a web
@@ -184,6 +196,12 @@ func (p *Proxy) record(in interaction) {
 			return
 		}
 		ev.Tool = res.Tool
+		// What the traffic says first; the account the machine knows locally
+		// (Claude Code's ~/.claude.json) second.
+		ev.Account = parsers.Account(ex)
+		if ev.Account == "" {
+			ev.Account = in.Task.Account
+		}
 		ev.Model = res.Model
 		ev.Prompt = res.Prompt
 		ev.System = res.System
@@ -471,16 +489,17 @@ func (p *Proxy) resolveDir(dir string) tasks.Info {
 // not a checkout.
 func (p *Proxy) contextOf(proc platform.Process, found bool) tasks.Info {
 	if !found || p.cfg.Tasks == nil || p.cfg.Processes == nil {
-		return tasks.Info{}
+		return tasks.Info{Account: proc.Account}
 	}
 
 	dir, err := p.cfg.Processes.WorkingDir(proc.PID)
 	if err != nil {
-		return tasks.Info{Process: proc.Name}
+		return tasks.Info{Process: proc.Name, Account: proc.Account}
 	}
 
 	info := p.resolveDir(dir)
 	info.Process = proc.Name
+	info.Account = proc.Account
 
 	if info.TaskID == "" {
 		p.log.Debug("no task for this connection",

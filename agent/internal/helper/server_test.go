@@ -111,7 +111,7 @@ func TestClientAndServerSpeakToEachOther(t *testing.T) {
 		t.Errorf("ProxyOff: %v", err)
 	}
 
-	pid, name, dir, _, _, _, err := client.ProcessOnPort(54321)
+	pid, name, dir, _, _, _, _, err := client.ProcessOnPort(54321)
 	if err != nil {
 		t.Fatalf("ProcessOnPort: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestAnErrorFromThePrivilegedSideReachesTheClient(t *testing.T) {
 func TestMissingProcessIsAnOrdinaryError(t *testing.T) {
 	client := startServer(t, &fakeOps{processes: map[int][4]string{}})
 
-	if _, _, _, _, _, _, err := client.ProcessOnPort(9999); err == nil {
+	if _, _, _, _, _, _, _, err := client.ProcessOnPort(9999); err == nil {
 		t.Error("a port with no process must be an error, not a silent zero")
 	}
 }
@@ -164,7 +164,7 @@ func TestTheHelperReadsTheCheckoutTheWorkerCannot(t *testing.T) {
 		4321: {"777", "claude", repo, "/opt/homebrew/bin/claude"},
 	}})
 
-	_, _, dir, gotRepo, gotBranch, _, err := client.ProcessOnPort(4321)
+	_, _, dir, gotRepo, gotBranch, _, _, err := client.ProcessOnPort(4321)
 	if err != nil {
 		t.Fatalf("ProcessOnPort: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestTheExecutableCrossesTheSocket(t *testing.T) {
 		5150: {"999", "claude", "/Users/dev", exe},
 	}})
 
-	_, name, _, _, _, gotExe, err := client.ProcessOnPort(5150)
+	_, name, _, _, _, gotExe, _, err := client.ProcessOnPort(5150)
 	if err != nil {
 		t.Fatalf("ProcessOnPort: %v", err)
 	}

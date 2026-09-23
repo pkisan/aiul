@@ -44,8 +44,14 @@ Not done / next:
   host, attached to later events (`parsers.NoteIdentity` / `parsers.Account`).
   Claude Code + claude.ai: NO name on the wire — only account_uuid
   (oauth/validate, event_logging); claude.ai org name is "<email>'s
-  Organization" for personal orgs only. Options for owner: read Claude Code's
-  ~/.claude.json oauthAccount via the root helper, or accept uuid/email.
+  Organization" for personal orgs only. Owner chose: Claude Code's name from
+  ~/.claude.json oauthAccount (fullName > displayName > email), read by the root
+  helper as a 7th PROCESS reply field (`helper.ClaudeCodeAccount`). claude.ai
+  in the browser still falls back to the device's person.
+  NOTE: b2379c3/3496fff edited capture.go by mistake — Event/record live in
+  event.go — so no account reached events until the fix commit after them.
+  Copilot web: the owner's 18:35 use predates research mode (18:39); needs one
+  more run with research on.
   Antigravity fetchUserInfo: no name. Copilot: no github traffic in the run.
 - Agent must be rebuilt + reinstalled for `aiul login` and `account`.
 - Research mode was found OFF on 2026-09-23 (directory absent), despite the

@@ -601,16 +601,17 @@ func TestSecretsAreMaskedButTheProviderGetsTheOriginal(t *testing.T) {
 // fakeProcesses stands in for lsof so the task-tagging path can be tested without
 // depending on what happens to be running on the machine.
 type fakeProcesses struct {
-	name string
-	dir  string
-	err  error
+	name    string
+	dir     string
+	account string
+	err     error
 }
 
 func (f fakeProcesses) ByLocalPort(int) (platform.Process, error) {
 	if f.err != nil {
 		return platform.Process{}, f.err
 	}
-	return platform.Process{PID: 4242, Name: f.name}, nil
+	return platform.Process{PID: 4242, Name: f.name, Account: f.account}, nil
 }
 
 func (f fakeProcesses) WorkingDir(int) (string, error) {
@@ -647,7 +648,7 @@ func TestCapturedEventCarriesTheTaskID(t *testing.T) {
 		Sink:            sink,
 		UpstreamRootCAs: origin.rootPool,
 		Tasks:           tasks.NewResolver(),
-		Processes:       fakeProcesses{name: "claude", dir: repo},
+		Processes:       fakeProcesses{name: "claude", dir: repo, account: "Alex John"},
 	}, origin.addr)
 
 	ourPool := x509.NewCertPool()
@@ -675,6 +676,10 @@ func TestCapturedEventCarriesTheTaskID(t *testing.T) {
 	}
 	if e.Process != "claude" {
 		t.Errorf("process = %q", e.Process)
+	}
+	// Claude's traffic never names the account; the machine does.
+	if e.Account != "Alex John" {
+		t.Errorf("account = %q, want the one the process is signed in with", e.Account)
 	}
 }
 

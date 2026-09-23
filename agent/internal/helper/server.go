@@ -157,7 +157,11 @@ func (s *Server) answer(line string) string {
 
 		// The executable, not just the process name: the Claude desktop app
 		// bundles its own Claude Code, and both are called "claude".
-		return FormatOK(fmt.Sprintf("%d", pid), name, dir, repo, branch, exe)
+		// The Claude account, for Claude Code only: read from the person's own
+		// ~/.claude.json, which the worker cannot open. See ClaudeCodeAccount.
+		account := ClaudeCodeAccount(pid, name, exe)
+
+		return FormatOK(fmt.Sprintf("%d", pid), name, dir, repo, branch, exe, account)
 
 	default:
 		// Unreachable: ParseRequest only returns verbs listed above. Kept so that

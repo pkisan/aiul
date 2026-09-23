@@ -49,6 +49,11 @@ type Info struct {
 
 	// Process is the program that opened the connection.
 	Process string
+
+	// Account is the AI account that program is signed in with, when the machine
+	// knows it locally. Carried here because this is what travels with a
+	// connection to the event.
+	Account string
 }
 
 // Resolver turns a directory into an Info, remembering what it finds.
