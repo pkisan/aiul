@@ -23,6 +23,12 @@ ErrUnsupported. Milestones, each stops for the owner's confirmation (rule 13):
   SECOND PowerShell with `$env:HTTPS_PROXY` and `$env:NODE_EXTRA_CA_CERTS` set
   for that window only; the prompt reaches the dashboard (backend on the
   MacBook, reached over the LAN).
+  **W1 BUILT `5e201b4`, awaiting the owner's run on the Windows PC.** Not
+  runnable here: no Windows and no pwsh on this Mac, so killswitch.ps1 is
+  unparsed — its first run must be `-DryRun`. Vet is clean for windows, linux
+  and darwin. Backend must listen on the LAN (`php artisan serve --host 0.0.0.0
+  --port 8088`); MacBook LAN IP was 162.16.1.190. Token:
+  `php artisan aiul:provision-device <pc-name> --tenant=dev --platform=windows`.
 - **W2 — attribution.** GetExtendedTcpTable (x/sys/windows) maps a port to a
   PID and executable. Working directory of another process is hard on Windows
   (PEB read); fall back to the workspace a parser reports (Cursor already does).
