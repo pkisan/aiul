@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-23 (Cursor parser written, awaiting live check)
+Last updated: 2026-09-23 (Cursor captured live; branch fix awaiting install)
 
 ## Session resume 2026-09-22 — read this first
 
@@ -29,7 +29,7 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 | Tool | Reason |
 | --- | --- |
 | Codex over WebSocket | `101` upgrade; frames unread. Fixture recorded at `agent/testdata/openai/codex-responses.ws.jsonl` |
-| Cursor | parser `ec9f278` (RunSSE) needs the settings in "RESULT: Cursor settings"; not yet seen live; model not captured |
+| Cursor | captured live 2026-09-23 (RunSSE) with the settings in "RESULT: Cursor settings"; model not captured; branch from workspace awaiting live check |
 | Copilot | sends a TLS alert; never retested with the CA named explicitly |
 | Antigravity | trust OK 2026-09-23 after the leaf fix; `cloudcode` parser written, not yet seen live |
 | Gemini | parser exists, never driven live |
@@ -91,8 +91,14 @@ Model stays EMPTY — it lives only in BidiAppend (`1.9.1` of the hex-wrapped
 inner message). Kind is human whenever a prompt is echoed; agent tool-loop
 turns not yet seen.
 
-NEXT: owner installs `ec9f278`, sends one Cursor prompt, checks for a row with
-tool=cursor, prompt and answer. Then: turn research mode off and delete
+LIVE 12:34: row with tool=cursor parser=cursor kind=human tokens 23569/20 —
+but branch empty: the extension host's cwd is `/`. Fixed in the next commit:
+the parser returns the workspace from checkpoint field 21.1 as
+`Result.WorkDir`, and `record()` resolves the task from it when the connection
+gave no repo. Tests `TestCursorRunSSE`, `TestTaskFromWorkspaceInBody`.
+
+NEXT: owner installs the WorkDir commit, sends one Cursor prompt from
+`~/Herd/plrb-lms`, expects branch `feature/filamentv5` on the row. Then: turn research mode off and delete
 `/var/db/aiul/research`; decide whether the model is worth joining in.
 
 ### Research run 12:22 — the prompt decoded (installed `4538b77`)
