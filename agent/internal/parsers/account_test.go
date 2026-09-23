@@ -29,3 +29,47 @@ func TestAccountFromHeaders(t *testing.T) {
 		}
 	}
 }
+
+// pbField2 encodes one length-delimited protobuf field, enough to build a
+// synthetic GetMe reply without committing a real person's profile.
+func pbField2(num int, s string) []byte {
+	return append([]byte{byte(num<<3 | 2), byte(len(s))}, s...)
+}
+
+func TestIdentityFromProfileEndpoints(t *testing.T) {
+	identities = map[string]identity{} // isolate from other tests
+
+	NoteIdentity(Exchange{Host: "chatgpt.com", Path: "/backend-api/me", Status: 200,
+		RespBody: []byte(`{"object":"user","email":"alex@example.com","name":"Alex John"}`)})
+
+	var getMe []byte
+	getMe = append(getMe, pbField2(1, "google-oauth2|user_x")...)
+	getMe = append(getMe, pbField2(3, "sam@example.com")...)
+	getMe = append(getMe, pbField2(4, "Sam")...)
+	getMe = append(getMe, pbField2(5, "Lee")...)
+	NoteIdentity(Exchange{Host: "api2.cursor.sh", Path: "/aiserver.v1.DashboardService/GetMe", Status: 200, RespBody: getMe})
+
+	if got := Account(Exchange{Host: "chatgpt.com"}); got != "Alex John" {
+		t.Errorf("chatgpt: got %q", got)
+	}
+	if got := Account(Exchange{Host: "api2.cursor.sh"}); got != "Sam Lee" {
+		t.Errorf("cursor: got %q", got)
+	}
+
+	// The same account in the token: the profile's name is used.
+	same := Exchange{Host: "chatgpt.com", ReqHead: bearer(`{"https://api.openai.com/profile":{"email":"alex@example.com"}}`)}
+	if got := Account(same); got != "Alex John" {
+		t.Errorf("same account: got %q", got)
+	}
+
+	// A different account in the token (Codex signed in as someone else): the
+	// token belongs to this request, so it wins.
+	other := Exchange{Host: "chatgpt.com", ReqHead: bearer(`{"https://api.openai.com/profile":{"email":"kim@example.com"}}`)}
+	if got := Account(other); got != "kim@example.com" {
+		t.Errorf("other account: got %q", got)
+	}
+
+	if got := Account(Exchange{Host: "claude.ai"}); got != "" {
+		t.Errorf("unknown host: got %q", got)
+	}
+}

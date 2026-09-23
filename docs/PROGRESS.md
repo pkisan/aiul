@@ -38,8 +38,15 @@ accept, or run `aiul login` and link it to another account.
 Not done / next:
 - Old suggestion/recap rows fixed by `php artisan aiul:reclassify-prompts`
   (ran locally 2026-09-23: 95 rows now utility). Safe to rerun.
-- R1.7 step 2: account names for Claude Code, claude.ai, Cursor, Copilot need
-  research captures of their profile endpoints.
+- R1.7 step 2 (research run 18:39, 498 dumps, copy deleted after reading):
+  DONE ChatGPT web `GET /backend-api/me` {name,email} and Cursor
+  `DashboardService/GetMe` (proto 3=email 4=first 5=last) -> remembered per
+  host, attached to later events (`parsers.NoteIdentity` / `parsers.Account`).
+  Claude Code + claude.ai: NO name on the wire — only account_uuid
+  (oauth/validate, event_logging); claude.ai org name is "<email>'s
+  Organization" for personal orgs only. Options for owner: read Claude Code's
+  ~/.claude.json oauthAccount via the root helper, or accept uuid/email.
+  Antigravity fetchUserInfo: no name. Copilot: no github traffic in the run.
 - Agent must be rebuilt + reinstalled for `aiul login` and `account`.
 - Research mode was found OFF on 2026-09-23 (directory absent), despite the
   Copilot note below saying ON. Owner re-enabling it for the account research.
