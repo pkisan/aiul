@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-23 (Cursor chat reaches the proxy after a settings change)
+Last updated: 2026-09-23 (Cursor parser written, awaiting live check)
 
 ## Session resume 2026-09-22 — read this first
 
@@ -29,7 +29,7 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 | Tool | Reason |
 | --- | --- |
 | Codex over WebSocket | `101` upgrade; frames unread. Fixture recorded at `agent/testdata/openai/codex-responses.ws.jsonl` |
-| Cursor | with the settings in "RESULT: Cursor settings" chat reaches us on HTTP/1.1: `RunSSE` and `/agent/v1/run` (WebSocket) — no parser yet |
+| Cursor | parser `ec9f278` (RunSSE) needs the settings in "RESULT: Cursor settings"; not yet seen live; model not captured |
 | Copilot | sends a TLS alert; never retested with the CA named explicitly |
 | Antigravity | trust OK 2026-09-23 after the leaf fix; `cloudcode` parser written, not yet seen live |
 | Gemini | parser exists, never driven live |
@@ -72,6 +72,28 @@ bodies are written as `base64:<bytes>` instead of being mangled to U+FFFD, and
 `proto` content types are no longer skipped. The WebSocket frames after `101`
 are still not read by anything. Awaiting: owner builds + installs `70dbd85`,
 turns research mode on (docs/TESTING.md), sends one Cursor prompt.
+
+### Cursor parser written — `ec9f278` (12:40)
+
+Second run (installed `cc629d2`) gave RunSSE a 10 KB body. RunSSE ALONE carries
+a whole row, so no pairing with BidiAppend is needed except for the model:
+
+- Connect stream frames: flag (bit 1 gzip, bit 2 JSON trailer), u32 length, proto.
+- `1.6.1.1` = prompt echoed back; `1.1.1` = answer text deltas; `1.4.1` =
+  thinking deltas (ignored); `1.14.1`/`.2` = input/output tokens.
+- `4.x` and gzipped `3.x` frames = conversation checkpoints (workspace, branch,
+  signatures) — ignored, and dropped from the fixture.
+
+`parsers.Cursor` in `internal/parsers/cursor.go`, stdlib-only protobuf reader,
+fixture `testdata/cursor/runsse.{request,response}.bin`, test `TestCursorRunSSE`.
+Also checked against the full uncut recording (not committed): same result.
+Model stays EMPTY — it lives only in BidiAppend (`1.9.1` of the hex-wrapped
+inner message). Kind is human whenever a prompt is echoed; agent tool-loop
+turns not yet seen.
+
+NEXT: owner installs `ec9f278`, sends one Cursor prompt, checks for a row with
+tool=cursor, prompt and answer. Then: turn research mode off and delete
+`/var/db/aiul/research`; decide whether the model is worth joining in.
 
 ### Research run 12:22 — the prompt decoded (installed `4538b77`)
 
