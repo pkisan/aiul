@@ -149,8 +149,9 @@ class UsageDashboardTest extends TestCase
         $interaction = $this->interaction();
 
         $this->actingAs($this->user(User::ROLE_MANAGER))
-            ->get("/usage/{$interaction->id}/raw")
-            ->assertForbidden();
+            ->get("/usage/{$interaction->id}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->missing('prompt')->where('canViewRaw', false));
 
         $this->assertSame(0, ConsentRecord::withoutGlobalScope('tenant')->count());
     }
@@ -160,8 +161,9 @@ class UsageDashboardTest extends TestCase
         $interaction = $this->interaction();
 
         $this->actingAs($this->user(User::ROLE_ADMIN, raw: false))
-            ->get("/usage/{$interaction->id}/raw")
-            ->assertForbidden();
+            ->get("/usage/{$interaction->id}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->missing('prompt'));
     }
 
     public function test_opening_prompt_text_is_written_to_the_audit_log(): void
@@ -171,7 +173,7 @@ class UsageDashboardTest extends TestCase
         $admin = $this->user(User::ROLE_ADMIN, raw: true);
 
         $response = $this->actingAs($admin)
-            ->get("/usage/{$interaction->id}/raw?reason=investigating+a+leak")
+            ->get("/usage/{$interaction->id}?reason=investigating+a+leak")
             ->assertOk();
 
         $this->assertSame('a prompt about pineapples', $response->viewData('page')['props']['prompt']);
@@ -193,7 +195,7 @@ class UsageDashboardTest extends TestCase
         $admin = $this->user(User::ROLE_ADMIN, raw: true);
 
         // A grant-holding admin opens with one click: no reason typed.
-        $this->actingAs($admin)->get("/usage/{$interaction->id}/raw")->assertOk();
+        $this->actingAs($admin)->get("/usage/{$interaction->id}")->assertOk();
 
         $record = ConsentRecord::withoutGlobalScope('tenant')->first();
         $this->assertNotNull($record, 'every raw view must be recorded');
@@ -205,7 +207,7 @@ class UsageDashboardTest extends TestCase
         $member = $this->user();
         $interaction = $this->interaction(['user_id' => $member->id], 'my own words');
 
-        $response = $this->actingAs($member)->get("/usage/{$interaction->id}/raw")->assertOk();
+        $response = $this->actingAs($member)->get("/usage/{$interaction->id}")->assertOk();
 
         $this->assertSame('my own words', $response->viewData('page')['props']['prompt']);
         $this->assertSame(1, ConsentRecord::withoutGlobalScope('tenant')->count());
@@ -221,7 +223,7 @@ class UsageDashboardTest extends TestCase
         // Not 403 but 404: the row is invisible to them, which is what the global
         // scope means.
         $this->actingAs($outsider)->get("/usage/{$interaction->id}")->assertNotFound();
-        $this->actingAs($outsider)->get("/usage/{$interaction->id}/raw")->assertNotFound();
+
     }
 
     public function test_my_data_shows_what_was_captured_and_who_looked(): void
@@ -231,7 +233,7 @@ class UsageDashboardTest extends TestCase
         $admin = $this->user(User::ROLE_ADMIN, raw: true);
 
         // Somebody reads their prompt.
-        $this->actingAs($admin)->get("/usage/{$interaction->id}/raw?reason=support+request")->assertOk();
+        $this->actingAs($admin)->get("/usage/{$interaction->id}?reason=support+request")->assertOk();
 
         $response = $this->actingAs($member)->get('/my-data')->assertOk();
         $props = $response->viewData('page')['props'];
@@ -325,7 +327,7 @@ class UsageDashboardTest extends TestCase
         ])->save();
 
         $response = $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
-            ->get("/usage/{$interaction->id}/raw?reason=checking")
+            ->get("/usage/{$interaction->id}?reason=checking")
             ->assertOk();
 
         $props = $response->viewData('page')['props'];
@@ -342,7 +344,7 @@ class UsageDashboardTest extends TestCase
         ])->save();
 
         $response = $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
-            ->get("/usage/{$interaction->id}/raw?reason=checking")
+            ->get("/usage/{$interaction->id}?reason=checking")
             ->assertOk();
 
         $props = $response->viewData('page')['props'];
@@ -484,7 +486,7 @@ class UsageDashboardTest extends TestCase
         $interaction = $this->interaction(['user_id' => $subject->id]);
         $admin = $this->user(User::ROLE_ADMIN, raw: true);
 
-        $this->actingAs($admin)->get("/usage/{$interaction->id}/raw?reason=checking")->assertOk();
+        $this->actingAs($admin)->get("/usage/{$interaction->id}?reason=checking")->assertOk();
 
         $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/audit')->assertOk();
         $views = $response->viewData('page')['props']['views'];
@@ -512,5 +514,24 @@ class UsageDashboardTest extends TestCase
 
         $this->assertSame('clear_goal', $weakest[0]['dimension']);
         $this->assertSame('No clear action.', $weakest[0]['common_reason']);
+    }
+
+    // Old links to the separate text page still land on the interaction.
+    public function test_the_old_raw_link_redirects_to_the_interaction(): void
+    {
+        $interaction = $this->interaction();
+
+        $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
+            ->get("/usage/{$interaction->id}/raw?reason=x")
+            ->assertRedirect("/usage/{$interaction->id}?reason=x");
+    }
+
+    public function test_the_interaction_page_shows_only_what_the_person_typed(): void
+    {
+        $member = $this->user();
+        $interaction = $this->interaction(['user_id' => $member->id], "<system-reminder>\nCLAUDE.md\n</system-reminder>\nHi");
+
+        $this->actingAs($member)->get("/usage/{$interaction->id}")
+            ->assertInertia(fn ($page) => $page->where('prompt', 'Hi'));
     }
 }

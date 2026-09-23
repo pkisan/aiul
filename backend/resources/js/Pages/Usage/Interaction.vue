@@ -4,19 +4,26 @@ import Panel from '@/Components/Usage/Panel.vue';
 import Score from '@/Components/Usage/Score.vue';
 import Tag from '@/Components/Usage/Tag.vue';
 import { count, when } from '@/Components/Usage/format';
-import { Head, Link, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import Message from '@/Components/Usage/Message.vue';
+import { Head, Link } from '@inertiajs/vue3';
 
-const props = defineProps({ interaction: Object, score: Object, canViewRaw: Boolean });
-
-// Someone else's words require a reason; the server bounces a reason-less
-// visit back with an error, which used to look like a dead button.
-const reason = ref('');
-const errors = computed(() => usePage().props.errors);
-const rawUrl = computed(() => {
-    const base = route('usage.raw', props.interaction.id);
-    return reason.value.trim() ? `${base}?reason=${encodeURIComponent(reason.value.trim())}` : base;
+const props = defineProps({
+    interaction: Object,
+    score: Object,
+    canViewRaw: Boolean,
+    // Present only when canViewRaw: the view was audit-logged before they were sent.
+    prompt: String,
+    answer: String,
+    promptState: String,
+    answerState: String,
 });
+
+// Who caused the request decides whose words the prompt is.
+const kind = props.interaction.kind ?? (props.interaction.automated ? 'agent' : 'human');
+const promptWho = { human: 'you', agent: 'agent', utility: 'tool' }[kind] ?? 'you';
+const promptLabel = { human: 'Prompt typed by the person', agent: 'Agent step (tool result fed back)', utility: "Tool's own call" }[kind];
+const missing = (state, what) =>
+    state === 'purged' ? `This ${what} was purged by the retention policy.` : `No ${what} text was captured.`;
 </script>
 
 <template>
@@ -27,13 +34,31 @@ const rawUrl = computed(() => {
             <div class="flex items-center gap-3">
                 <Link :href="route('usage.index')" class="text-sm text-gray-500 hover:text-gray-900">← AI usage</Link>
                 <h2 class="text-xl font-semibold leading-tight text-gray-800">Interaction</h2>
-                <Tag :label="interaction.automated ? 'automated follow-up' : 'human prompt'"
-                     :tone="interaction.automated ? 'gray' : 'green'" />
+                <Tag :label="promptLabel" :tone="kind === 'human' ? 'green' : 'gray'" />
+                <Link
+                    v-if="interaction.ai_session_id"
+                    :href="route('usage.session', interaction.ai_session_id)"
+                    class="ml-auto text-sm text-gray-500 hover:text-gray-900"
+                >Whole conversation →</Link>
             </div>
         </template>
 
         <div class="bg-gray-50 py-8">
             <div class="mx-auto max-w-4xl space-y-4 px-4 sm:px-6 lg:px-8">
+                <Panel title="Conversation" subtitle="Opening this page is recorded in the audit log">
+                    <div v-if="canViewRaw" class="space-y-3 bg-gray-50/60 px-5 py-5">
+                        <div class="text-right text-[11px] font-medium uppercase tracking-wide text-gray-400">{{ promptLabel }}</div>
+                        <Message :who="promptWho" :text="promptState === 'present' ? prompt : ''" :placeholder="missing(promptState, 'prompt')" />
+                        <div class="text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                            Answer · {{ interaction.model ?? 'unknown model' }}
+                        </div>
+                        <Message who="assistant" :text="answerState === 'present' ? answer : ''" :placeholder="missing(answerState, 'answer')" />
+                    </div>
+                    <p v-else class="px-5 py-8 text-center text-sm text-gray-500">
+                        You do not have permission to read the prompt text.
+                    </p>
+                </Panel>
+
                 <Panel title="What was captured">
                     <dl class="grid grid-cols-2 gap-x-6 gap-y-3 px-5 py-4 text-sm sm:grid-cols-4">
                         <div>
@@ -92,30 +117,6 @@ const rawUrl = computed(() => {
                     </ul>
                 </Panel>
 
-                <Panel title="Prompt text" subtitle="Every read is written to the audit log">
-                    <div v-if="canViewRaw" class="space-y-3 px-5 py-4">
-                        <div>
-                            <label class="mb-1 block text-sm text-gray-600" for="reason">
-                                Reason for opening (optional)
-                            </label>
-                            <input
-                                id="reason"
-                                v-model="reason"
-                                type="text"
-                                placeholder="e.g. support investigation"
-                                class="w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-gray-400 focus:ring-gray-400"
-                            />
-                            <p v-if="errors.reason" class="mt-1 text-sm text-rose-600">{{ errors.reason }}</p>
-                        </div>
-                        <Link
-                            :href="rawUrl"
-                            class="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
-                        >Open the prompt text</Link>
-                    </div>
-                    <p v-else class="px-5 py-8 text-center text-sm text-gray-500">
-                        You do not have permission to read the prompt text.
-                    </p>
-                </Panel>
             </div>
         </div>
     </AuthenticatedLayout>

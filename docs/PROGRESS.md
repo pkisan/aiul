@@ -17,7 +17,7 @@ Steps (commit each):
       wrappers (<system-reminder>, <local-command-*>, <command-*>,
       <EPHEMERAL_MESSAGE>, <environment_context>...) at ingestion AND on display
       (old rows). Test.
-- [ ] R1.2 Interaction page shows prompt + answer inline (item 6); /raw redirects.
+- [x] R1.2 Interaction page shows prompt + answer inline (item 6); /raw redirects.
       Every open still writes the raw_view audit record.
 - [ ] R1.3 Session page as a chat (items 5, 7): your message right, final answer
       left, agent steps collapsed between, tool's own calls hidden.

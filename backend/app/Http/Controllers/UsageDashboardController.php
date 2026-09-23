@@ -6,7 +6,9 @@ use App\Models\AiInteraction;
 use App\Models\AiSession;
 use App\Models\ConsentRecord;
 use App\Services\BodyStore;
+use App\Services\PromptText;
 use App\Services\UsageReport;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -109,67 +111,69 @@ class UsageDashboardController extends Controller
         ]);
     }
 
-    /** One interaction: metadata and score for anyone allowed to see it. */
+    /**
+     * One interaction: metadata and score for anyone allowed to see it, and the
+     * prompt and answer text on the same page for anyone allowed to read it.
+     *
+     * Reading the text is still the privileged part: the policy is checked and the
+     * view is written to the audit log BEFORE the text is fetched. If the log
+     * write fails, nobody reads anything.
+     */
     public function show(Request $request, AiInteraction $interaction): Response
     {
         Gate::authorize('view', $interaction);
 
-        return Inertia::render('Usage/Interaction', [
+        $props = [
             'interaction' => $interaction->only([
-                'id', 'host', 'path', 'tool', 'model', 'task_id', 'branch', 'repo',
+                'id', 'host', 'path', 'tool', 'model', 'kind', 'task_id', 'branch', 'repo',
                 'prompt_chars', 'answer_chars', 'prompt_tokens', 'response_tokens',
-                'duration_ms', 'streamed', 'automated', 'redacted', 'occurred_at',
+                'duration_ms', 'streamed', 'automated', 'redacted', 'occurred_at', 'ai_session_id',
             ]),
             'score' => $interaction->score?->only(['score', 'rubric_version', 'dimensions', 'reasons']),
             'canViewRaw' => Gate::allows('viewRaw', $interaction),
-        ]);
+        ];
+
+        if ($props['canViewRaw']) {
+            ConsentRecord::create([
+                'tenant_id' => $interaction->tenant_id,
+                'user_id' => $interaction->user_id ?? $request->user()->id,
+                'kind' => ConsentRecord::KIND_RAW_VIEW,
+                'actor_user_id' => $request->user()->id,
+                'ai_interaction_id' => $interaction->id,
+                'reason' => $request->string('reason')->trim()->toString() ?: 'no reason given',
+                'ip' => $request->ip(),
+            ]);
+
+            // Cleaned on the way out too: rows stored before PromptText existed
+            // still carry the tool's wrappers.
+            $prompt = PromptText::clean($this->bodies->get($interaction->prompt_object));
+            $answer = $this->bodies->get($interaction->answer_object);
+
+            $props += [
+                'prompt' => $prompt,
+                'answer' => $answer,
+                // A missing body has two honest meanings: retention deleted it
+                // (chars were recorded, the key is gone) or nothing was captured.
+                'promptState' => $this->bodyState($prompt, $interaction->prompt_chars),
+                'answerState' => $this->bodyState($answer, $interaction->answer_chars),
+            ];
+        }
+
+        return Inertia::render('Usage/Interaction', $props);
     }
 
-    /**
-     * The raw prompt and answer text.
-     *
-     * Two things happen here that do not happen anywhere else: the policy is
-     * checked, and the view is written to the audit log BEFORE the text is
-     * returned. Logging first matters — if the log write fails, nobody reads
-     * anything.
-     */
-    public function raw(Request $request, AiInteraction $interaction)
+    /** The old separate text page: the text now lives on the interaction page. */
+    public function raw(Request $request, AiInteraction $interaction): RedirectResponse
     {
-        Gate::authorize('viewRaw', $interaction);
-
-        $reason = $request->string('reason')->trim()->toString();
-
-        ConsentRecord::create([
-            'tenant_id' => $interaction->tenant_id,
-            'user_id' => $interaction->user_id ?? $request->user()->id,
-            'kind' => ConsentRecord::KIND_RAW_VIEW,
-            'actor_user_id' => $request->user()->id,
-            'ai_interaction_id' => $interaction->id,
-            'reason' => $reason ?: 'no reason given',
-            'ip' => $request->ip(),
-        ]);
-
-        $prompt = $this->bodies->get($interaction->prompt_object);
-        $answer = $this->bodies->get($interaction->answer_object);
-
-        return Inertia::render('Usage/Raw', [
-            'interaction' => $interaction->only(['id', 'tool', 'model', 'task_id', 'occurred_at', 'redacted']),
-            'prompt' => $prompt,
-            'answer' => $answer,
-            // A missing body has two honest meanings: retention deleted it (chars
-            // were recorded, the key is gone) or nothing was captured (the parser
-            // found no text, so BodyStore never stored one). The page must not
-            // call the second "purged".
-            'promptState' => $this->bodyState($prompt, $interaction->prompt_chars),
-            'answerState' => $this->bodyState($answer, $interaction->answer_chars),
-            // Shown on the page: the person reading should know it was recorded.
-            'auditNotice' => 'This view has been recorded in the audit log.',
-        ]);
+        return redirect()->route('usage.show', array_filter([
+            'interaction' => $interaction->id,
+            'reason' => $request->string('reason')->trim()->toString(),
+        ]));
     }
 
     private function bodyState(?string $text, ?int $chars): string
     {
-        if ($text !== null) {
+        if ($text !== null && $text !== '') {
             return 'present';
         }
 
