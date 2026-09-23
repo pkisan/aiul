@@ -117,11 +117,8 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 	}
 	defer upstreamTLS.Close()
 
-	state := upstreamTLS.ConnectionState()
-	sans := sanNames(state)
-
 	// ---- 2. downstream, with a certificate we mint ------------------------------
-	cert, err := p.certs.Get(host, sans)
+	cert, err := p.certs.Get(host)
 	if err != nil {
 		p.log.Error("minting failed", "host", host, "err", err)
 		return
@@ -231,24 +228,6 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 			return
 		}
 	}
-}
-
-// sanNames returns the names on the real server's certificate, so our minted copy
-// claims the same ones. If the real certificate somehow has none, fall back to the
-// server name we asked for.
-func sanNames(state tls.ConnectionState) []string {
-	if len(state.PeerCertificates) == 0 {
-		return nil
-	}
-	leaf := state.PeerCertificates[0]
-	names := append([]string{}, leaf.DNSNames...)
-	for _, ip := range leaf.IPAddresses {
-		names = append(names, ip.String())
-	}
-	if len(names) == 0 && state.ServerName != "" {
-		names = []string{state.ServerName}
-	}
-	return names
 }
 
 // rewindConn lets the TLS server read bytes the client already sent before we

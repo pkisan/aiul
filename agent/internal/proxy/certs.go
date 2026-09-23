@@ -50,10 +50,15 @@ func NewCertCache(issuer Issuer) *CertCache {
 
 // Get returns a certificate valid for host, minting one if needed.
 //
-// sanNames are the names copied from the real provider's certificate, so our copy
-// claims exactly what the genuine server claims. If it is empty we fall back to
-// the hostname alone.
-func (c *CertCache) Get(host string, sanNames []string) (*tls.Certificate, error) {
+// The certificate names host and nothing else. It used to copy every name on the
+// real provider's certificate, which broke every strict client: Google's cert for
+// cloudcode-pa also names *.googleapis.com and *.docs.google.com, Cursor's names
+// prod.authentication.cursor.sh, and none of those are inside the device
+// intermediate's name constraints. RFC 5280 says one name outside the constraints
+// invalidates the whole certificate, so macOS, Go, Cursor and Antigravity all
+// refused it while Chrome on chatgpt.com (whose real names all fit) did not.
+// It is also rule 3: we claim only the exact host on the allow-list.
+func (c *CertCache) Get(host string) (*tls.Certificate, error) {
 	key := normalizeHost(host)
 	if key == "" {
 		return nil, fmt.Errorf("cert cache: invalid host %q", host)
@@ -71,12 +76,7 @@ func (c *CertCache) Get(host string, sanNames []string) (*tls.Certificate, error
 		delete(c.entries, key)
 	}
 
-	hosts := sanNames
-	if len(hosts) == 0 {
-		hosts = []string{key}
-	}
-
-	cert, err := c.issuer.MintLeaf(ca.LeafRequest{Hosts: hosts})
+	cert, err := c.issuer.MintLeaf(ca.LeafRequest{Hosts: []string{key}})
 	if err != nil {
 		return nil, fmt.Errorf("cert cache: %w", err)
 	}

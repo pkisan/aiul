@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-22 (Cursor closed, Antigravity hosts allow-listed)
+Last updated: 2026-09-23 (Cursor and Antigravity rejections traced to OUR leaf, not pinning)
 
 ## Session resume 2026-09-22 — read this first
 
@@ -46,6 +46,40 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 
 Everything is a DEMO, not the product — see the framing note below before
 proposing signing, MDM or a CA chain as blockers.
+
+## Cursor and Antigravity were never pinning: our leaf was invalid — FIX BUILT 2026-09-23, awaiting install
+
+The owner asked to retry both. Before launching anything, stock Go on this Mac
+was pointed through the proxy at `cloudcode-pa.googleapis.com`:
+
+```
+x509: "upload.video.google.com" certificate is not standards compliant
+```
+
+Stock Go trusts the keychain, so the fault was ours. The minted leaf copied
+every SAN from the real provider certificate — for Google that includes
+`*.googleapis.com`, `*.docs.google.com`, `*.youtube-3rd-party.com`; for Cursor
+`prod.authentication.cursor.sh`. The device intermediate is name-constrained to
+the 28 allow-listed hosts, and under RFC 5280 one SAN outside the constraints
+invalidates the whole leaf. Every strict verifier refused it: Cursor's Chromium
+(`unknown certificate`), Antigravity's Go `language_server_macos_arm`
+(`bad certificate`), stock Go. Chrome on chatgpt.com worked only because that
+site's real SANs all fall inside the constraints. The Copilot "pin" is probably
+the same fault — retest it.
+
+Fix: `CertCache.Get(host)` mints for the one requested host only; `sanNames()`
+deleted. Also tighter under rule 3. Regression test
+`TestLeafVerifiesUnderNameConstrainedIntermediate` verifies a leaf through a
+constrained intermediate the way a client does.
+
+The 2026-09-22 "Cursor pins — stop retesting" verdict below is WITHDRAWN.
+
+Next: build and install, `sudo launchctl kickstart -k system/com.aiul.agent` is
+done by the script, then `./scripts/tool-experiment.sh cursor`, then
+`./scripts/tool-experiment.sh antigravity`. Note Cursor also calls
+`api2direct.cursor.sh` offering only `h2`, which we refuse
+(`client requested unsupported application protocols ([h2])`) — the first real
+evidence a tool may need HTTP/2.
 
 ## WITHDRAWN: the HTTP/2 plan — the premise was wrong (2026-09-21)
 

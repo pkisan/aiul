@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"crypto/x509"
 	"fmt"
 	"sync"
 	"testing"
@@ -23,11 +24,11 @@ func testCache(t *testing.T) *CertCache {
 func TestCertCacheReusesCertificates(t *testing.T) {
 	c := testCache(t)
 
-	first, err := c.Get("api.openai.com", []string{"api.openai.com", "openai.com"})
+	first, err := c.Get("api.openai.com")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := c.Get("api.openai.com:443", nil) // same host, port stripped
+	second, err := c.Get("api.openai.com:443") // same host, port stripped
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,16 +39,45 @@ func TestCertCacheReusesCertificates(t *testing.T) {
 		t.Errorf("cache holds %d entries, want 1", c.Len())
 	}
 
-	// The SAN names from the real certificate must be carried over.
-	if len(first.Leaf.DNSNames) != 2 {
-		t.Errorf("DNS names = %v, want both SANs copied", first.Leaf.DNSNames)
+	// Only the host itself: never the provider's other names (rule 3).
+	if got := first.Leaf.DNSNames; len(got) != 1 || got[0] != "api.openai.com" {
+		t.Errorf("DNS names = %v, want exactly [api.openai.com]", got)
+	}
+}
+
+// The bug this guards: leaves copied the provider's SANs, and any name outside
+// the device intermediate's constraints made strict clients (macOS, Go, Cursor,
+// Antigravity) reject the whole chain. A leaf minted under a constrained
+// intermediate must verify, the way a real client checks it.
+func TestLeafVerifiesUnderNameConstrainedIntermediate(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, err := ca.Init(false)
+	if err != nil {
+		t.Fatalf("ca.Init: %v", err)
+	}
+	inter, _, err := ca.ProvisionDevice(root, "test-device", []string{"api2.cursor.sh"})
+	if err != nil {
+		t.Fatalf("ProvisionDevice: %v", err)
+	}
+	cert, err := NewCertCache(inter).Get("api2.cursor.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	roots, inters := x509.NewCertPool(), x509.NewCertPool()
+	roots.AddCert(root.Cert)
+	inters.AddCert(inter.Cert)
+	if _, err := cert.Leaf.Verify(x509.VerifyOptions{
+		DNSName: "api2.cursor.sh", Roots: roots, Intermediates: inters,
+	}); err != nil {
+		t.Fatalf("leaf does not verify under the constrained intermediate: %v", err)
 	}
 }
 
 func TestCertCacheSeparatesHosts(t *testing.T) {
 	c := testCache(t)
-	a, _ := c.Get("api.openai.com", nil)
-	b, _ := c.Get("api.anthropic.com", nil)
+	a, _ := c.Get("api.openai.com")
+	b, _ := c.Get("api.anthropic.com")
 	if a == b {
 		t.Fatal("different hosts must get different certificates")
 	}
@@ -61,7 +91,7 @@ func TestCertCacheSeparatesHosts(t *testing.T) {
 
 func TestCertCacheRejectsBadHost(t *testing.T) {
 	c := testCache(t)
-	if _, err := c.Get("", nil); err == nil {
+	if _, err := c.Get(""); err == nil {
 		t.Error("an empty host must be rejected")
 	}
 }
@@ -81,7 +111,7 @@ func TestCertCacheReplacesExpiringCertificates(t *testing.T) {
 	}
 	c.entries["api.openai.com"] = &cacheEntry{cert: expiring, lastUsed: time.Now()}
 
-	fresh, err := c.Get("api.openai.com", nil)
+	fresh, err := c.Get("api.openai.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +128,7 @@ func TestCertCacheIsBounded(t *testing.T) {
 	c.max = 5
 
 	for i := 0; i < 20; i++ {
-		if _, err := c.Get(fmt.Sprintf("host%d.example.com", i), nil); err != nil {
+		if _, err := c.Get(fmt.Sprintf("host%d.example.com", i)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -115,7 +145,7 @@ func TestCertCacheIsConcurrencySafe(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			if _, err := c.Get(fmt.Sprintf("host%d.example.com", i%4), nil); err != nil {
+			if _, err := c.Get(fmt.Sprintf("host%d.example.com", i%4)); err != nil {
 				t.Error(err)
 			}
 		}(i)
