@@ -8,6 +8,7 @@ use App\Models\AiInteraction;
 use App\Models\AiSession;
 use App\Models\Device;
 use App\Services\BodyStore;
+use App\Services\PromptText;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -104,6 +105,9 @@ class EventIngestionController extends Controller
         // stored as if it were UTC and every screen shows the device's offset
         // added on top of it.
         $occurredAt = Carbon::parse($event['time'])->utc();
+
+        // Only what the person typed: the tool's own wrappers never reach storage.
+        $event['prompt'] = PromptText::clean($event['prompt'] ?? null);
         $session = $this->sessionFor($device, $event, $occurredAt);
 
         $interaction = new AiInteraction([

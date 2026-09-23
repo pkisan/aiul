@@ -13,7 +13,7 @@ that user). AI-tool account names in two steps: now what is already on the wire
 claude.ai, Cursor, Copilot.
 
 Steps (commit each):
-- [ ] R1.1 Prompt cleaning (item 8): backend `PromptText::clean()` strips harness
+- [x] R1.1 Prompt cleaning (item 8): backend `PromptText::clean()` strips harness
       wrappers (<system-reminder>, <local-command-*>, <command-*>,
       <EPHEMERAL_MESSAGE>, <environment_context>...) at ingestion AND on display
       (old rows). Test.
