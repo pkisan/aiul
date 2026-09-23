@@ -73,6 +73,31 @@ bodies are written as `base64:<bytes>` instead of being mangled to U+FFFD, and
 are still not read by anything. Awaiting: owner builds + installs `70dbd85`,
 turns research mode on (docs/TESTING.md), sends one Cursor prompt.
 
+### Research run 12:22 — the prompt decoded (installed `4538b77`)
+
+Cursor's chat is a pair on `api2.cursor.sh`, both Connect RPC over HTTP/1.1:
+
+- **Prompt:** `POST /aiserver.v1.BidiService/BidiAppend` (`application/proto`,
+  gzip). Top-level field 1 is a HEX STRING of another protobuf. Inside it
+  (paths are field numbers): `1.2.1.1.1` = prompt text ("Hello what's up"),
+  `1.9.1` = model (`grok-4.6`), `1.1.21.1`/`.2` = workspace dir and branch,
+  `1.2.17.9.11.4` = git remote, `1.25` = conversation id. Later BidiAppends
+  (~438 bytes) are small follow-ups, not yet decoded.
+- **Answer:** `POST /agent.v1.AgentService/RunSSE`, request = the same
+  conversation id, response `text/event-stream` but binary Connect frames, no
+  `data:` lines. Streamed 4 s. The dump had NO body: `exchange()` dropped a
+  non-SSE body under an SSE content type. Fixed in `cc629d2`.
+- `GET /agent/v1/run` → 101 WebSocket comes ~2 s AFTER the answer; probably not
+  the chat. Ignore unless the RunSSE answer turns out empty.
+
+A throwaway decoder lives in the session scratchpad only (`pb.py`: walks
+protobuf without a schema). The Go parser needs the same, small, in stdlib.
+
+NEXT: owner installs `cc629d2`, sends one more Cursor prompt, copies dumps to
+the scratchpad; decode the RunSSE answer; anonymise both into
+`agent/testdata/cursor/`; write `parsers.Cursor` (pair BidiAppend + RunSSE by
+conversation id — the first parser that needs two requests for one row).
+
 HTTP/2 in the proxy is therefore NOT needed for Cursor. NEXT: read the research
 dump for `RunSSE` (and any `/agent/v1/run`) under `/var/db/aiul/research`
 (needs sudo), decide which carries the prompt and answer, anonymise a fixture,
