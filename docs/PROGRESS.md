@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-23 (Cursor and Antigravity rejections traced to OUR leaf, not pinning)
+Last updated: 2026-09-23 (Cursor chat reaches the proxy after a settings change)
 
 ## Session resume 2026-09-22 — read this first
 
@@ -29,7 +29,7 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 | Tool | Reason |
 | --- | --- |
 | Codex over WebSocket | `101` upgrade; frames unread. Fixture recorded at `agent/testdata/openai/codex-responses.ws.jsonl` |
-| Cursor | does NOT pin (2026-09-23: our leaf was invalid). Chat rides h2-only `api2direct.cursor.sh`, tunnelled sealed until the proxy speaks HTTP/2 |
+| Cursor | with the settings in "RESULT: Cursor settings" chat reaches us on HTTP/1.1: `RunSSE` and `/agent/v1/run` (WebSocket) — no parser yet |
 | Copilot | sends a TLS alert; never retested with the CA named explicitly |
 | Antigravity | trust OK 2026-09-23 after the leaf fix; `cloudcode` parser written, not yet seen live |
 | Gemini | parser exists, never driven live |
@@ -46,6 +46,31 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 
 Everything is a DEMO, not the product — see the framing note below before
 proposing signing, MDM or a CA chain as blockers.
+
+## RESULT: Cursor settings bring the chat to the proxy — 2026-09-23 12:08
+
+The experiment below worked. The owner added to Cursor's user `settings.json`
+(backup at `settings.json.aiul-bak` in the same folder; restore it and restart
+Cursor to undo — the kill switch does NOT cover this file):
+
+```
+"cursor.general.disableHttp2": true,
+"http.proxy": "http://127.0.0.1:8899",
+"http.proxySupport": "override"
+```
+
+After a restart the extension hosts (`Cursor Helper (Plugin)`) go through our
+proxy, offer no ALPN (HTTP/1.1), and decrypt on `api2.cursor.sh`. One prompt
+produced two chat candidates, both "no parser":
+
+- `POST /agent.v1.AgentService/RunSSE` → 200, once (12:07:10)
+- `GET /agent/v1/run` → 101 WebSocket upgrade, 40 times (from 12:07:46)
+
+HTTP/2 in the proxy is therefore NOT needed for Cursor. NEXT: read the research
+dump for `RunSSE` (and any `/agent/v1/run`) under `/var/db/aiul/research`
+(needs sudo), decide which carries the prompt and answer, anonymise a fixture,
+write the parser. If the chat is the WebSocket, it joins Codex-over-WebSocket
+as one shared piece of work: reading frames after the `101`.
 
 ## FINDING: Cursor's chat bypasses the proxy entirely — 2026-09-23 11:45
 
