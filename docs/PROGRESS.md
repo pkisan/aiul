@@ -4,6 +4,18 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-23 (Windows W1 passed on the PC)
 
+## Copilot web parser — 2026-09-23 17:10
+
+Chrome's old "rejections" of `api.individual.githubcopilot.com` (09-21, 09-22)
+predate the leaf fix; since then Chrome and VS Code ("Code Helper") both
+complete handshakes. Research run 17:04 (research mode ON again — turn off when
+Copilot work is done): github.com/copilot posts to
+`/github/chat/threads/<id>/messages`, JSON request `{"content","model":"auto"}`,
+SSE response `routedModel` / `content` / `complete` (usage). `parsers.CopilotWeb`
++ `testdata/copilot/web-turn.*` + `TestCopilotWebTurn`. OPTIONS preflight is
+Skip. NEXT: owner installs, one live prompt; then VS Code Copilot Chat (seen so
+far: /models, /agents, /github/chat/models decrypted — no chat call yet).
+
 ## PLAN: Windows port — started 2026-09-23
 
 Owner decisions (2026-09-23): test machine is a **Windows x64 PC**;
@@ -88,7 +100,7 @@ chatgpt.com on Windows (W1, spool only)
 | --- | --- |
 | Codex over WebSocket | `101` upgrade; frames unread. Fixture recorded at `agent/testdata/openai/codex-responses.ws.jsonl` |
 | Cursor | captured live 2026-09-23 (RunSSE) with the settings in "RESULT: Cursor settings"; branch confirmed; model joined from BidiAppend (`d577eae`, not yet seen live) |
-| Copilot | sends a TLS alert; never retested with the CA named explicitly |
+| Copilot | web: parser written (`CopilotWeb`), awaiting live row. VS Code: handshakes succeed, chat call not yet seen |
 | Gemini | parser exists, never driven live |
 
 ### NEXT STEP
