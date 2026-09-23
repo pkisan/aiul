@@ -129,4 +129,5 @@ if ($skipped.Count) {
     $skipped | ForEach-Object { Write-Host "   - $_" }
     exit 1
 }
+if ($DryRun) { Write-Host 'Dry run: nothing was changed. Run again without -DryRun to do the above.'; exit 0 }
 Write-Host 'Done. Nothing of the AI Usage Logger is left active on this PC.'

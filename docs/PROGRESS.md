@@ -29,6 +29,12 @@ ErrUnsupported. Milestones, each stops for the owner's confirmation (rule 13):
   and darwin. Backend must listen on the LAN (`php artisan serve --host 0.0.0.0
   --port 8088`); MacBook LAN IP was 162.16.1.190. Token:
   `php artisan aiul:provision-device <pc-name> --tenant=dev --platform=windows`.
+  RUN 16:01 on DESKTOP-Q12UTEE: `ca init`, device cert, `proxy listening`,
+  forwarding on. `killswitch.ps1 -DryRun` parsed and ran clean (found the
+  hand-started aiul.exe, nothing else). No `claude` on the PC, so the owner
+  chose ChatGPT web instead: needs our root in CurrentUser\Root (certutil
+  -user -addstore) — the FIRST Windows system change, asked for explicitly —
+  and Edge with its own profile and `--proxy-server`.
 - **W2 — attribution.** GetExtendedTcpTable (x/sys/windows) maps a port to a
   PID and executable. Working directory of another process is hard on Windows
   (PEB read); fall back to the workspace a parser reports (Cursor already does).
