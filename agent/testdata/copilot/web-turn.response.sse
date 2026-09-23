@@ -1,0 +1,32 @@
+data: {"type":"routedModel","model":"mai-code-1.1-flash"}
+
+data: {"type":"content","body":"Hi"}
+
+data: {"type":"content","body":"!"}
+
+data: {"type":"content","body":" How"}
+
+data: {"type":"content","body":" can"}
+
+data: {"type":"content","body":" I"}
+
+data: {"type":"content","body":" help"}
+
+data: {"type":"content","body":" with"}
+
+data: {"type":"content","body":" your"}
+
+data: {"type":"content","body":" code"}
+
+data: {"type":"content","body":" or"}
+
+data: {"type":"content","body":" repo"}
+
+data: {"type":"content","body":" task"}
+
+data: {"type":"content","body":" today"}
+
+data: {"type":"content","body":"?"}
+
+data: {"type":"complete","id":"00000000-0000-4000-8000-000000000000","parentMessageID":"00000000-0000-4000-8000-000000000000","model":"mai-code-1.1-flash","turnId":"","createdAt":"2026-09-23T11:34:19.64896551Z","references":[],"role":"assistant","intent":"conversation","copilotAnnotations":{"CodeVulnerability":[],"PublicCodeReference":[]},"usage":{"inputTokens":10148,"outputTokens":18}}
+

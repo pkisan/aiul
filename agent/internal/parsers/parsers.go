@@ -122,6 +122,7 @@ func All() []Parser {
 		ChatGPTWeb{},
 		ClaudeWeb{},
 		Cursor{},
+		CopilotWeb{},
 	}
 }
 

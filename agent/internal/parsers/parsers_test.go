@@ -868,3 +868,43 @@ func TestCursorRunSSE(t *testing.T) {
 		t.Errorf("truncated stream: err=%v prompt=%q", err, part.Prompt)
 	}
 }
+
+// github.com/copilot, recorded 2026-09-23: our own SSE event types, and a model
+// of "auto" that the stream resolves.
+func TestCopilotWebTurn(t *testing.T) {
+	c := CopilotWeb{}
+	path := "/github/chat/threads/00000000-0000-4000-8000-000000000000/messages"
+	if !c.Handles("api.individual.githubcopilot.com", path) ||
+		c.Handles("api.individual.githubcopilot.com", "/github/chat/threads") ||
+		c.Handles("api.individual.githubcopilot.com", "/github/chat/threads/x/name") ||
+		c.Handles("githubcopilot.com.evil.net", path) {
+		t.Error("Handles matches the wrong exchanges")
+	}
+	if got := For("api.individual.githubcopilot.com", path); got == nil || got.Name() != "copilot-web" {
+		t.Errorf("For() = %v, want copilot-web", got)
+	}
+
+	res, err := c.Parse(Exchange{
+		Method:  "POST",
+		Path:    path,
+		ReqBody: fixture(t, "copilot/web-turn.request.json"),
+		SSE:     sseData(t, "copilot/web-turn.response.sse"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Prompt != "Hi there" || res.Answer != "Hi! How can I help with your code or repo task today?" {
+		t.Errorf("prompt=%q answer=%q", res.Prompt, res.Answer)
+	}
+	if res.Model != "mai-code-1.1-flash" || res.Tool != "copilot-web" || res.Kind != KindHuman || !res.Streamed {
+		t.Errorf("model=%q tool=%q kind=%q streamed=%v", res.Model, res.Tool, res.Kind, res.Streamed)
+	}
+	if res.PromptTokens != 10148 || res.ResponseTokens != 18 {
+		t.Errorf("tokens = %d/%d", res.PromptTokens, res.ResponseTokens)
+	}
+
+	pre, _ := c.Parse(Exchange{Method: "OPTIONS", Path: path})
+	if !pre.Skip {
+		t.Error("the CORS preflight must not become a row")
+	}
+}
