@@ -49,6 +49,9 @@ const showingNavigationDropdown = ref(false);
                                 >
                                     AI usage
                                 </NavLink>
+                                <NavLink :href="route('pair.show')" :active="route().current('pair.*')">
+                                    Devices
+                                </NavLink>
                             </div>
                         </div>
 
@@ -165,6 +168,9 @@ const showingNavigationDropdown = ref(false);
                             :active="route().current('usage.*')"
                         >
                             AI usage
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('pair.show')" :active="route().current('pair.*')">
+                            Devices
                         </ResponsiveNavLink>
                     </div>
 

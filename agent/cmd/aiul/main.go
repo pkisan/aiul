@@ -40,6 +40,8 @@ func main() {
 		os.Exit(cmdDoctor(os.Args[2:]))
 	case "parsers":
 		os.Exit(cmdParsers(os.Args[2:]))
+	case "login":
+		os.Exit(cmdLogin(os.Args[2:]))
 	default:
 		fmt.Fprintf(os.Stderr, "aiul: unknown command %q\n\n", os.Args[1])
 		usage()
@@ -58,6 +60,8 @@ Usage:
   aiul proxy      run the TLS-inspecting proxy on 127.0.0.1:8899
   aiul run        run the proxy and the agent loop together (used by launchd)
   aiul helper     the small root-only half: system proxy and process lookup
+
+  aiul login      link this device to your account (prints a code to enter)
 
   aiul install    configure this Mac (DRY RUN unless you pass --apply)
   aiul uninstall  remove every change aiul made

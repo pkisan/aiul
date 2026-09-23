@@ -14,13 +14,14 @@ class Device extends Model
 
     protected $fillable = ['tenant_id', 'user_id', 'hostname', 'platform', 'token_hash', 'revoked'];
 
-    protected $hidden = ['token_hash'];
+    protected $hidden = ['token_hash', 'pair_code'];
 
     protected function casts(): array
     {
         return [
             'revoked' => 'boolean',
             'last_seen_at' => 'datetime',
+            'pair_code_expires_at' => 'datetime',
         ];
     }
 

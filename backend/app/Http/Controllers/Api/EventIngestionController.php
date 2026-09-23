@@ -37,6 +37,17 @@ class EventIngestionController extends Controller
             'events' => ['required', 'array', 'max:200'],
         ]);
 
+        // No capture without consent. A device nobody has claimed with `aiul login`,
+        // or whose person has not accepted the current notice, has its events
+        // confirmed — so the agent deletes them — and thrown away unread.
+        if (! $device->user?->hasConsented()) {
+            return response()->json([
+                'accepted' => collect($data['events'])->pluck('id')->filter()->values(),
+                'rejected' => [],
+                'discarded' => 'device not linked to a person who accepted the notice; run aiul login',
+            ]);
+        }
+
         $accepted = [];
         $rejected = [];
 

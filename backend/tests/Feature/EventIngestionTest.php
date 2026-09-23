@@ -28,18 +28,73 @@ class EventIngestionTest extends TestCase
     }
 
     /** Registers a tenant and device, returning [device, plain token]. */
-    private function newDevice(string $slug = 'acme'): array
+    private function newDevice(string $slug = 'acme', bool $linked = true): array
     {
         $tenant = Tenant::create(['name' => ucfirst($slug), 'slug' => $slug]);
         [$plain, $hash] = Device::issueToken();
 
+        $user = null;
+        if ($linked) {
+            // A device linked by `aiul login` to someone who accepted the notice.
+            $user = \App\Models\User::create([
+                'tenant_id' => $tenant->id, 'name' => 'Alex', 'email' => $slug.'@example.com',
+                'password' => 'password', 'role' => 'member',
+            ]);
+            \App\Models\ConsentRecord::withoutGlobalScope('tenant')->create([
+                'tenant_id' => $tenant->id, 'user_id' => $user->id, 'kind' => 'capture',
+                'policy_version' => config('aiul.consent_version'), 'granted_at' => now(),
+            ]);
+        }
+
         $device = Device::withoutGlobalScope('tenant')->create([
             'tenant_id' => $tenant->id,
+            'user_id' => $user?->id,
             'hostname' => $slug.'-macbook',
             'token_hash' => $hash,
         ]);
 
         return [$device, $plain];
+    }
+
+    public function test_events_from_an_unlinked_device_are_confirmed_and_discarded(): void
+    {
+        [, $token] = $this->newDevice(linked: false);
+        $event = $this->anEvent();
+
+        $this->withToken($token)->postJson('/api/aiul/events', ['events' => [$event]])
+            ->assertOk()
+            ->assertJsonPath('accepted.0', $event['id'])
+            ->assertJsonStructure(['discarded']);
+
+        $this->assertSame(0, AiInteraction::withoutGlobalScope('tenant')->count());
+    }
+
+    public function test_aiul_login_pairs_the_device_with_whoever_enters_the_code(): void
+    {
+        [$device, $token] = $this->newDevice(linked: false);
+
+        $code = $this->withToken($token)->postJson('/api/aiul/pair')->assertOk()->json('code');
+        $this->withToken($token)->getJson('/api/aiul/pair')->assertJsonPath('paired', false);
+
+        $person = \App\Models\User::create([
+            'tenant_id' => $device->tenant_id, 'name' => 'Alex John', 'email' => 'alex@example.com',
+            'password' => 'password', 'role' => 'member',
+        ]);
+        \App\Models\ConsentRecord::withoutGlobalScope('tenant')->create([
+            'tenant_id' => $device->tenant_id, 'user_id' => $person->id, 'kind' => 'capture',
+            'policy_version' => config('aiul.consent_version'), 'granted_at' => now(),
+        ]);
+
+        $this->actingAs($person)->post('/pair', ['code' => strtolower(str_replace('-', '', $code))])
+            ->assertSessionHasNoErrors();
+
+        $this->withToken($token)->getJson('/api/aiul/pair')
+            ->assertJsonPath('paired', true)
+            ->assertJsonPath('name', 'Alex John')
+            ->assertJsonPath('consented', true);
+
+        // A used code cannot be entered again.
+        $this->actingAs($person)->post('/pair', ['code' => $code])->assertSessionHasErrors('code');
     }
 
     private function anEvent(array $overrides = []): array

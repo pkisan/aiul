@@ -23,7 +23,7 @@ Steps (commit each):
       left, agent steps collapsed between, tool's own calls hidden.
 - [x] R1.4 /usage filters by person/tool/days (item 4); "My data" off the menu.
 - [x] R1.5 First-login consent screen (item 1, web half).
-- [ ] R1.6 `aiul login` device pairing (item 1, device half, and item 3 fallback).
+- [x] R1.6 `aiul login` device pairing (item 1, device half, and item 3 fallback).
       Events from a device with no consented user are discarded.
 - [ ] R1.7 AI-tool account name (item 2): `account` on event + column; JWT claims
       in the agent; UI shows account, else the device user's name (item 3).

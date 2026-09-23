@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ConsentController;
+use App\Http\Controllers\PairDeviceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Middleware\EnsureConsented;
 use Illuminate\Foundation\Application;
@@ -42,6 +43,10 @@ require __DIR__.'/auth.php';
  * signed-in person's tenant.
  */
 Route::middleware(['auth', 'verified', SetTenantFromUser::class, EnsureConsented::class])->group(function () {
+    // Anyone: link the device `aiul login` is running on to my account.
+    Route::get('/pair', [PairDeviceController::class, 'show'])->name('pair.show');
+    Route::post('/pair', [PairDeviceController::class, 'store'])->name('pair.store');
+
     // Anyone: what was captured about me.
     Route::get('/my-data', [UsageDashboardController::class, 'myData'])->name('usage.my-data');
 
