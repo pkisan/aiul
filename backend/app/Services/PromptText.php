@@ -29,6 +29,28 @@ class PromptText
         'EPHEMERAL_MESSAGE',
     ];
 
+    /**
+     * Openings of messages an agent writes as if the person had typed them. Claude
+     * Code asks its model to guess the next prompt and to recap after a break, both
+     * as ordinary user messages; 95 of one session's "prompts" were these.
+     */
+    private const TOOL_GENERATED = [
+        '[SUGGESTION MODE:',
+        'The user stepped away and is coming back.',
+    ];
+
+    /** Whether a cleaned prompt was written by the tool, not the person. */
+    public static function isToolGenerated(?string $clean): bool
+    {
+        foreach (self::TOOL_GENERATED as $opening) {
+            if (str_starts_with((string) $clean, $opening)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function clean(?string $text): ?string
     {
         if ($text === null || $text === '') {
@@ -38,6 +60,9 @@ class PromptText
         // A slash command ("/clear") is sent as <command-name>/clear</command-name>:
         // the name IS what was typed, so keep it and drop the tags.
         $text = preg_replace('#<command-name>(.*?)</command-name>#s', '$1', $text);
+
+        // Pasted text is the person's own; only the wrapper tag goes.
+        $text = preg_replace('#<pasted_content(?:\s[^>]*)?>\n?(.*?)\n?</pasted_content>#s', '$1', $text);
 
         $names = implode('|', array_map(fn ($t) => preg_quote($t, '#'), self::WRAPPERS));
 

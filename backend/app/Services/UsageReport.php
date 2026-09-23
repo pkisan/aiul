@@ -383,36 +383,58 @@ class UsageReport
      */
     public function interactionsForSession(AiSession $session, bool $withPreviews = false): array
     {
-        $bodies = app(BodyStore::class);
-
-        $rows = $session->interactions()
+        $interactions = $session->interactions()
             ->with('score:id,ai_interaction_id,score')
             ->orderBy('occurred_at')
             ->orderBy('id')
-            ->get()
-            ->map(fn (AiInteraction $i) => [
-                'id' => $i->id,
-                'tool' => $i->tool,
-                'model' => $i->model,
-                // Rows captured before kinds existed only have the old boolean,
-                // and that boolean was backwards — so the page says so rather
-                // than presenting a guess as fact.
-                'kind' => $i->kind ?? ($i->automated ? 'agent' : 'human'),
-                'legacy_kind' => $i->kind === null,
-                'prompt_chars' => $i->prompt_chars,
-                'answer_chars' => $i->answer_chars,
-                'prompt_tokens' => $i->prompt_tokens,
-                'response_tokens' => $i->response_tokens,
-                'score' => $i->score?->score,
-                'occurred_at' => $i->occurred_at,
-                // The first lines, so the page reads without a trip to another
-                // screen for every row. The full text still lives behind the
-                // raw view, with its own audit record.
-                'prompt_preview' => $withPreviews ? $this->preview($bodies->get($i->prompt_object)) : null,
-                'answer_preview' => $withPreviews ? $this->preview($bodies->get($i->answer_object)) : null,
-            ])->all();
+            ->get();
 
-        return $this->intoTurns($rows);
+        $rows = $interactions->map(fn (AiInteraction $i) => [
+            'id' => $i->id,
+            'tool' => $i->tool,
+            'model' => $i->model,
+            // Rows captured before kinds existed only have the old boolean,
+            // and that boolean was backwards — so the page says so rather
+            // than presenting a guess as fact.
+            'kind' => $i->kind ?? ($i->automated ? 'agent' : 'human'),
+            'legacy_kind' => $i->kind === null,
+            'prompt_chars' => $i->prompt_chars,
+            'answer_chars' => $i->answer_chars,
+            'prompt_tokens' => $i->prompt_tokens,
+            'response_tokens' => $i->response_tokens,
+            'score' => $i->score?->score,
+            'occurred_at' => $i->occurred_at,
+        ])->all();
+
+        // Rows stored before ingestion recognised agent-written "prompts".
+        $bodies = app(BodyStore::class);
+        $prompts = [];
+        foreach ($interactions as $index => $i) {
+            $prompts[$index] = PromptText::clean($bodies->get($i->prompt_object));
+            if ($rows[$index]['kind'] === 'human' && PromptText::isToolGenerated($prompts[$index])) {
+                $rows[$index]['kind'] = 'utility';
+            }
+        }
+
+        $rows = $this->intoTurns($rows);
+
+        if (! $withPreviews) {
+            return array_map(fn ($row) => $row + ['prompt_preview' => null, 'answer_preview' => null], $rows);
+        }
+
+        // The page reads as a chat: what the person typed and the answer they
+        // read are shown whole; the agent's own steps in between only by their
+        // opening lines. The full text of any step is on its interaction page.
+        foreach ($rows as $index => $row) {
+            $i = $interactions[$index];
+            $prompt = $prompts[$index];
+            $answer = $bodies->get($i->answer_object);
+
+            $rows[$index]['prompt_preview'] = $row['kind'] === 'human' ? (blank($prompt) ? null : $prompt) : $this->preview($prompt);
+            $rows[$index]['answer_preview'] = $row['final_answer'] ? (blank($answer) ? null : $answer) : $this->preview($answer);
+        }
+
+        return $rows;
     }
 
     /** The opening of a body, on one line, for a list that has to stay readable. */

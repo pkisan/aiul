@@ -1,12 +1,13 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import Message from '@/Components/Usage/Message.vue';
 import Panel from '@/Components/Usage/Panel.vue';
 import StatCard from '@/Components/Usage/StatCard.vue';
 import Score from '@/Components/Usage/Score.vue';
 import Tag from '@/Components/Usage/Tag.vue';
 import { clock, count, duration, when } from '@/Components/Usage/format';
 import { Head, Link } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 
 const props = defineProps({
     session: Object,
@@ -14,26 +15,47 @@ const props = defineProps({
     canViewRaw: Boolean,
 });
 
-// One layout for every session. Where the agent recorded who caused a request,
-// the row is labelled; where it did not — anything captured before kinds
-// existed — the row simply carries no label. Two different pages for the same
-// URL was worse than either.
-const labelled = computed(() => props.interactions.some((i) => !i.legacy_kind));
+// The session read as a chat. Each turn is one thing the person typed, the steps
+// the agent took on its own to do it, and the answer they read:
+//
+//   you asked      — right, dark bubble
+//   agent steps    — folded between, dashed and grey: the agent feeding itself
+//                    tool results is NOT the person talking
+//   answer         — left, white bubble
+//
+// The tool's own housekeeping calls (titles, grading) belong to nobody's turn
+// and stay hidden unless asked for.
+const showTool = ref(false);
+const openSteps = reactive({});
 
-const tone = (kind) => ({ human: 'green', agent: 'gray', utility: 'amber' })[kind] ?? 'gray';
-const label = (kind) => ({ human: 'you asked', agent: 'agent step', utility: "tool's own call" })[kind] ?? kind;
+const turns = computed(() => {
+    const out = [];
+    let current = null;
 
-// Exchanges worth reading first: something came back that is more than a token
-// or two. The rest are the agent's mechanics and sit behind the toggle.
-const substantial = computed(() => props.interactions.filter((i) => (i.answer_chars ?? 0) > 40));
-const showAll = ref(false);
-const listed = computed(() => (showAll.value ? props.interactions : substantial.value));
+    for (const i of props.interactions) {
+        if (i.kind === 'utility' && !showTool.value) continue;
 
-const humanTurns = computed(() => props.interactions.filter((i) => i.kind === 'human' && !i.legacy_kind).length);
-const utilityCount = computed(() => props.interactions.filter((i) => i.kind === 'utility' && !i.legacy_kind).length);
-const tokens = computed(() =>
-    props.interactions.reduce((n, i) => n + (i.prompt_tokens ?? 0) + (i.response_tokens ?? 0), 0),
-);
+        if (i.kind === 'human' || !current) {
+            current = { key: i.id, asked: i.kind === 'human' ? i : null, steps: [], answer: null };
+            out.push(current);
+            if (i.kind === 'human') {
+                // A plain chat (claude.ai, ChatGPT) answers in the same exchange.
+                if (i.final_answer) current.answer = i;
+                continue;
+            }
+        }
+
+        if (i.final_answer) current.answer = i;
+        else current.steps.push(i);
+    }
+
+    return out;
+});
+
+const humanTurns = computed(() => props.interactions.filter((i) => i.kind === 'human').length);
+const agentSteps = computed(() => props.interactions.filter((i) => i.kind === 'agent').length);
+const utilityCount = computed(() => props.interactions.filter((i) => i.kind === 'utility').length);
+const tokens = (rows) => rows.reduce((n, i) => n + (i.prompt_tokens ?? 0) + (i.response_tokens ?? 0), 0);
 </script>
 
 <template>
@@ -41,7 +63,7 @@ const tokens = computed(() =>
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
                 <Link :href="route('usage.index')" class="text-sm text-gray-500 hover:text-gray-900">← AI usage</Link>
                 <h2 class="text-xl font-semibold leading-tight text-gray-800">
                     {{ session.project ?? 'Unknown project' }}
@@ -54,77 +76,82 @@ const tokens = computed(() =>
         <div class="bg-gray-50 py-8">
             <div class="mx-auto max-w-4xl space-y-6 px-4 sm:px-6 lg:px-8">
                 <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                    <StatCard
-                        v-if="labelled"
-                        label="You asked"
-                        :value="count(humanTurns)"
-                        hint="turns you typed"
-                    />
-                    <StatCard v-else label="Exchanges" :value="count(interactions.length)" hint="requests in this session" />
-                    <StatCard label="With a reply" :value="count(substantial.length)" hint="more than a token or two back" />
-                    <StatCard
-                        v-if="labelled"
-                        label="Tool's own calls"
-                        :value="count(utilityCount)"
-                        hint="grading, titles, suggestions"
-                    />
-                    <StatCard v-else label="Tokens" :value="count(tokens)" />
+                    <StatCard label="You asked" :value="count(humanTurns)" hint="messages typed by the person" />
+                    <StatCard label="Agent steps" :value="count(agentSteps)" hint="the agent working on its own" />
+                    <StatCard label="Tokens" :value="count(tokens(interactions))" />
                     <StatCard label="AI time" :value="duration(session.seconds)" :hint="when(session.started_at)" />
                 </div>
 
-                <Panel title="Exchanges, in order" :subtitle="session.repo ?? undefined">
+                <Panel title="Conversation" :subtitle="session.repo ?? undefined">
                     <template #actions>
-                        <button class="text-gray-500 hover:text-gray-900" @click="showAll = !showAll">
-                            {{ showAll ? 'Only ones with a reply' : `Show all ${interactions.length}` }}
+                        <button v-if="utilityCount" class="text-gray-500 hover:text-gray-900" @click="showTool = !showTool">
+                            {{ showTool ? "Hide the tool's own calls" : `Show the tool's own calls (${utilityCount})` }}
                         </button>
                     </template>
 
-                    <ul class="divide-y divide-gray-100">
-                        <li v-for="i in listed" :key="i.id" class="px-5 py-4">
-                            <div class="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                                <span class="tabular-nums">{{ clock(i.occurred_at) }}</span>
-                                <Tag v-if="!i.legacy_kind" :label="label(i.kind)" :tone="tone(i.kind)" />
-                                <span>{{ i.model ?? 'unknown model' }}</span>
-                                <span class="tabular-nums">
-                                    {{ count(i.prompt_tokens) }}/{{ count(i.response_tokens) }} tokens
-                                </span>
-                                <Score :value="i.score" class="ml-auto" />
-                                <Link :href="route('usage.show', i.id)" class="text-gray-400 hover:text-gray-700">details</Link>
+                    <p v-if="!canViewRaw" class="px-5 py-10 text-center text-sm text-gray-500">
+                        You do not have permission to read prompt text.
+                    </p>
+
+                    <div v-else class="space-y-8 bg-gray-50/60 px-5 py-6">
+                        <section v-for="t in turns" :key="t.key" class="space-y-3">
+                            <!-- What the person typed -->
+                            <template v-if="t.asked">
+                                <div class="flex items-center justify-end gap-2 text-[11px] text-gray-400">
+                                    <span class="font-medium uppercase tracking-wide text-gray-500">You</span>
+                                    <span class="tabular-nums">{{ clock(t.asked.occurred_at) }}</span>
+                                    <Score :value="t.asked.score" />
+                                    <Link :href="route('usage.show', t.asked.id)" class="hover:text-gray-700">details</Link>
+                                </div>
+                                <Message who="you" :text="t.asked.prompt_preview" placeholder="(only context the tool added — nothing typed)" />
+                            </template>
+
+                            <!-- The agent working on its own, folded -->
+                            <div v-if="t.steps.length" class="ml-6">
+                                <button
+                                    class="inline-flex items-center gap-2 rounded-full border border-dashed border-gray-300 bg-white px-3 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                                    @click="openSteps[t.key] = !openSteps[t.key]"
+                                >
+                                    <span>{{ openSteps[t.key] ? '▾' : '▸' }}</span>
+                                    Agent worked on its own: {{ t.steps.length }} step{{ t.steps.length === 1 ? '' : 's' }}
+                                    · {{ count(tokens(t.steps)) }} tokens
+                                </button>
+
+                                <div v-if="openSteps[t.key]" class="mt-3 space-y-2">
+                                    <div v-for="s in t.steps" :key="s.id" class="space-y-1">
+                                        <Message :who="s.kind === 'utility' ? 'tool' : 'agent'" :text="s.prompt_preview || s.answer_preview" placeholder="(no text)" :fold="300">
+                                            <template #meta>
+                                                <span class="font-medium">{{ s.kind === 'utility' ? "tool's own call" : 'agent step' }}</span>
+                                                <span class="tabular-nums">{{ clock(s.occurred_at) }}</span>
+                                                <span>{{ s.model }}</span>
+                                                <Link :href="route('usage.show', s.id)" class="underline">open</Link>
+                                            </template>
+                                        </Message>
+                                    </div>
+                                </div>
                             </div>
 
-                            <p
-                                v-if="i.prompt_preview"
-                                class="mt-2 whitespace-pre-wrap break-words rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-900"
-                            >{{ i.prompt_preview }}</p>
-                            <p v-else-if="!canViewRaw" class="mt-2 text-xs italic text-gray-400">
-                                You do not have permission to read prompt text.
-                            </p>
+                            <!-- The answer the person read -->
+                            <template v-if="t.answer">
+                                <div class="flex items-center gap-2 text-[11px] text-gray-400">
+                                    <span class="font-medium uppercase tracking-wide text-gray-500">{{ t.answer.model ?? 'AI' }}</span>
+                                    <span class="tabular-nums">{{ clock(t.answer.occurred_at) }}</span>
+                                    <Link :href="route('usage.show', t.answer.id)" class="hover:text-gray-700">details</Link>
+                                </div>
+                                <Message who="assistant" :text="t.answer.answer_preview" placeholder="(no answer text captured)" />
+                            </template>
+                            <p v-else-if="t.asked" class="text-xs italic text-gray-400">No answer text captured for this turn.</p>
+                        </section>
 
-                            <p
-                                v-if="i.answer_preview"
-                                class="mt-1 whitespace-pre-wrap break-words rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm text-gray-900"
-                            >{{ i.answer_preview }}</p>
-                            <p v-else-if="canViewRaw" class="mt-1 text-xs italic text-gray-400">No reply text captured.</p>
-                        </li>
-
-                        <li v-if="!listed.length" class="px-5 py-10 text-center text-sm text-gray-500">
-                            Nothing with text in this session.
-                        </li>
-                    </ul>
+                        <p v-if="!turns.length" class="py-6 text-center text-sm text-gray-500">Nothing in this session.</p>
+                    </div>
                 </Panel>
 
                 <p class="px-1 text-xs leading-relaxed text-gray-500">
-                    <template v-if="labelled">
-                        <strong class="text-gray-700">Labels.</strong> "you asked" is a message you typed, "agent step"
-                        is the agent continuing that work on its own, and "tool's own call" is the tool talking to a
-                        model for itself — grading a prompt, naming a conversation.
-                    </template>
-                    <template v-else>
-                        <strong class="text-gray-700">No labels here.</strong> This session was captured before the
-                        agent could tell your prompts from its own follow-ups, so the exchanges are listed in order
-                        and unlabelled.
-                    </template>
-                    Opening the full text of an exchange is recorded in the audit log.
+                    <strong class="text-gray-700">Reading this page.</strong> Dark bubbles on the right are what the
+                    person typed. White bubbles on the left are the answer they read. Dashed grey steps are the agent
+                    feeding itself tool results while it works — not the person. Opening this page is recorded in the
+                    audit log.
                 </p>
             </div>
         </div>

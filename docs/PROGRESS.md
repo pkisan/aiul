@@ -19,7 +19,7 @@ Steps (commit each):
       (old rows). Test.
 - [x] R1.2 Interaction page shows prompt + answer inline (item 6); /raw redirects.
       Every open still writes the raw_view audit record.
-- [ ] R1.3 Session page as a chat (items 5, 7): your message right, final answer
+- [x] R1.3 Session page as a chat (items 5, 7): your message right, final answer
       left, agent steps collapsed between, tool's own calls hidden.
 - [ ] R1.4 /usage filters by person/tool/days (item 4); "My data" off the menu.
 - [ ] R1.5 First-login consent screen (item 1, web half).

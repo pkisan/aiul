@@ -108,6 +108,10 @@ class EventIngestionController extends Controller
 
         // Only what the person typed: the tool's own wrappers never reach storage.
         $event['prompt'] = PromptText::clean($event['prompt'] ?? null);
+        if (PromptText::isToolGenerated($event['prompt'])) {
+            $event['kind'] = 'utility';
+            $event['automated'] = true;
+        }
         $session = $this->sessionFor($device, $event, $occurredAt);
 
         $interaction = new AiInteraction([

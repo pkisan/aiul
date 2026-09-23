@@ -42,4 +42,16 @@ class PromptTextTest extends TestCase
         $this->assertNull(PromptText::clean(null));
         $this->assertSame('', PromptText::clean('<EPHEMERAL_MESSAGE>only context</EPHEMERAL_MESSAGE>'));
     }
+
+    public function test_pasted_text_is_kept_without_its_wrapper(): void
+    {
+        $this->assertSame("log line\n\nwhy?", PromptText::clean("<pasted_content id=\"1\">\nlog line\n</pasted_content>\n\nwhy?"));
+    }
+
+    public function test_agent_written_prompts_are_recognised(): void
+    {
+        $this->assertTrue(PromptText::isToolGenerated('[SUGGESTION MODE: Suggest what the user might type'));
+        $this->assertTrue(PromptText::isToolGenerated('The user stepped away and is coming back. Recap'));
+        $this->assertFalse(PromptText::isToolGenerated('Hi'));
+    }
 }
