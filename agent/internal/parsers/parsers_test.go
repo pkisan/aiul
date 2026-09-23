@@ -40,7 +40,9 @@ func TestForPicksTheRightParser(t *testing.T) {
 		{"api.anthropic.com", "/v1/messages", "anthropic"},
 		{"api.anthropic.com", "/v1/messages?beta=true", "anthropic"},
 		{"generativelanguage.googleapis.com", "/v1beta/models/gemini-2.5-pro:streamGenerateContent", "gemini"},
-		{"api.openai.com", "/v1/models", ""}, // not a conversation
+		{"daily-cloudcode-pa.googleapis.com", "/v1internal:streamGenerateContent", "cloudcode"},
+		{"cloudcode-pa.googleapis.com", "/v1internal:loadCodeAssist", ""}, // housekeeping, not a conversation
+		{"api.openai.com", "/v1/models", ""},                              // not a conversation
 
 		// The OpenAI-compatible providers: same wire format, same parser.
 		{"api.mistral.ai", "/v1/chat/completions", "openai"},
@@ -706,5 +708,47 @@ func TestWhoCausedTheRequestIsReadFromItsShape(t *testing.T) {
 	})
 	if res.Kind != KindHuman {
 		t.Errorf("a browser question = %q, want %q", res.Kind, KindHuman)
+	}
+}
+
+// Antigravity, recorded 2026-09-23: one prompt typed by a person, and the title
+// generator the IDE runs on it straight afterwards.
+func TestCloudCodeAntigravityTurn(t *testing.T) {
+	head := http.Header{"User-Agent": {"antigravity/ide/2.5.5 (aidev_client; os_type=darwin; arch=arm64)"}}
+	res, err := CloudCode{}.Parse(Exchange{
+		Host:    "daily-cloudcode-pa.googleapis.com",
+		Path:    "/v1internal:streamGenerateContent",
+		ReqHead: head,
+		ReqBody: fixture(t, "cloudcode/agent-turn.request.json"),
+		SSE:     sseData(t, "cloudcode/agent-turn.response.sse"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Prompt != "Hello" {
+		t.Errorf("prompt = %q, want the text inside <USER_REQUEST> only", res.Prompt)
+	}
+	if res.Answer != "Hello! How can I help you with your project today?" {
+		t.Errorf("answer = %q", res.Answer)
+	}
+	if res.Model != "gemini-3.6-flash-medium" || res.Tool != "antigravity" || res.Kind != KindHuman {
+		t.Errorf("model=%q tool=%q kind=%q", res.Model, res.Tool, res.Kind)
+	}
+	if res.PromptTokens != 17721 || res.ResponseTokens != 12 || !res.Streamed {
+		t.Errorf("tokens=%d/%d streamed=%v", res.PromptTokens, res.ResponseTokens, res.Streamed)
+	}
+
+	title, err := CloudCode{}.Parse(Exchange{
+		Host:    "daily-cloudcode-pa.googleapis.com",
+		Path:    "/v1internal:streamGenerateContent",
+		ReqHead: head,
+		ReqBody: fixture(t, "cloudcode/title-utility.request.json"),
+		SSE:     sseData(t, "cloudcode/title-utility.response.sse"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title.Kind != KindUtility || title.Answer != "Initial Greeting Conversation" {
+		t.Errorf("title call: kind=%q answer=%q, want utility and the generated title", title.Kind, title.Answer)
 	}
 }

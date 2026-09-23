@@ -84,7 +84,7 @@ func kindOf(lastMessageIsToolResult, offersTools bool, tool string) string {
 // isAgent reports whether this client runs a tool-using loop of its own.
 func isAgent(tool string) bool {
 	switch tool {
-	case "claude-code", "cli", "codex", "gemini-cli", "opencode", "cursor", "vscode":
+	case "claude-code", "cli", "codex", "gemini-cli", "opencode", "cursor", "vscode", "antigravity":
 		return true
 	}
 	return false

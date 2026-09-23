@@ -1,0 +1,35 @@
+{
+  "project": "aicode-consumers",
+  "requestId": "checkpoint/00000000-0000-0000-0000-000000000002",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Hello"
+          }
+        ]
+      }
+    ],
+    "systemInstruction": {
+      "role": "user",
+      "parts": [
+        {
+          "text": "You are a conversation title generator. The message provided is a transcript of a USER's request \u2014 it is content to be l [anonymised: rest of system prompt removed]"
+        }
+      ]
+    },
+    "generationConfig": {
+      "maxOutputTokens": 16384,
+      "thinkingConfig": {
+        "includeThoughts": false,
+        "thinkingBudget": 0
+      }
+    },
+    "sessionId": "-1000000000000000000"
+  },
+  "model": "gemini-3.1-flash-lite",
+  "userAgent": "antigravity",
+  "requestType": "checkpoint"
+}

@@ -1,0 +1,6 @@
+data: {"response": {"candidates": [{"content": {"role": "model","parts": [{"text": "Initial Greeting"}]}}],"usageMetadata": {"promptTokenCount": 93,"candidatesTokenCount": 2,"totalTokenCount": 95},"modelVersion": "gemini-3.1-flash-lite","responseId": "ANON"},"traceId": "ANON","metadata": {}}
+
+data: {"response": {"candidates": [{"content": {"role": "model","parts": [{"text": " Conversation"}]}}],"usageMetadata": {"promptTokenCount": 93,"candidatesTokenCount": 3,"totalTokenCount": 96},"modelVersion": "gemini-3.1-flash-lite","responseId": "ANON"},"traceId": "ANON","metadata": {}}
+
+data: {"response": {"candidates": [{"content": {"role": "model","parts": [{"thoughtSignature": "REDACTED","text": ""}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 93,"candidatesTokenCount": 3,"totalTokenCount": 96},"modelVersion": "gemini-3.1-flash-lite","responseId": "ANON"},"traceId": "ANON","metadata": {}}
+

@@ -108,6 +108,7 @@ func All() []Parser {
 		OpenAI{},
 		Anthropic{},
 		Gemini{},
+		CloudCode{},
 		ChatGPTWeb{},
 		ClaudeWeb{},
 	}

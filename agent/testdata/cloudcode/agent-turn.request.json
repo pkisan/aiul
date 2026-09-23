@@ -1,0 +1,218 @@
+{
+  "project": "aicode-consumers",
+  "requestId": "agent/00000000-0000-0000-0000-000000000000/0/00000000-0000-0000-0000-000000000001",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "<USER_REQUEST>\nHello\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\n[anonymised: local time, open files, workspace paths]\n</ADDITIONAL_METADATA>\n<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from None to Gemini 3.6 Flash (Medium). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.\n</USER_SETTINGS_CHANGE>"
+          }
+        ]
+      }
+    ],
+    "systemInstruction": {
+      "role": "user",
+      "parts": [
+        {
+          "text": "<identity>\nYou are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on A [anonymised: rest of system prompt removed]"
+        }
+      ]
+    },
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "ask_question",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "browser_subagent",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "generate_image",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "grep_search",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "list_dir",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "manage_task",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "multi_replace_file_content",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "read_url_content",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "replace_file_content",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "run_command",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "schedule",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "search_web",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "view_file",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      },
+      {
+        "functionDeclarations": [
+          {
+            "name": "write_to_file",
+            "description": "[removed]",
+            "parameters": {
+              "type": "OBJECT",
+              "properties": {}
+            }
+          }
+        ]
+      }
+    ],
+    "toolConfig": {
+      "functionCallingConfig": {
+        "mode": "VALIDATED"
+      }
+    },
+    "labels": {
+      "last_step_index": "2",
+      "model_enum": "MODEL_PLACEHOLDER_M72",
+      "trajectory_id": "00000000-0000-0000-0000-000000000001",
+      "used_claude": "false",
+      "used_claude_conservative": "false",
+      "used_non_gemini_model": "false"
+    },
+    "generationConfig": {
+      "maxOutputTokens": 65536,
+      "thinkingConfig": {
+        "includeThoughts": true,
+        "thinkingBudget": 4000
+      }
+    },
+    "sessionId": "-1000000000000000000"
+  },
+  "model": "gemini-3.6-flash-medium",
+  "userAgent": "antigravity",
+  "requestType": "agent"
+}

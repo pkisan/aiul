@@ -1,0 +1,6 @@
+data: {"response": {"candidates": [{"content": {"role": "model","parts": [{"text": "Hello! How can I help"}]}}],"usageMetadata": {"promptTokenCount": 17721,"candidatesTokenCount": 6,"totalTokenCount": 17800,"thoughtsTokenCount": 73},"modelVersion": "gemini-3.6-flash","responseId": "ANON"},"traceId": "ANON","metadata": {}}
+
+data: {"response": {"candidates": [{"content": {"role": "model","parts": [{"text": " you with your project today?"}]}}],"usageMetadata": {"promptTokenCount": 17721,"candidatesTokenCount": 12,"totalTokenCount": 17806,"thoughtsTokenCount": 73},"modelVersion": "gemini-3.6-flash","responseId": "ANON"},"traceId": "ANON","metadata": {}}
+
+data: {"response": {"candidates": [{"content": {"role": "model","parts": [{"thoughtSignature": "REDACTED","text": ""}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 17721,"candidatesTokenCount": 12,"totalTokenCount": 17806,"cachedContentTokenCount": 12224,"thoughtsTokenCount": 73},"modelVersion": "gemini-3.6-flash","responseId": "ANON"},"traceId": "ANON","metadata": {}}
+

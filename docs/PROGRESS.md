@@ -29,9 +29,9 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 | Tool | Reason |
 | --- | --- |
 | Codex over WebSocket | `101` upgrade; frames unread. Fixture recorded at `agent/testdata/openai/codex-responses.ws.jsonl` |
-| Cursor | **pins** — proven 2026-09-22 with the CA named explicitly. Metadata only. Stop retesting |
+| Cursor | does NOT pin (2026-09-23: our leaf was invalid). Chat rides h2-only `api2direct.cursor.sh`, tunnelled sealed until the proxy speaks HTTP/2 |
 | Copilot | sends a TLS alert; never retested with the CA named explicitly |
-| Antigravity | hosts found and allow-listed 2026-09-22; trust and parser untested |
+| Antigravity | trust OK 2026-09-23 after the leaf fix; `cloudcode` parser written, not yet seen live |
 | Gemini | parser exists, never driven live |
 
 ### NEXT STEP
@@ -46,6 +46,26 @@ Claude Code CLI · Claude desktop app · Codex over HTTP · chatgpt.com · claud
 
 Everything is a DEMO, not the product — see the framing note below before
 proposing signing, MDM or a CA chain as blockers.
+
+## Antigravity parser written — 2026-09-23
+
+Research captures showed Cloud Code is Gemini's generateContent inside an
+envelope (`{"model", "request": {...}}` and `{"response": {...}}` per SSE chunk).
+`parsers.CloudCode` unwraps it and reuses `Gemini{}.Parse`; the prompt is the
+text inside `<USER_REQUEST>`, the model comes from the envelope, and the IDE's
+title generator (no tools offered) is `utility`. Fixtures in
+`testdata/cloudcode/` (agent-turn, title-utility), anonymised: system prompt
+truncated, tool descriptions removed, metadata block, ids and thought signatures
+replaced. Test `TestCloudCodeAntigravityTurn`.
+
+Cursor, same run: the owner's "Hi there" got its answer ("Hi there. What can I
+help you with?"), yet no chat endpoint appears among the decrypted captures —
+only `rgstr`, `extensions-control` and the updater. The chat went over the
+h2-only `api2direct.cursor.sh` path. Capturing it needs HTTP/2 in the proxy.
+
+NEXT: install the package with the parser, send one Antigravity prompt, confirm
+a row with prompt and answer. Then decide on HTTP/2 for Cursor. Turn research
+mode off and delete `/var/db/aiul/research` and `~/aiul-research` when done.
 
 ## Both tools now decrypt; h2-only clients tunnelled — 2026-09-23
 
