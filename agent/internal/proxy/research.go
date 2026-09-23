@@ -1,12 +1,14 @@
 package proxy
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Research mode: writing down what a tool actually sends, so a parser can be
@@ -73,10 +75,12 @@ func interesting(path, contentType string) bool {
 		return false
 	}
 
-	// Anything that is not text is not a conversation either.
+	// Anything that is not text is not a conversation either — except protobuf,
+	// which is how Connect RPC tools such as Cursor carry theirs.
 	ct := strings.ToLower(contentType)
 	if ct != "" &&
 		!strings.Contains(ct, "json") &&
+		!strings.Contains(ct, "proto") &&
 		!strings.Contains(ct, "text") &&
 		!strings.Contains(ct, "event-stream") {
 		return false
@@ -109,4 +113,15 @@ func (d *researchDumper) write(ex dumpedExchange) error {
 	}
 
 	return os.WriteFile(filepath.Join(d.dir, name), body, 0o600)
+}
+
+// dumpable keeps a body readable when it is text, and intact when it is not.
+// Connect RPC tools (Cursor) send protobuf, which is binary; as a JSON string
+// every invalid UTF-8 byte would become U+FFFD and the body could never be
+// decoded again. Binary is written as "base64:" plus the encoded bytes.
+func dumpable(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	return "base64:" + base64.StdEncoding.EncodeToString([]byte(s))
 }

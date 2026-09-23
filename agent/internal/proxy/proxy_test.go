@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
@@ -1008,5 +1009,20 @@ func TestSSEIsRecognisedByItsFramingWhenNoHeaderSaysSo(t *testing.T) {
 		if looksLikeSSE([]byte(body)) {
 			t.Errorf("mistaken for a stream: %q", body)
 		}
+	}
+}
+
+// A protobuf body is binary. The research dump must keep every byte, or the
+// fixture a Connect parser is written against is garbage.
+func TestResearchDumpKeepsBinaryBodies(t *testing.T) {
+	if got := dumpable(`{"a":"héllo"}`); got != `{"a":"héllo"}` {
+		t.Errorf("text body changed: %q", got)
+	}
+
+	proto := string([]byte{0x0a, 0x05, 'H', 'e', 'l', 'l', 'o', 0xff, 0x80})
+	got := dumpable(proto)
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(got, "base64:"))
+	if !strings.HasPrefix(got, "base64:") || err != nil || string(raw) != proto {
+		t.Errorf("binary body did not survive: %q (%v)", got, err)
 	}
 }

@@ -244,12 +244,12 @@ func (p *Proxy) dumpForResearch(in interaction, parser parsers.Parser) {
 
 	reqBody, respBody := string(ex.ReqBody), string(ex.RespBody)
 	masked, _ := p.redactor.Strings(reqBody, respBody)
-	reqBody, respBody = masked[0], masked[1]
+	reqBody, respBody = dumpable(masked[0]), dumpable(masked[1])
 
 	events := make([]string, 0, len(ex.SSE))
 	for _, e := range ex.SSE {
 		one, _ := p.redactor.Strings(e)
-		events = append(events, one[0])
+		events = append(events, dumpable(one[0]))
 	}
 
 	dumped := dumpedExchange{
