@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"io"
 	"strings"
+	"sync"
 )
 
 // Cursor parses the agent chat of the Cursor editor:
@@ -23,8 +25,14 @@ import (
 // means the frame is gzipped; bit 2 marks the end-of-stream trailer (JSON).
 //
 // The request body holds only a conversation id; the prompt comes back in the
-// response. The model name travels in a separate BidiAppend request and is not
-// joined in yet, so Model stays empty.
+// response. The model travels in a separate request that starts the turn:
+//
+//	POST api2.cursor.sh/aiserver.v1.BidiService/BidiAppend
+//
+// Its body (plain protobuf, not framed) holds the conversation id at field 2.1
+// and, at field 1, the turn itself as a HEX STRING of another protobuf whose
+// field 1.9.1 is the model. That request is remembered here, recorded as
+// nothing, and its model attached to the RunSSE with the same id.
 //
 // Cursor only sends this through the proxy with these in its settings.json:
 // "cursor.general.disableHttp2": true and "http.proxy" set — see docs/PROGRESS.md.
@@ -32,8 +40,55 @@ type Cursor struct{}
 
 func (Cursor) Name() string { return "cursor" }
 
+const (
+	cursorRunPath    = "/agent.v1.AgentService/RunSSE"
+	cursorAppendPath = "/aiserver.v1.BidiService/BidiAppend"
+)
+
 func (Cursor) Handles(host, path string) bool {
-	return strings.HasSuffix(host, ".cursor.sh") && path == "/agent.v1.AgentService/RunSSE"
+	return strings.HasSuffix(host, ".cursor.sh") && (path == cursorRunPath || path == cursorAppendPath)
+}
+
+// cursorModels maps a conversation id to the model its BidiAppend named.
+// ponytail: emptied whole when it passes 1000 entries; a turn older than that
+// just loses its model. Per-entry expiry if that ever shows up in the data.
+var cursorModels = struct {
+	sync.Mutex
+	m map[string]string
+}{m: map[string]string{}}
+
+// rememberModel reads a BidiAppend body. Only the first append of a turn carries
+// the model; the small follow-ups do not and are ignored.
+func rememberModel(body []byte) {
+	conv, _ := pbString(body, []int{2, 1})
+	turnHex, _ := pbString(body, []int{1})
+	turn, err := hex.DecodeString(turnHex)
+	if conv == "" || err != nil {
+		return
+	}
+	model, _ := pbString(turn, []int{1, 9, 1})
+	if model == "" {
+		return
+	}
+	cursorModels.Lock()
+	defer cursorModels.Unlock()
+	if len(cursorModels.m) >= 1000 {
+		clear(cursorModels.m)
+	}
+	cursorModels.m[conv] = model
+}
+
+// modelFor returns the model remembered for the conversation a RunSSE request
+// names (a Connect frame whose field 1 is the conversation id).
+func modelFor(runRequest []byte) string {
+	frames, _ := connectFrames(runRequest)
+	if len(frames) == 0 {
+		return ""
+	}
+	conv, _ := pbString(frames[0], []int{1})
+	cursorModels.Lock()
+	defer cursorModels.Unlock()
+	return cursorModels.m[conv]
 }
 
 // Field paths inside each streamed message, as field numbers.
@@ -47,7 +102,12 @@ var (
 )
 
 func (Cursor) Parse(ex Exchange) (Result, error) {
-	res := Result{Tool: "cursor", Streamed: true, Kind: KindHuman}
+	if ex.Path == cursorAppendPath {
+		rememberModel(ex.ReqBody)
+		return Result{Skip: true}, nil
+	}
+
+	res := Result{Tool: "cursor", Streamed: true, Kind: KindHuman, Model: modelFor(ex.ReqBody)}
 
 	frames, err := connectFrames(ex.RespBody)
 	var answer strings.Builder

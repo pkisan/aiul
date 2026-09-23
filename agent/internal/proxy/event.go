@@ -180,6 +180,9 @@ func (p *Proxy) record(in interaction) {
 			// A body we could not read is still worth recording as metadata.
 			p.log.Debug("parse failed", "host", in.Host, "parser", parser.Name(), "err", err)
 		}
+		if res.Skip {
+			return
+		}
 		ev.Tool = res.Tool
 		ev.Model = res.Model
 		ev.Prompt = res.Prompt

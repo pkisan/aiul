@@ -57,6 +57,11 @@ type Result struct {
 	PromptTokens   int
 	ResponseTokens int
 
+	// Skip means the exchange is not an interaction of its own: the parser read it
+	// only for context a later exchange needs (Cursor's BidiAppend carries the
+	// model its RunSSE answer lacks). Nothing is recorded for it.
+	Skip bool
+
 	// WorkDir is the workspace the tool names in the body, for tools whose
 	// connecting process runs somewhere meaningless (Cursor's extension host
 	// runs in /). Used only when the process itself gave no repository.

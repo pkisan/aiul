@@ -805,6 +805,7 @@ func TestCloudCodeIgnoresRemindersAndThoughts(t *testing.T) {
 // cut down to the prompt, answer and usage frames. The usage frame is re-gzipped
 // in the fixture so the compressed-frame path is covered too.
 func TestCursorRunSSE(t *testing.T) {
+	clear(cursorModels.m) // shared across runs of this test
 	c := Cursor{}
 	if !c.Handles("api2.cursor.sh", "/agent.v1.AgentService/RunSSE") ||
 		c.Handles("api2.cursor.sh", "/aiserver.v1.AnalyticsService/Batch") ||
@@ -835,6 +836,29 @@ func TestCursorRunSSE(t *testing.T) {
 	}
 	if res.WorkDir != "/Users/dev/shop" {
 		t.Errorf("workdir = %q, want the workspace from the checkpoint frame", res.WorkDir)
+	}
+
+	// The model is not in RunSSE; it comes from the BidiAppend that opened the
+	// turn, matched on the conversation id. The appends themselves record nothing.
+	if res.Model != "" {
+		t.Errorf("model = %q before any BidiAppend was seen", res.Model)
+	}
+	for _, name := range []string{"cursor/bidiappend.request.bin", "cursor/bidiappend-followup.request.bin"} {
+		if !c.Handles("api2.cursor.sh", "/aiserver.v1.BidiService/BidiAppend") {
+			t.Fatal("BidiAppend not handled")
+		}
+		app, err := c.Parse(Exchange{Path: "/aiserver.v1.BidiService/BidiAppend", ReqBody: fixture(t, name)})
+		if err != nil || !app.Skip {
+			t.Errorf("%s: skip=%v err=%v, want it read for context only", name, app.Skip, err)
+		}
+	}
+	res, _ = c.Parse(Exchange{
+		Path:     "/agent.v1.AgentService/RunSSE",
+		ReqBody:  fixture(t, "cursor/runsse.request.bin"),
+		RespBody: fixture(t, "cursor/runsse.response.bin"),
+	})
+	if res.Model != "grok-4.6" {
+		t.Errorf("model = %q, want grok-4.6 from the BidiAppend", res.Model)
 	}
 
 	// A cut-off stream keeps what it read and says so.
