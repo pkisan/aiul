@@ -91,6 +91,10 @@ if [ -z "$TOKEN" ]; then
 fi
 
 if [ -z "$TOKEN" ]; then
+  if command -v docker >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
+    echo "Docker is not running. Open Docker Desktop, wait for it to start, then run this again." >&2
+    exit 1
+  fi
   echo "Could not obtain a device token. Is the backend running?" >&2
   echo "  docker compose -f compose.demo.yaml up -d --build" >&2
   exit 1

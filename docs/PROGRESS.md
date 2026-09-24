@@ -39,7 +39,7 @@ Milestones, each stops for the owner's confirmation (rule 13):
   docs/TEST-ON-ANOTHER-MACHINE.md replacing TEST-ON-ANOTHER-MAC.md.
 
 Progress:
-- [x] X1 BUILT 2026-09-24, awaiting the owner's check. `compose.demo.yaml`
+- [x] X1 DONE 2026-09-24 (confirmed on the Mac mini). `compose.demo.yaml`
       (project `aiul-demo`, own volumes, only the dashboard port published),
       `backend/Dockerfile` (composer -> vite -> php:8.4-cli, extensions via
       install-php-extensions), `backend/docker/entrypoint.sh` (app key kept in
@@ -67,7 +67,10 @@ Progress:
       **FIXED, confirmed 2026-09-24**: `aiul-ed17ebb.pkg` installed on the Mac
       mini via `enroll-device.sh --user admin@example.com` against its own
       Docker backend: proxy listening, job running, CA trusted, 5/5 services.
-      Next there: admin accepts the notice, one prompt, row on /usage.
+      **MILESTONE PASSED 2026-09-24**: owner confirmed a prompt on the Mac
+      mini's own dashboard. That also confirms X1 on a second machine (Docker
+      backend, fresh Mac). X2 remaining: Codex over WebSocket; one live VS Code
+      Copilot + Cursor row.
 
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 
