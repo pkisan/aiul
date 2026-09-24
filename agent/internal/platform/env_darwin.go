@@ -241,5 +241,3 @@ var AllManagedVars = []string{
 	"SSL_CERT_FILE", "REQUESTS_CA_BUNDLE",
 	"CODEX_CA_CERTIFICATE", "CLAUDE_CODE_CERT_STORE",
 }
-
-

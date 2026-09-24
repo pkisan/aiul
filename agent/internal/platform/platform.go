@@ -19,6 +19,13 @@ const AgentConfigPath = "/etc/aiul/agent.conf"
 // not built yet.
 var ErrUnsupported = errors.New("not implemented on this operating system yet")
 
+// ErrProxyStateHidden is Proxy().Current() saying it cannot see the setting from
+// this account. On Linux the proxy is each person's GNOME setting, which only
+// root can read, and the worker is not root. The worker then asks the helper to
+// apply the setting again instead of comparing it — which also covers someone
+// who logged in after the agent started.
+var ErrProxyStateHidden = errors.New("only root can read other users' proxy settings")
+
 // TrustInstaller adds and removes our development root CA from the machine's
 // trust store, so software on this device accepts certificates we mint.
 type TrustInstaller interface {

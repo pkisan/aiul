@@ -82,7 +82,7 @@ func runChecks() []check {
 
 		trusted, _ := platform.Trust().IsTrusted(ca.CommonNamePrefix)
 		out = append(out, check{
-			name:   "CA is trusted by macOS",
+			name:   "CA is trusted by the system",
 			ok:     trusted,
 			detail: trustDetail(trusted),
 			fix:    "aiul ca trust",
@@ -305,7 +305,7 @@ func cmdStatus(args []string) int {
 	fmt.Printf("proxy listening   %s\n", yesNo(proxyIsListening()))
 	fmt.Printf("background job    %s\n", yesNo(running))
 	fmt.Printf("CA trusted        %s\n", yesNo(trusted))
-	fmt.Printf("system proxy      %d of %d network services point at %s\n", proxied, len(current), proxyAddr)
+	fmt.Printf("system proxy      %d of %d proxy settings (network services, or desktop users on Linux) point at %s\n", proxied, len(current), proxyAddr)
 	fmt.Printf("env vars written  %d\n", len(vars))
 	fmt.Printf("CA file           %s\n", certPath)
 
@@ -335,7 +335,7 @@ func cmdStatus(args []string) int {
 	if proxied > 0 || trusted || running || len(vars) > 0 {
 		fmt.Println("\nundo everything   sudo ./scripts/killswitch.sh")
 	} else {
-		fmt.Println("\nThis Mac has no aiul settings applied.")
+		fmt.Println("\nThis machine has no aiul settings applied.")
 	}
 	return 0
 }

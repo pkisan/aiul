@@ -146,5 +146,3 @@ func (DarwinProxy) services() ([]string, error) {
 	}
 	return out, nil
 }
-
-

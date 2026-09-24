@@ -19,9 +19,11 @@ import (
 // ordinary website — every connection we deliberately pass through sealed would
 // fail. So we write a bundle: the system roots, plus ours.
 
-// systemBundles are the files macOS and Homebrew ship, in order of preference.
+// systemBundles are the files macOS, Homebrew and Debian/Ubuntu ship, in order
+// of preference.
 var systemBundles = []string{
 	"/etc/ssl/cert.pem",
+	"/etc/ssl/certs/ca-certificates.crt",
 	"/opt/homebrew/etc/ca-certificates/cert.pem",
 	"/usr/local/etc/ca-certificates/cert.pem",
 }

@@ -137,8 +137,12 @@ Design (same shape as macOS, same paths where possible):
 
 Steps (commit each):
 - [x] L1 kill switch for Linux: scripts/killswitch-linux.sh, killswitch.sh hands over on Linux. Ran in ubuntu:24.04 (dry run + real, nothing configured): clean.
-- [ ] L2 platform: shared unix helpers moved out of darwin files; linux
-      service account, systemd, trust, proxy, env, process, MDM
+- [x] L2 platform: shared unix code moved to exec.go / service_unix.go
+      (prepareInstall, PublishCA, CA copy); linux.go (desktop users, runuser),
+      serviceuser/service/trust/proxy/env/process_linux.go; healthCheck asks the
+      helper to re-apply on ErrProxyStateHidden; Debian CA bundle path added.
+      Tests run on Linux in golang:1.25 (docker), incl. a live /proc lookup:
+      all pass except the pre-existing paths SUDO_USER test (container is root).
 - [ ] L3 build.sh builds linux/amd64 + arm64; enroll-device.sh + postinstall
       learn Linux
 - [ ] L4 owner runs it on Ubuntu; fix what breaks

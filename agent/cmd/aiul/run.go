@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -261,6 +262,15 @@ func healthCheck(log *slog.Logger, privileged privilegedSource) {
 	// The proxy is healthy. Re-apply the setting if something removed it — a
 	// network change, a VPN connecting, or a new network service appearing.
 	current, err := platform.Proxy().Current()
+	if errors.Is(err, platform.ErrProxyStateHidden) {
+		// This account cannot see the setting (Linux: it is each person's, and
+		// only root reads it), so ask the helper to apply it again. The helper
+		// changes only what differs.
+		if err := privileged.ProxyOn(); err != nil {
+			log.Error("could not re-apply the proxy setting", "err", err)
+		}
+		return
+	}
 	if err != nil {
 		return
 	}
