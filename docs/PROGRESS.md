@@ -64,6 +64,10 @@ Progress:
       opens the worker's log AS _aiul, cannot enter the dir, never spawns it.
       Dev Mac hid it (older 0755 dir). Fix: chmod 0755 on every install.
       Leftover on the mini: /var/db/aiul owned by 448 (harmless, same uid).
+      **FIXED, confirmed 2026-09-24**: `aiul-ed17ebb.pkg` installed on the Mac
+      mini via `enroll-device.sh --user admin@example.com` against its own
+      Docker backend: proxy listening, job running, CA trusted, 5/5 services.
+      Next there: admin accepts the notice, one prompt, row on /usage.
 
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 
