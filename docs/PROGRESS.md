@@ -106,6 +106,43 @@ Progress:
       API prompt = text of the LAST user message only (`lastUserInput`).
       NEXT: reinstall, one Codex prompt, expect only the typed text.
 
+## PLAN: X4 Linux installed agent — started 2026-09-24
+
+Owner decisions (2026-09-24): start Linux now (X2 paused, Codex fix 3d39f94
+awaiting the owner's check); **script install** (no .deb); **Chrome only**
+(no Firefox/snap NSS work). Target Ubuntu desktop (GNOME), amd64 + arm64
+binaries. Claude cannot run Linux here: unit tests + cross-compile only; the
+owner runs the install on the Ubuntu machine and sends logs.
+
+Design (same shape as macOS, same paths where possible):
+- service account `_aiul` (useradd --system, nologin), state /var/db/aiul,
+  logs /var/log/aiul/agent.err.log (systemd `append:`), so every instruction
+  and path stays the same as on the Mac.
+- systemd units /etc/systemd/system/aiul-helper.service (root) and
+  aiul.service (User=_aiul) — replaces the two LaunchDaemons.
+- trust: /usr/local/share/ca-certificates/aiul-dev-root.crt +
+  update-ca-certificates (CLIs, curl, Python), AND each desktop user's
+  ~/.pki/nssdb via certutil (Chrome). Needs libnss3-tools.
+- proxy: GNOME `org.gnome.system.proxy` via gsettings, run as each logged-in
+  user on their session bus (/run/user/<uid>/bus). Chrome follows it live.
+  The worker cannot read other users' settings, so on Linux its health tick
+  re-asks the helper to apply (idempotent; covers users who log in later).
+- env: marked block in /etc/environment (pam_env, read at login by terminals
+  and GUI apps).
+- process lookup: /proc/net/tcp(6) port -> inode -> /proc/<pid>/fd, exe, cwd.
+- MDM: none on Linux; dev override only (/etc/aiul-dev-unmanaged -> env var).
+- kill switch: scripts/killswitch.sh hands over to killswitch-linux.sh on Linux.
+- install: enroll-device.sh learns Linux (binary instead of pkg), and the
+  same postinstall script does `ca ensure` + `install --apply --yes`.
+
+Steps (commit each):
+- [ ] L1 kill switch for Linux (rule 2, first)
+- [ ] L2 platform: shared unix helpers moved out of darwin files; linux
+      service account, systemd, trust, proxy, env, process, MDM
+- [ ] L3 build.sh builds linux/amd64 + arm64; enroll-device.sh + postinstall
+      learn Linux
+- [ ] L4 owner runs it on Ubuntu; fix what breaks
+
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 
 Owner decisions: employee login is `aiul login` on the device (short code,
