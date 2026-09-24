@@ -63,6 +63,19 @@ Not done / next:
 - Research mode was found OFF on 2026-09-23 (directory absent), despite the
   Copilot note below saying ON. Owner re-enabling it for the account research.
 
+## Logged-out ChatGPT (incognito) not recorded — 2026-09-24 12:58
+
+Owner's incognito chatgpt.com prompt never reached /usage. Cause: logged-out
+ChatGPT posts the turn to `POST /unauth-mweb/conversation/updates` (sequence
+seen live 12:57–12:58: unauth-mweb conversation/prepare, sentinel
+chat-requirements/prepare+finalize, conversation/updates, conversation/prepare).
+`ChatGPTWeb.Handles` only matches `/backend-api/(f/)conversation`, so it is
+logged as "no parser" and dropped. Not a backend discard (none today).
+NEXT: get one research dump of `/unauth-mweb/conversation/updates` (needs
+sudo: /var/db/aiul/research), anonymise into testdata/chatgpt, extend the
+parser, test. The account stays empty for logged-out use, so the UI already
+falls back to the device's person (R1.7).
+
 ## Copilot web parser — 2026-09-23 17:10
 
 Chrome's old "rejections" of `api.individual.githubcopilot.com` (09-21, 09-22)
