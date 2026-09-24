@@ -39,7 +39,18 @@ Milestones, each stops for the owner's confirmation (rule 13):
   docs/TEST-ON-ANOTHER-MACHINE.md replacing TEST-ON-ANOTHER-MAC.md.
 
 Progress:
-- [ ] X1
+- [x] X1 BUILT 2026-09-24, awaiting the owner's check. `compose.demo.yaml`
+      (project `aiul-demo`, own volumes, only the dashboard port published),
+      `backend/Dockerfile` (composer -> vite -> php:8.4-cli, extensions via
+      install-php-extensions), `backend/docker/entrypoint.sh` (app key kept in
+      the storage volume, migrate, seed ONCE — password only in `logs app`),
+      one-shot `minio-bucket`, `.gitattributes` keeps *.sh LF for Windows.
+      Verified here on AIUL_PORT=8098 beside the dev stack: all healthy,
+      /login 200 with built assets; provisioned a device, consent, POSTed one
+      event -> accepted, body in MinIO, worker scored it; recreate kept the key
+      (body still decrypts) and did not reseed. Test stack left running on 8098.
+      Note for X2: DevUsersSeeder already uses a random password — that item is
+      done.
 
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 
