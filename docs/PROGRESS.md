@@ -71,10 +71,15 @@ seen live 12:57–12:58: unauth-mweb conversation/prepare, sentinel
 chat-requirements/prepare+finalize, conversation/updates, conversation/prepare).
 `ChatGPTWeb.Handles` only matches `/backend-api/(f/)conversation`, so it is
 logged as "no parser" and dropped. Not a backend discard (none today).
-NEXT: get one research dump of `/unauth-mweb/conversation/updates` (needs
-sudo: /var/db/aiul/research), anonymise into testdata/chatgpt, extend the
-parser, test. The account stays empty for logged-out use, so the UI already
-falls back to the device's person (R1.7).
+FIXED (parser, not yet installed): research run 13:10 (research mode turned ON
+again for it). Request is form-encoded, text in `prompt`; answer is HTML
+fragments, finished paragraphs in `<?start name="...-committed-block-N">`.
+No model and no account on the wire; the UI falls back to the device's person
+(R1.7). `ChatGPTWeb.parseLoggedOut`, fixture `testdata/chatgpt/unauth-turn.*`
+(tokens removed), `TestChatGPTWebLoggedOut`. NEXT: owner reinstalls
+(`sudo AIUL_DEV_ALLOW_UNMANAGED=1 ./aiul install --apply` in agent/), sends one
+incognito prompt, checks /usage. Then research mode OFF and delete
+`/var/db/aiul/research` and `~/aiul-research`.
 
 ## Copilot web parser — 2026-09-23 17:10
 

@@ -442,6 +442,29 @@ func TestChatGPTWebConversation(t *testing.T) {
 	}
 }
 
+// Logged-out chatgpt.com (an incognito window) posts a form and streams HTML.
+// Fixture from a real turn on 2026-09-24, tokens removed.
+func TestChatGPTWebLoggedOut(t *testing.T) {
+	res, err := ChatGPTWeb{}.Parse(Exchange{
+		Host:     "chatgpt.com",
+		Path:     "/unauth-mweb/conversation/updates",
+		ReqBody:  fixture(t, "chatgpt/unauth-turn.request.form"),
+		RespBody: fixture(t, "chatgpt/unauth-turn.response.html"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Prompt != "hi" {
+		t.Errorf("prompt = %q", res.Prompt)
+	}
+	if want := "Hi! 👋 How can I help you today?"; res.Answer != want {
+		t.Errorf("answer = %q, want %q", res.Answer, want)
+	}
+	if res.Tool != "chatgpt-web" {
+		t.Errorf("tool = %q", res.Tool)
+	}
+}
+
 // The web application calls a dozen endpoints with similar names. Only one of them
 // is a person talking to the model, and recording the others would mean holding
 // data about somebody for no benefit.
@@ -455,6 +478,9 @@ func TestOnlyTheChatGPTConversationEndpointIsParsed(t *testing.T) {
 		"/backend-api/sentinel/chat-requirements/prepare":                 "",
 		"/ces/v1/telemetry/intake":                                        "",
 		"/backend-api/codex/models":                                       "",
+		"/unauth-mweb/conversation/updates":                               "chatgpt-web", // logged out
+		"/unauth-mweb/conversation/prepare":                               "",
+		"/unauth-mweb/sentinel/ping":                                      "",
 	}
 	for path, want := range cases {
 		got := ""

@@ -2,6 +2,11 @@ package parsers
 
 import (
 	"encoding/json"
+	"html"
+	"net/url"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -45,8 +50,14 @@ func (ChatGPTWeb) Handles(host, path string) bool {
 	path, _, _ = strings.Cut(path, "?")
 	path = strings.TrimSuffix(path, "/")
 
-	return path == "/backend-api/f/conversation" || path == "/backend-api/conversation"
+	return path == "/backend-api/f/conversation" || path == "/backend-api/conversation" ||
+		path == chatGPTLoggedOutPath
 }
+
+// chatGPTLoggedOutPath is where chatgpt.com sends a turn when nobody is signed in
+// (an incognito window, for one). Captured 2026-09-24: a form-encoded request with
+// the text in "prompt", and an answer streamed as HTML fragments, not JSON.
+const chatGPTLoggedOutPath = "/unauth-mweb/conversation/updates"
 
 type chatGPTWebRequest struct {
 	Model    string `json:"model"`
@@ -67,6 +78,11 @@ func (p ChatGPTWeb) Parse(ex Exchange) (Result, error) {
 	// A browser conversation is always streamed, and there is no usage block:
 	// the web application does not report token counts to itself.
 	res.Streamed = true
+
+	path, _, _ := strings.Cut(ex.Path, "?")
+	if strings.TrimSuffix(path, "/") == chatGPTLoggedOutPath {
+		return p.parseLoggedOut(ex, res)
+	}
 
 	var req chatGPTWebRequest
 	if err := json.Unmarshal(ex.ReqBody, &req); err != nil {
@@ -213,4 +229,44 @@ func modelSlugIn(raw string) string {
 	}
 
 	return slug
+}
+
+// committedBlock matches one finished paragraph of a logged-out answer:
+//
+//	<?start name="assistant-pending-<id>-committed-block-0"><p ...>Hi! How can I help you today?</p><?end>
+//
+// The stream also sends "-pending" fragments — the same text half-typed, redrawn
+// as it grows — which are ignored. A block can be re-sent; the last copy wins.
+var (
+	committedBlock = regexp.MustCompile(`(?s)<\?start name="[^"]*-committed-block-(\d+)">(.*?)<\?end>`)
+	htmlTag        = regexp.MustCompile(`<[^>]*>`)
+)
+
+// parseLoggedOut reads the logged-out endpoint. No model is named anywhere in
+// it, and no account: the dashboard falls back to the device's person.
+func (ChatGPTWeb) parseLoggedOut(ex Exchange, res Result) (Result, error) {
+	form, err := url.ParseQuery(string(ex.ReqBody))
+	if err != nil {
+		return res, err
+	}
+	res.Prompt = form.Get("prompt")
+
+	blocks := map[int]string{}
+	for _, m := range committedBlock.FindAllStringSubmatch(string(ex.RespBody), -1) {
+		n, _ := strconv.Atoi(m[1])
+		blocks[n] = strings.TrimSpace(html.UnescapeString(htmlTag.ReplaceAllString(m[2], "")))
+	}
+	order := make([]int, 0, len(blocks))
+	for n := range blocks {
+		order = append(order, n)
+	}
+	sort.Ints(order)
+
+	parts := make([]string, 0, len(order))
+	for _, n := range order {
+		parts = append(parts, blocks[n])
+	}
+	res.Answer = strings.Join(parts, "\n\n")
+
+	return res, nil
 }
