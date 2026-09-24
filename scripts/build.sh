@@ -50,6 +50,14 @@ echo "   windows/amd64"
 (cd "$AGENT_DIR" && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
   go build -trimpath -ldflags "$LDFLAGS" -o "../$OUT_DIR/aiul.exe" ./cmd/aiul)
 
+# Linux, both architectures: dist/aiul-linux-amd64 and dist/aiul-linux-arm64.
+# enroll-device.sh on the Linux machine picks the one for its CPU.
+for arch in amd64 arm64; do
+  echo "   linux/$arch"
+  (cd "$AGENT_DIR" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
+    go build -trimpath -ldflags "$LDFLAGS" -o "../$OUT_DIR/aiul-linux-$arch" ./cmd/aiul)
+done
+
 if [ -n "${AIUL_SIGN_IDENTITY:-}" ]; then
   # --options runtime turns on the hardened runtime, which notarization requires.
   echo "Signing with $AIUL_SIGN_IDENTITY"

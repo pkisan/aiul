@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-24 (Codex WS turns classified as human)
+Last updated: 2026-09-24 (Linux agent built, container-verified; awaiting owner on Ubuntu)
 
 ## PLAN: cross-OS demo — started 2026-09-24
 
@@ -143,9 +143,21 @@ Steps (commit each):
       helper to re-apply on ErrProxyStateHidden; Debian CA bundle path added.
       Tests run on Linux in golang:1.25 (docker), incl. a live /proc lookup:
       all pass except the pre-existing paths SUDO_USER test (container is root).
-- [ ] L3 build.sh builds linux/amd64 + arm64; enroll-device.sh + postinstall
-      learn Linux
-- [ ] L4 owner runs it on Ubuntu; fix what breaks
+- [x] L3 build.sh builds dist/aiul-linux-{amd64,arm64}; enroll-device.sh
+      learns Linux (binary, apt libnss3-tools if certutil missing, the same
+      packaging/scripts/postinstall). Fix found by the container test:
+      Ubuntu has no /var/db, `ca ensure` created it 0700 root and the worker
+      could not reach its CA -> prepareInstall chmods it 0755.
+      VERIFIED in a privileged systemd ubuntu:24.04 container (users ubuntu +
+      alice, alice with a live session bus): enroll-device.sh end to end,
+      install twice (upgrade), both NSS stores filled, alice's GNOME proxy
+      set, curl via proxy decrypted with process=curl dir=/home/alice/proj,
+      kill switch (also with the agent gone, logged-in and logged-out user)
+      leaves nothing behind. NOT testable here: a real GNOME desktop + Chrome.
+      Test artefact, not a bug: Docker Desktop sends container traffic
+      through THIS Mac's proxy, so the Mac agent tunnels com.docker.backend
+      for api.openai.com / api.anthropic.com (first request fails once).
+- [ ] L4 owner runs it on Ubuntu; fix what breaks  <- NEXT (awaiting owner)
 
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 

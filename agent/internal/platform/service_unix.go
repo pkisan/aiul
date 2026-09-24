@@ -159,6 +159,13 @@ func prepareInstall(binaryPath string) (uid, gid int, err error) {
 			return -1, -1, fmt.Errorf("create %s: %w", dir, err)
 		}
 	}
+	// The service account must be able to pass THROUGH the parent to reach its
+	// own directory. macOS ships /var/db as 0755; Ubuntu has no /var/db, and the
+	// one `aiul ca ensure` creates first is 0700 root, which kept the worker from
+	// reading its CA ("permission denied"). Only enter, never list or write.
+	if err := os.Chmod(filepath.Dir(WorkerStateDir), 0o755); err != nil {
+		return -1, -1, fmt.Errorf("open up %s: %w", filepath.Dir(WorkerStateDir), err)
+	}
 	// The log directory stays root-owned but must be enterable by everyone:
 	// launchd opens the worker's log files AS the service account, and a 0750
 	// root:wheel directory made it fail before the worker ran — so it logged

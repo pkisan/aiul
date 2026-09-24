@@ -587,3 +587,24 @@ Chosen: `golang.org/x/sys/windows`, maintained by the Go team and used by the
 standard library's own tooling. Owner approved 2026-09-23. Shell tools stay
 where they are the documented interface (certutil for the trust store). Added
 to go.mod only when the first code needing it lands (W2), not before.
+
+## D17 — Linux: same layout as macOS, per-person settings via the root helper (2026-09-24)
+
+The Linux agent (Ubuntu, GNOME) uses the same account (`_aiul`), paths
+(`/var/db/aiul`, `/var/log/aiul`, `/usr/local/bin/aiul`, `/etc/aiul/agent.conf`)
+and two-process split as macOS, with systemd units instead of LaunchDaemons.
+`/var/db` is not a Linux convention (`/var/lib` is), but one set of paths means
+one set of instructions, and the install script, kill switch and log advice
+stay identical.
+
+Two settings are per person on Linux rather than per machine: the GNOME proxy
+(which Chrome follows) and Chrome's trusted roots (`~/.pki/nssdb`). The root
+helper applies them as each desktop user (uid >= 1000, home under /home) with
+`runuser`, on that person's session bus when logged in, else on a private one.
+The unprivileged worker cannot read them (`ErrProxyStateHidden`), so its
+health tick asks the helper to re-apply instead of comparing; the helper only
+changes what differs. This also covers people who log in after the install.
+
+Not done, deliberately: Firefox (owner chose Chrome only), KDE/other desktops,
+a .deb package (owner chose a script), users created after the install (their
+Chrome store is filled on the next install).

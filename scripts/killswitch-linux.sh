@@ -88,7 +88,7 @@ for unit in $UNITS; do
     say "   not present: $UNIT_DIR/$unit"
   fi
 done
-[ "$DRY_RUN" -eq 0 ] && systemctl daemon-reload >/dev/null 2>&1
+[ "$DRY_RUN" -eq 0 ] && systemctl daemon-reload >/dev/null 2>&1 && systemctl reset-failed $UNITS >/dev/null 2>&1
 
 # ---------------------------------------------------------------------------
 step "2/5  GNOME proxy (per desktop user)"
