@@ -147,20 +147,4 @@ func (DarwinProxy) services() ([]string, error) {
 	return out, nil
 }
 
-func splitHostPort(hostport string) (host, port string) {
-	if i := strings.LastIndex(hostport, ":"); i > 0 {
-		return hostport[:i], hostport[i+1:]
-	}
-	return hostport, "8899"
-}
 
-// run executes a command that changes a system setting. It is separated so every
-// such call in this package goes through one place.
-func run(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s: %w: %s", name, err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}

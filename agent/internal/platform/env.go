@@ -56,7 +56,8 @@ var NoProxyList = []string{
 	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
 }
 
-// parseBlockVars reads the "export K=\"V\"" lines inside our marked block.
+// parseBlockVars reads the K="V" lines inside our marked block, with or without
+// a leading "export " (/etc/zshenv has it, /etc/environment on Linux cannot).
 func parseBlockVars(content string) EnvVars {
 	out := EnvVars{}
 	inBlock := false
@@ -67,11 +68,12 @@ func parseBlockVars(content string) EnvVars {
 		case strings.Contains(line, blockEnd):
 			inBlock = false
 		case inBlock:
-			if after, ok := strings.CutPrefix(strings.TrimSpace(line), "export "); ok {
-				k, v, found := strings.Cut(after, "=")
-				if found {
-					out[k] = strings.Trim(v, `"`)
-				}
+			line = strings.TrimPrefix(strings.TrimSpace(line), "export ")
+			if strings.HasPrefix(line, "#") {
+				continue
+			}
+			if k, v, found := strings.Cut(line, "="); found {
+				out[k] = strings.Trim(v, `"`)
 			}
 		}
 	}

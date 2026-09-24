@@ -5,7 +5,6 @@ package platform
 import (
 	"fmt"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -243,27 +242,4 @@ var AllManagedVars = []string{
 	"CODEX_CA_CERTIFICATE", "CLAUDE_CODE_CERT_STORE",
 }
 
-// stripBlock removes our marked block from a file's contents.
-func stripBlock(s string) string {
-	begin := strings.Index(s, blockBegin)
-	if begin < 0 {
-		return s
-	}
-	end := strings.Index(s[begin:], blockEnd)
-	if end < 0 {
-		// A truncated block: drop everything from the marker on, rather than
-		// leaving half a block behind.
-		return s[:begin]
-	}
-	rest := s[begin+end+len(blockEnd):]
-	return s[:begin] + strings.TrimPrefix(rest, "\n")
-}
 
-func sortedKeys(vars EnvVars) []string {
-	out := make([]string, 0, len(vars))
-	for k := range vars {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}

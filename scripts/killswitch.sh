@@ -21,6 +21,11 @@
 
 set -u # unset variable is an error; no -e, we want every step attempted
 
+# Linux has its own list of changes to undo; same command, same flags.
+if [ "$(uname -s)" = "Linux" ]; then
+  exec "$(dirname "$0")/killswitch-linux.sh" "$@"
+fi
+
 DRY_RUN=0
 [ "${1:-}" = "--dry-run" ] && DRY_RUN=1
 

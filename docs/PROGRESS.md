@@ -136,7 +136,7 @@ Design (same shape as macOS, same paths where possible):
   same postinstall script does `ca ensure` + `install --apply --yes`.
 
 Steps (commit each):
-- [ ] L1 kill switch for Linux (rule 2, first)
+- [x] L1 kill switch for Linux: scripts/killswitch-linux.sh, killswitch.sh hands over on Linux. Ran in ubuntu:24.04 (dry run + real, nothing configured): clean.
 - [ ] L2 platform: shared unix helpers moved out of darwin files; linux
       service account, systemd, trust, proxy, env, process, MDM
 - [ ] L3 build.sh builds linux/amd64 + arm64; enroll-device.sh + postinstall
