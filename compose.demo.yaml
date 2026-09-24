@@ -8,6 +8,11 @@
 # `php artisan serve` on the host): its own project name, its own volumes, and no
 # host ports except the dashboard, so both can run side by side.
 #
+# Sign in as admin@example.com. The password is printed once, in the first
+# start's log (`docker compose -f compose.demo.yaml logs app`). Lost it, or the
+# container was recreated? This sets and prints a new one:
+#   docker compose -f compose.demo.yaml exec app php artisan db:seed --class=DevUsersSeeder --force
+#
 # Remove it, data and all:  docker compose -f compose.demo.yaml down -v
 name: aiul-demo
 
