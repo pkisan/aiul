@@ -2,6 +2,7 @@
 # enroll-device.sh — put the agent on this Mac and point it at a backend.
 #
 #   ./scripts/enroll-device.sh                                  # backend on this machine
+#   ./scripts/enroll-device.sh --user admin@example.com         # ...linked to that person
 #   ./scripts/enroll-device.sh --endpoint https://aiul.example.com/api/aiul/events \
 #                             --token aiul_xxx                  # backend elsewhere
 #   ./scripts/enroll-device.sh --uninstall
@@ -21,6 +22,7 @@ REPO="$PWD"
 PORT="${AIUL_PORT:-8088}"
 ENDPOINT=""
 TOKEN=""
+USER_EMAIL=""
 PKG=""
 UNINSTALL=0
 
@@ -28,6 +30,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --endpoint) ENDPOINT="$2"; shift 2 ;;
     --token)    TOKEN="$2"; shift 2 ;;
+    --user)     USER_EMAIL="$2"; shift 2 ;;
     --pkg)      PKG="$2"; shift 2 ;;
     --uninstall) UNINSTALL=1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -67,8 +70,16 @@ if [ -z "$TOKEN" ]; then
   case "$ENDPOINT" in
     http://127.0.0.1*|http://localhost*)
       say "Provisioning this device with the local backend"
-      TOKEN="$(cd "$REPO/backend" && php artisan aiul:provision-device "$(hostname -s)" \
-                 --tenant=dev --platform=darwin 2>/dev/null | grep -oE 'aiul_[A-Za-z0-9_-]+' | head -1)"
+      # The backend runs either in Docker (compose.demo.yaml) or on the host
+      # (setup-backend.sh). The Docker one needs no PHP on this Mac.
+      PROVISION=(php artisan aiul:provision-device "$(hostname -s)" --tenant=dev --platform=darwin)
+      [ -n "$USER_EMAIL" ] && PROVISION+=(--user="$USER_EMAIL")
+      if docker compose -f "$REPO/compose.demo.yaml" ps --status running -q app 2>/dev/null | grep -q .; then
+        TOKEN="$(docker compose -f "$REPO/compose.demo.yaml" exec -T app "${PROVISION[@]}" 2>/dev/null \
+                   | grep -oE 'aiul_[A-Za-z0-9_-]+' | head -1)"
+      else
+        TOKEN="$(cd "$REPO/backend" && "${PROVISION[@]}" 2>/dev/null | grep -oE 'aiul_[A-Za-z0-9_-]+' | head -1)"
+      fi
       ;;
     *)
       echo "A remote endpoint needs a token from whoever runs that backend:" >&2
@@ -80,7 +91,8 @@ if [ -z "$TOKEN" ]; then
 fi
 
 if [ -z "$TOKEN" ]; then
-  echo "Could not obtain a device token. Is the backend set up? Run ./scripts/setup-backend.sh" >&2
+  echo "Could not obtain a device token. Is the backend running?" >&2
+  echo "  docker compose -f compose.demo.yaml up -d --build" >&2
   exit 1
 fi
 
@@ -138,6 +150,10 @@ say "Checking it came up"
 sudo /usr/local/bin/aiul status || true
 
 cat <<DONE
+
+  Events are only kept once this device belongs to a person who accepted the
+  notice: sign in to the dashboard as that person once and accept it (or run
+  \`aiul login\` if no --user was given).
 
   Send one prompt from Claude Code, Codex or claude.ai, then look at:
 

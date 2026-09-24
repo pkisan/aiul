@@ -51,6 +51,13 @@ Progress:
       (body still decrypts) and did not reseed. Test stack left running on 8098.
       Note for X2: DevUsersSeeder already uses a random password — that item is
       done.
+- [x] enroll-device.sh (part of X5, done early): gets the token from the
+      Docker backend when compose.demo.yaml is running (no PHP on the Mac),
+      `--user <email>` links the device to that person, and the closing text
+      says consent is needed. Dry run ("n" at the prompt) against 8098:
+      provisioned, linked to dev@example.com, nothing installed.
+      Fresh `dist/aiul-29a4538.pkg` built (the old 967e32d one lacked the
+      logged-out ChatGPT parser). Other Macs need that pkg copied in, or Go.
 
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 
