@@ -243,8 +243,9 @@ func testCodexWebSocket(t *testing.T, compress bool) {
 	}
 	conn.Close()
 
-	if !eventually(3*time.Second, func() bool { return len(sink.all()) == 2 }) {
-		t.Fatalf("got %d events, want one per turn (2)", len(sink.all()))
+	if !eventually(3*time.Second, func() bool { return len(sink.all()) == 1 }) {
+		// The first turn is Codex's generate:false warm-up, which is not recorded.
+		t.Fatalf("got %d events, want the one answered turn", len(sink.all()))
 	}
 	// Events are recorded asynchronously, so find the answered turn by content.
 	var e Event
@@ -261,5 +262,10 @@ func testCodexWebSocket(t *testing.T, compress bool) {
 	}
 	if e.Prompt == "" {
 		t.Error("the turn's prompt is missing")
+	}
+	// A follow-up turn carries previous_response_id and no tools of its own; it
+	// is still the person typing, not the tool's housekeeping.
+	if e.Kind != "human" {
+		t.Errorf("kind=%q, want human", e.Kind)
 	}
 }

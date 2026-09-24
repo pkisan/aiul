@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-24 (logged-out ChatGPT recorded, verified)
+Last updated: 2026-09-24 (Codex WS turns classified as human)
 
 ## PLAN: cross-OS demo — started 2026-09-24
 
@@ -92,6 +92,15 @@ Progress:
       and fixed on the way: messages are now noted when their last byte is
       read, before it is forwarded.
       NEXT: owner reinstalls, one Codex prompt (app + VS Code), expect a row.
+- [x] X2 Codex rows hidden (2026-09-24 17:00, owner: session 48 showed only
+      "the agent call"). All 4 WS turns reached the backend but as
+      kind=utility: follow-up turns carry `previous_response_id` and no
+      `tools` (Codex sends tools once, as an `additional_tools` input item),
+      so kindOf read them as housekeeping. Fix: OpenAI parser counts
+      previous_response_id / additional_tools as tools offered, and skips the
+      `generate:false` warm-up. Title call stays utility. Test extended.
+      Old row 1631 ("Hey") is still utility in the local DB.
+      NEXT: owner rebuilds + reinstalls, one Codex prompt, expect a human row.
 
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 

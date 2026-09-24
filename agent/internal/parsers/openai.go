@@ -99,6 +99,12 @@ type openAIRequest struct {
 	Input        json.RawMessage   `json:"input"`
 	Instructions string            `json:"instructions"`
 	Tools        []json.RawMessage `json:"tools"`
+	// Codex over WebSocket continues a conversation by pointing at the previous
+	// response; the tools offered then stay on the server, so Tools is empty.
+	PreviousResponseID string `json:"previous_response_id"`
+	// Codex over WebSocket first sends a warm-up with generate:false. The model
+	// answers nothing; it only caches the prompt.
+	Generate *bool `json:"generate"`
 }
 
 func (p OpenAI) Parse(ex Exchange) (Result, error) {
@@ -138,11 +144,23 @@ func (p OpenAI) Parse(ex Exchange) (Result, error) {
 	var items []struct {
 		Type string `json:"type"`
 	}
-	if json.Unmarshal(req.Input, &items) == nil && len(items) > 0 &&
-		items[len(items)-1].Type == "function_call_output" {
-		res.Automated = true
+	offersTools := len(req.Tools) > 0 || req.PreviousResponseID != ""
+	if json.Unmarshal(req.Input, &items) == nil && len(items) > 0 {
+		if items[len(items)-1].Type == "function_call_output" {
+			res.Automated = true
+		}
+		for _, it := range items {
+			// Codex over WebSocket sends its tools as an input item.
+			if it.Type == "additional_tools" {
+				offersTools = true
+			}
+		}
 	}
-	res.Kind = kindOf(res.Automated, len(req.Tools) > 0, res.Tool)
+	if req.Generate != nil && !*req.Generate {
+		res.Skip = true
+		return res, reqErr
+	}
+	res.Kind = kindOf(res.Automated, offersTools, res.Tool)
 	res.Automated = res.Kind != KindHuman
 
 	// Copilot Chat in VS Code wraps what the person typed in <userRequest>,
