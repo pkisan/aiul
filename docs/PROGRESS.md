@@ -105,6 +105,19 @@ Progress:
       whole input list (Codex instructions + earlier turns). Fix: Responses
       API prompt = text of the LAST user message only (`lastUserInput`).
       NEXT: reinstall, one Codex prompt, expect only the typed text.
+- [x] X2 Codex ambient suggestions on the Mac mini (2026-09-24, owner
+      screenshot): a Codex-app session of 10 "You asked" rows — a
+      "Generate 0 to 3 hyperpersonalized suggestions" prompt, 7 rows "only
+      context the tool added — nothing typed", the answer JSON, and a safety
+      check prompt. None typed by the person. Fix: OpenAI parser reads
+      client_metadata["x-codex-turn-metadata"] (JSON in a string; HTTP
+      header fallback for thread_source only): thread_source != "user" ->
+      utility, request_kind "prewarm" -> skipped; a previous_response_id
+      continuation with no user message -> agent. TestCodexWhoStartedTheTurn.
+      ASSUMPTION, unverified: ambient suggestions carry a thread_source other
+      than "user" (no capture of them here). If the Mac mini still shows the
+      suggestion prompt as human after this build, take a research capture
+      there. Existing mini rows stay as they are.
 
 ## PLAN: X4 Linux installed agent — started 2026-09-24
 

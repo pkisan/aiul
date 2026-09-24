@@ -105,6 +105,9 @@ type openAIRequest struct {
 	// Codex over WebSocket first sends a warm-up with generate:false. The model
 	// answers nothing; it only caches the prompt.
 	Generate *bool `json:"generate"`
+	// Codex says who started the conversation in here; see codexTurn. Raw, so a
+	// value of an unexpected type can never fail the whole request.
+	ClientMetadata map[string]json.RawMessage `json:"client_metadata"`
 }
 
 func (p OpenAI) Parse(ex Exchange) (Result, error) {
@@ -143,24 +146,50 @@ func (p OpenAI) Parse(ex Exchange) (Result, error) {
 	// In the Responses API a tool result is an input item of its own type.
 	var items []struct {
 		Type string `json:"type"`
+		Role string `json:"role"`
 	}
 	offersTools := len(req.Tools) > 0 || req.PreviousResponseID != ""
 	if json.Unmarshal(req.Input, &items) == nil && len(items) > 0 {
 		if items[len(items)-1].Type == "function_call_output" {
 			res.Automated = true
 		}
+		hasUser := false
 		for _, it := range items {
 			// Codex over WebSocket sends its tools as an input item.
 			if it.Type == "additional_tools" {
 				offersTools = true
 			}
+			if it.Role == "user" {
+				hasUser = true
+			}
+		}
+		// A continuation (previous_response_id) that carries no user message
+		// is the agent going on by itself — tool results, reasoning — however
+		// the last item happens to be typed. Nothing in it was typed.
+		if req.PreviousResponseID != "" && !hasUser {
+			res.Automated = true
 		}
 	}
-	if req.Generate != nil && !*req.Generate {
+	source, requestKind := codexTurn(req.ClientMetadata)
+	if source == "" {
+		// Codex over HTTP sends the same metadata as a header. Only the thread's
+		// source is taken from there: over WebSocket the header belongs to the
+		// upgrade, whose request_kind ("prewarm") says nothing about later turns.
+		headerMeta, _ := json.Marshal(ex.ReqHead.Get("X-Codex-Turn-Metadata"))
+		source, _ = codexTurn(map[string]json.RawMessage{"x-codex-turn-metadata": headerMeta})
+	}
+	if requestKind == "prewarm" || (req.Generate != nil && !*req.Generate) {
 		res.Skip = true
 		return res, reqErr
 	}
 	res.Kind = kindOf(res.Automated, offersTools, res.Tool)
+	// Codex marks the conversations a person started with thread_source "user".
+	// Anything else is Codex working for itself in the background — the desktop
+	// app's ambient suggestions and their safety check, for one — so none of it
+	// was typed, however human its prompt looks.
+	if source != "" && source != "user" {
+		res.Kind = KindUtility
+	}
 	res.Automated = res.Kind != KindHuman
 
 	// Copilot Chat in VS Code wraps what the person typed in <userRequest>,
@@ -180,6 +209,26 @@ func (p OpenAI) Parse(ex Exchange) (Result, error) {
 
 	p.parseWholeResponse(ex.RespBody, &res)
 	return res, reqErr
+}
+
+// codexTurn reads Codex's own description of a request from client_metadata:
+//
+//	"x-codex-turn-metadata": "{\"thread_source\":\"user\",\"request_kind\":\"turn\",...}"
+//
+// It is JSON inside a JSON string. Both are empty for any other client.
+func codexTurn(meta map[string]json.RawMessage) (threadSource, requestKind string) {
+	var inner string
+	if json.Unmarshal(meta["x-codex-turn-metadata"], &inner) != nil {
+		return "", ""
+	}
+	var turn struct {
+		ThreadSource string `json:"thread_source"`
+		RequestKind  string `json:"request_kind"`
+	}
+	if json.Unmarshal([]byte(inner), &turn) != nil {
+		return "", ""
+	}
+	return turn.ThreadSource, turn.RequestKind
 }
 
 // lastUserInput returns what this Responses API request newly asked: the text of

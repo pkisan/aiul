@@ -982,3 +982,43 @@ func TestCopilotVSCodeResponses(t *testing.T) {
 		t.Errorf("title call: kind=%q automated=%v, want utility", title.Kind, title.Automated)
 	}
 }
+
+// Codex's own background work (the desktop app's ambient suggestions) looks like
+// a person's turn except for thread_source; its continuations carry no user
+// message at all. Neither was typed. See codexTurn.
+func TestCodexWhoStartedTheTurn(t *testing.T) {
+	meta := func(source, kind string) string {
+		inner, _ := json.Marshal(map[string]string{"thread_source": source, "request_kind": kind})
+		outer, _ := json.Marshal(string(inner))
+		return `"client_metadata":{"x-codex-turn-metadata":` + string(outer) + `}`
+	}
+	parse := func(body string) Result {
+		t.Helper()
+		res, err := OpenAI{}.Parse(Exchange{
+			Host: "chatgpt.com", Path: "/backend-api/codex/responses",
+			ReqHead: http.Header{"User-Agent": {"codex_exec/0.155.0"}},
+			ReqBody: []byte(body),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	userMsg := `{"type":"message","role":"user","content":[{"type":"input_text","text":"Howdy"}]}`
+
+	if res := parse(`{"type":"response.create","model":"m","previous_response_id":"r1",` + meta("user", "turn") +
+		`,"input":[` + userMsg + `]}`); res.Kind != KindHuman || res.Prompt != "Howdy" {
+		t.Errorf("person's turn: kind=%q prompt=%q", res.Kind, res.Prompt)
+	}
+	if res := parse(`{"type":"response.create","model":"m","tools":[{}],` + meta("ambient_suggestions", "turn") +
+		`,"input":[` + userMsg + `]}`); res.Kind != KindUtility {
+		t.Errorf("background thread: kind=%q, want utility", res.Kind)
+	}
+	if res := parse(`{"type":"response.create","model":"m","previous_response_id":"r1",` + meta("user", "turn") +
+		`,"input":[{"type":"mcp_tool_call_output","output":"x"}]}`); res.Kind != KindAgent {
+		t.Errorf("continuation without a user message: kind=%q, want agent", res.Kind)
+	}
+	if res := parse(`{"type":"response.create","model":"m",` + meta("user", "prewarm") + `,"input":[]}`); !res.Skip {
+		t.Error("prewarm must not be recorded")
+	}
+}
