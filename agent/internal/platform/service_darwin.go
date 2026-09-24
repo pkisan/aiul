@@ -110,6 +110,14 @@ func (s DarwinService) Install(binaryPath string, extraEnv map[string]string) er
 			return fmt.Errorf("create %s: %w", dir, err)
 		}
 	}
+	// The log directory stays root-owned but must be enterable by everyone:
+	// launchd opens the worker's log files AS the service account, and a 0750
+	// root:wheel directory made it fail before the worker ran — so it logged
+	// nothing. Seen on a fresh Mac mini 2026-09-24; the dev Mac hid it with an
+	// older 0755 directory. Chmod, not just MkdirAll, fixes one left behind.
+	if err := os.Chmod(logDir, 0o755); err != nil {
+		return fmt.Errorf("open up %s: %w", logDir, err)
+	}
 	// launchd opens a job's log files as the account that job runs as, so the
 	// worker's two files must belong to that account. Without this, launchd cannot
 	// start the worker at all — and because it never runs, it writes no log line

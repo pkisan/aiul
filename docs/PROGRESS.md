@@ -58,6 +58,12 @@ Progress:
       provisioned, linked to dev@example.com, nothing installed.
       Fresh `dist/aiul-29a4538.pkg` built (the old 967e32d one lacked the
       logged-out ChatGPT parser). Other Macs need that pkg copied in, or Go.
+- [ ] X2 Mac mini install (2026-09-24 16:12): postinstall failed, "worker
+      process is not running", agent.err.log EMPTY. Cause (strong, not yet
+      confirmed there): Install made /var/log/aiul root:wheel 0750; launchd
+      opens the worker's log AS _aiul, cannot enter the dir, never spawns it.
+      Dev Mac hid it (older 0755 dir). Fix: chmod 0755 on every install.
+      Leftover on the mini: /var/db/aiul owned by 448 (harmless, same uid).
 
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 
