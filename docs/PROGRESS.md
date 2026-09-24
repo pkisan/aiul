@@ -4,6 +4,43 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-24 (logged-out ChatGPT recorded, verified)
 
+## PLAN: cross-OS demo — started 2026-09-24
+
+Goal: a tester on any Mac, Windows PC or Ubuntu desktop installs the backend and
+the agent with one command each, and sees their own AI usage on their own
+dashboard. Owner decisions (2026-09-24): **each tester runs their own backend**
+(no shared server); Windows and Linux get an **installed agent** (trust, system
+proxy, service, kill switch) — not the manual W1 run; Linux target is an
+**Ubuntu desktop (GNOME)**. Still a demo (see "Framing"), not the product.
+
+Milestones, each stops for the owner's confirmation (rule 13):
+
+- **X1 — backend in Docker, same on all three OSes.** Add the Laravel app and
+  its queue worker to docker-compose.yml under a profile, so
+  `docker compose --profile app up -d --build` gives the dashboard on
+  127.0.0.1:8088 with no PHP, Composer or Node on the host. Migrations, bucket,
+  dev logins and the app key happen on first start; the key persists in a
+  volume. Existing dev flow (data services only, `php artisan serve` on the
+  host) unchanged. Verify on this Mac on a different port first.
+- **X2 — macOS demo gaps.** Mac mini install failure (read the worker log);
+  Codex over WebSocket answers; one live VS Code Copilot + Cursor row; seeded
+  password not `password` outside local.
+- **X3 — Windows installed agent** (was W2–W4): port→PID attribution
+  (GetExtendedTcpTable), CurrentUser\Root trust, WinINET proxy + user env vars,
+  Windows Service, fail-open; `aiul install --apply` and killswitch.ps1 cover
+  every item. Tested on DESKTOP-Q12UTEE.
+- **X4 — Linux installed agent (Ubuntu GNOME)**: trust in
+  /usr/local/share/ca-certificates + update-ca-certificates AND the NSS db
+  Chrome/Firefox read (~/.pki/nssdb, certutil from libnss3-tools); proxy via
+  gsettings (GNOME) + /etc/environment block; port→PID from /proc/net/tcp;
+  systemd unit; killswitch.sh learns Linux. MDM gate: dev override only.
+- **X5 — one enrol command per OS** (enroll-device.sh for Mac+Linux,
+  enroll-device.ps1 for Windows) against the local Docker backend, and
+  docs/TEST-ON-ANOTHER-MACHINE.md replacing TEST-ON-ANOTHER-MAC.md.
+
+Progress:
+- [ ] X1
+
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 
 Owner decisions: employee login is `aiul login` on the device (short code,
