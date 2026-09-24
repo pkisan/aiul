@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-23 (Windows W1 passed on the PC)
+Last updated: 2026-09-24 (logged-out ChatGPT recorded, verified)
 
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 
@@ -76,10 +76,9 @@ again for it). Request is form-encoded, text in `prompt`; answer is HTML
 fragments, finished paragraphs in `<?start name="...-committed-block-N">`.
 No model and no account on the wire; the UI falls back to the device's person
 (R1.7). `ChatGPTWeb.parseLoggedOut`, fixture `testdata/chatgpt/unauth-turn.*`
-(tokens removed), `TestChatGPTWebLoggedOut`. NEXT: owner reinstalls
-(`sudo AIUL_DEV_ALLOW_UNMANAGED=1 ./aiul install --apply` in agent/), sends one
-incognito prompt, checks /usage. Then research mode OFF and delete
-`/var/db/aiul/research` and `~/aiul-research`.
+(tokens removed), `TestChatGPTWebLoggedOut`. **VERIFIED 14:45** — owner
+reinstalled `2a301b8`, incognito prompt showed on /usage. Research mode OFF
+again (no RESEARCH MODE line at the 14:45 start), `~/aiul-research` deleted.
 
 ## Copilot web parser — 2026-09-23 17:10
 
@@ -169,8 +168,7 @@ because this week found a lot; read the top three sections and stop.
   ahead of `origin/main`** (the allow-list change and this file).
 - Backend running locally: Postgres 5433, Redis 6380, MinIO 9002 in Docker;
   `php artisan serve` on 8088. 653 interactions, 10 sessions, kinds on 134.
-- Research mode is ON — `/var/db/aiul/research` holds decrypted, redacted
-  exchanges. Turn it off and delete that directory when parser work pauses.
+- Research mode is OFF (2026-09-24 14:45).
 - Checkouts under `~/Desktop` record no branch until the agent is granted Full
   Disk Access (see SETUP-MAC.md). `~/Herd` and elsewhere are fine.
 
