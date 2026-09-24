@@ -71,6 +71,27 @@ Progress:
       mini's own dashboard. That also confirms X1 on a second machine (Docker
       backend, fresh Mac). X2 remaining: Codex over WebSocket; one live VS Code
       Copilot + Cursor row.
+- [x] X2 Codex (2026-09-24 16:40, owner: a Codex prompt in a no-git folder was
+      not recorded). NOT the missing repo: since the 14:44 manual install every
+      `codex` rejected our certificate for chatgpt.com and was tunneled. The
+      worker's device intermediate was signed by an older root (OU=user:root,
+      A46B…) while the bundle Codex trusts held the current one (E3EC…);
+      browsers trusted both roots in the keychain so they kept working.
+      Fix `48b735e`: ProvisionDevice reissues when the intermediate does not
+      verify against the current root (+ test). Stale root A46B is still
+      trusted in the System keychain — harmless, removal offered to owner.
+- [x] X2 WebSocket relay: `internal/proxy/websocket.go`. A 101 used to be
+      read as HTTP ("malformed HTTP request"), killing Codex's socket (it fell
+      back to HTTP) and ws.chatgpt.com. Now frames are relayed byte for byte
+      both ways, flushed per frame; our copy is unmasked and inflated
+      (permessage-deflate, context takeover via a 32 KiB window); Codex turns
+      (response.create .. response.completed) are recorded through the
+      existing Responses parser, off the relay goroutines. The empty 101
+      exchange is no longer recorded. Test replays the 36-frame fixture, plain
+      and compressed with split frames; -race clean, 30x stable. Two races found
+      and fixed on the way: messages are now noted when their last byte is
+      read, before it is forwarded.
+      NEXT: owner reinstalls, one Codex prompt (app + VS Code), expect a row.
 
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 

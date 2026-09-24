@@ -237,7 +237,7 @@ func (p *Proxy) capture(clientConn net.Conn, clientReader io.Reader, upstream ne
 
 		method, path := req.Method, req.URL.Path
 
-		if err := p.forward(req, clientTLS, upstreamTLS, upstreamBuf, host, started, ctx); err != nil {
+		if err := p.forward(req, clientBuf, clientTLS, upstreamTLS, upstreamBuf, host, started, ctx); err != nil {
 			p.log.Debug("forwarding ended", "host", host, "err", err,
 				"method", method, "path", path, "request_on_connection", requests)
 			return

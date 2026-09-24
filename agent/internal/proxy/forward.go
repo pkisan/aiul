@@ -40,7 +40,7 @@ const (
 //
 // Rule 8's other half: the request we send upstream is byte-for-byte what the
 // client sent. Redaction happens later, on our copy only.
-func (p *Proxy) forward(req *http.Request, client io.Writer, upstream *tls.Conn, upstreamBuf *bufio.Reader, host string, connStarted time.Time, taskCtx tasks.Info) error {
+func (p *Proxy) forward(req *http.Request, clientIn *bufio.Reader, client *tls.Conn, upstream *tls.Conn, upstreamBuf *bufio.Reader, host string, connStarted time.Time, taskCtx tasks.Info) error {
 	started := time.Now()
 
 	// Tee the request body: the original goes upstream, a bounded copy comes to us.
@@ -69,6 +69,13 @@ func (p *Proxy) forward(req *http.Request, client io.Writer, upstream *tls.Conn,
 		return err
 	}
 	flush(client)
+
+	// A WebSocket: the connection stops being HTTP here. Its turns are recorded
+	// by the relay; the empty upgrade exchange itself is not an interaction.
+	if resp.StatusCode == http.StatusSwitchingProtocols {
+		p.relayWebSocket(req, resp, clientIn, client, upstreamBuf, upstream, host, taskCtx)
+		return io.EOF
+	}
 
 	var respCopy bytes.Buffer
 	written, err := streamBody(client, resp, &respCopy)
