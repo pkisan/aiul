@@ -101,6 +101,10 @@ Progress:
       `generate:false` warm-up. Title call stays utility. Test extended.
       Old row 1631 ("Hey") is still utility in the local DB.
       NEXT: owner rebuilds + reinstalls, one Codex prompt, expect a human row.
+      INSTALLED f75436a: "Howdy" became a human row, but its prompt was the
+      whole input list (Codex instructions + earlier turns). Fix: Responses
+      API prompt = text of the LAST user message only (`lastUserInput`).
+      NEXT: reinstall, one Codex prompt, expect only the typed text.
 
 ## PLAN: production refinement R1 — started 2026-09-23 (owner's 8 items)
 

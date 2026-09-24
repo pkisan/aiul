@@ -260,8 +260,9 @@ func testCodexWebSocket(t *testing.T, compress bool) {
 	if e.Parser != "openai" || e.Model == "" {
 		t.Errorf("parser=%q model=%q", e.Parser, e.Model)
 	}
-	if e.Prompt == "" {
-		t.Error("the turn's prompt is missing")
+	// Only what the person typed, not the instructions and history before it.
+	if e.Prompt != "write a haiku about a proxy" {
+		t.Errorf("prompt=%.120q, want only the last user message", e.Prompt)
 	}
 	// A follow-up turn carries previous_response_id and no tools of its own; it
 	// is still the person typing, not the tool's housekeeping.

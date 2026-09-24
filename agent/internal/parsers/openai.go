@@ -137,7 +137,7 @@ func (p OpenAI) Parse(ex Exchange) (Result, error) {
 		}
 	}
 	if res.Prompt == "" && len(req.Input) > 0 {
-		res.Prompt = textFromContent(req.Input)
+		res.Prompt = lastUserInput(req.Input)
 	}
 
 	// In the Responses API a tool result is an input item of its own type.
@@ -180,6 +180,26 @@ func (p OpenAI) Parse(ex Exchange) (Result, error) {
 
 	p.parseWholeResponse(ex.RespBody, &res)
 	return res, reqErr
+}
+
+// lastUserInput returns what this Responses API request newly asked: the text of
+// the last user message. Codex sends its instructions, earlier turns and answers
+// in the same input list, so joining all of it would store the whole history as
+// the prompt. A plain string input, or a list with no user message, is read whole.
+func lastUserInput(input json.RawMessage) string {
+	var items []struct {
+		Type    string          `json:"type"`
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal(input, &items) == nil {
+		for i := len(items) - 1; i >= 0; i-- {
+			if items[i].Role == "user" {
+				return textFromContent(items[i].Content)
+			}
+		}
+	}
+	return textFromContent(input)
 }
 
 // reassemble joins a streamed Chat Completions response back into one answer.
