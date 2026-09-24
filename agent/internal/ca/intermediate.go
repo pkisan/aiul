@@ -315,7 +315,12 @@ func LoadIntermediate(root *Root) (*Intermediate, error) {
 // say so in its log rather than silently rotating a key.
 func ProvisionDevice(root *Root, deviceName string, permitted []string) (*Intermediate, bool, error) {
 	existing, err := LoadIntermediate(root)
-	if err == nil && !existing.NeedsRenewal() && constraintsMatch(existing.Cert, permitted) {
+	// Also reissue when the saved intermediate was signed by a DIFFERENT root. An
+	// install that replaced the root but kept the old intermediate served a chain
+	// no client trusting only the new root can verify — Codex, which trusts our
+	// bundle and not the keychain, rejected every connection (2026-09-24).
+	if err == nil && !existing.NeedsRenewal() && constraintsMatch(existing.Cert, permitted) &&
+		existing.Cert.CheckSignatureFrom(root.Cert) == nil {
 		return existing, false, nil
 	}
 

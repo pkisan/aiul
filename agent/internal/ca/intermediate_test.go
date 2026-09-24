@@ -313,6 +313,33 @@ func TestProvisionDeviceReissuesWhenTheAllowListChanges(t *testing.T) {
 	}
 }
 
+// An install replaced the root but kept the intermediate the OLD root signed. Only
+// clients that still trusted the old root could verify what we served.
+func TestProvisionDeviceReissuesWhenTheRootChanges(t *testing.T) {
+	t.Setenv("AIUL_STATE_DIR", t.TempDir())
+
+	if _, _, err := ProvisionDevice(testRoot(t), "test-mac", testPermitted); err != nil {
+		t.Fatal(err)
+	}
+
+	newRoot := testRoot(t)
+	inter, issued, err := ProvisionDevice(newRoot, "test-mac", testPermitted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !issued {
+		t.Fatal("an intermediate from another root must be reissued")
+	}
+
+	served, err := inter.MintLeaf(LeafRequest{Hosts: []string{"api.openai.com"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verify(t, newRoot, served, "api.openai.com"); err != nil {
+		t.Errorf("the chain must verify against the current root: %v", err)
+	}
+}
+
 // The installer asked "is a CA present?" when the question it needed was "is a CA
 // present that works?". A root from before the device chain has a path length of 0,
 // so the worker cannot start, and an install fails with a good-looking CA in place.
