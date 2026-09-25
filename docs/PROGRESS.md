@@ -169,12 +169,29 @@ Design (same shape as macOS/Linux):
   user's proxy incl. the blob, AIUL_MANAGED_VARS, both Root stores.
 
 Steps (commit each):
-- [ ] W-a shared code: IsAdmin(), per-OS config/socket paths, exit hook so a
-      service can report "stopped", Windows service wrapper in cmd/aiul
-- [ ] W-b platform Windows: service, proxy (+ blob, tested), env, trust,
-      process (+ table parse, tested), CA bundle export
-- [ ] W-c killswitch.ps1 updated; enroll-device.ps1 (X5 piece) builds nothing,
-      copies aiul.exe, writes agent.conf, runs install
+- [x] W-a shared code (`141c85e`): platform.IsAdmin(), AgentConfigPath per OS,
+      paths.SystemStateDir + helper.SocketPath vars (Windows: state\ folder,
+      no chown/chmod, the folder ACL guards it), cmd/aiul stop.go
+      (notifyStop/raiseStop/exitProcess) and service_windows.go (SCM wrapper,
+      stderr -> logs\*.err.log), main -> dispatch().
+- [x] W-b platform Windows (`141c85e`): service_windows.go (mgr, recovery
+      restart incl. non-crash exits, Environment reg value, icacls after the
+      virtual account exists), proxy_windows.go (HKU per SID + blob; Unset
+      reg-loads signed-out profiles), env_windows.go (AIUL_MANAGED_VARS +
+      WM_SETTINGCHANGE), trust_windows.go (crypt32, removes older roots),
+      process_windows.go (GetExtendedTcpTable), ca/bundle_windows.go (root
+      store -> PEM). Pure parts (wininet.go, tcptable.go) unit-tested on Mac.
+      x/sys pinned v0.40.0 (v0.48 wants go 1.26). vet clean darwin/linux/windows.
+- [x] W-c killswitch.ps1: both services; proxy for every loaded SID + reg-load
+      of signed-out profiles, incl. blob flag; AIUL_MANAGED_VARS.
+      scripts/enroll-device.ps1 new (admin check, dist\aiul.exe or go build,
+      token from the Docker backend, agent.conf locked with icacls, dev
+      override env, `ca ensure` + `install --apply --yes`, status). Both
+      scripts parse in pwsh 7 (dotnet/sdk:8.0 image). NOT run on Windows.
+      Risks to watch on the PC: (1) "Automatically detect settings" stays on
+      — if Chrome finds no WPAD it should fall back to our manual proxy;
+      (2) AF_UNIX socket needs Windows 10 1803+; (3) PowerShell 5.1 quirks
+      (only parsed in pwsh 7).
 - [ ] W-d owner runs it on DESKTOP-Q12UTEE; fix what breaks
 
 ## PLAN: X4 Linux installed agent — started 2026-09-24

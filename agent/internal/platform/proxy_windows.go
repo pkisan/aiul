@@ -3,12 +3,14 @@
 package platform
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -177,6 +179,9 @@ func (WindowsProxy) Current() (map[string]string, error) {
 	for _, sid := range loadedUserSIDs() {
 		out[sid] = ""
 		k, err := registry.OpenKey(registry.USERS, sid+`\`+internetSettingsKey, registry.QUERY_VALUE)
+		if errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+			return nil, ErrProxyStateHidden // elevated, but still not allowed: let the helper look
+		}
 		if err != nil {
 			continue
 		}

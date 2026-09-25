@@ -11,31 +11,36 @@
 # undoes the per-user pieces and says what it skipped.
 #
 # It reverses, in this order:
-#   1. aiul.exe            the Windows service, and any copy started by hand
-#   2. system proxy        WinINET (per user) and WinHTTP (machine), only if ours
-#   3. env vars            user and machine variables, only if they point at us
+#   1. aiul.exe            both services (aiul, aiul-helper), and any copy started by hand
+#   2. system proxy        WinINET for EVERY person (signed in or not, with admin;
+#                          only you without), including the binary
+#                          DefaultConnectionSettings record; WinHTTP (machine)
+#   3. env vars            the machine variables listed in AIUL_MANAGED_VARS, and
+#                          user/machine variables that point at us
 #   4. trust               our dev root CA in CurrentUser\Root and LocalMachine\Root
 #
 # Only values that are clearly ours are touched: a proxy of 127.0.0.1:8899, env
 # vars mentioning 8899 or AIUL. A corporate proxy or someone else's
 # NODE_EXTRA_CA_CERTS is left alone.
 #
-# It deliberately does NOT delete %LOCALAPPDATA%\AIUL (the dev CA and the spool),
-# so a CA can be re-trusted instead of regenerated. Delete that folder by hand if
-# you want the key gone.
+# It deliberately does NOT delete %LOCALAPPDATA%\AIUL or C:\ProgramData\AIUL (the
+# dev CA, the spool, the logs), nor C:\Program Files\AIUL, so a CA can be
+# re-trusted instead of regenerated and the logs can still be read. Delete those
+# folders by hand if you want them gone.
 #
-# Keep in sync with internal/platform (Windows) as W3/W4 add real changes.
+# Keep in sync with internal/platform/*_windows.go.
 
 param([switch]$DryRun)
 
 $ErrorActionPreference = 'Continue'   # attempt every step, like killswitch.sh
 
 $ProxyHostPort = '127.0.0.1:8899'
-$ServiceName   = 'aiul'
+$Services      = @('aiul', 'aiul-helper')   # the worker first: it asks the helper to drop the proxy
 $CaNamePrefix  = 'AIUL Dev Root'
 $EnvVars = @('HTTPS_PROXY','https_proxy','HTTP_PROXY','http_proxy','NO_PROXY','no_proxy',
              'NODE_EXTRA_CA_CERTS','NODE_USE_SYSTEM_CA','SSL_CERT_FILE','REQUESTS_CA_BUNDLE',
              'CODEX_CA_CERTIFICATE','CLAUDE_CODE_CERT_STORE')
+$ManagedList   = 'AIUL_MANAGED_VARS'   # the names 'aiul install' set, comma-separated
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
            ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -55,15 +60,17 @@ function Is-Ours($value) {
 }
 
 # ---- 1. aiul.exe -------------------------------------------------------------
-Step '1. aiul.exe (service and hand-started copies)'
-if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
-    if ($isAdmin) {
-        Do-Change "stop and delete the '$ServiceName' service" {
-            Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-            sc.exe delete $ServiceName | Out-Null
-        }
-    } else { $skipped += "the '$ServiceName' service (needs admin)" }
-} else { Write-Host '   no service installed' }
+Step '1. aiul.exe (services and hand-started copies)'
+foreach ($name in $Services) {
+    if (Get-Service -Name $name -ErrorAction SilentlyContinue) {
+        if ($isAdmin) {
+            Do-Change "stop and delete the '$name' service" {
+                Stop-Service -Name $name -Force -ErrorAction SilentlyContinue
+                sc.exe delete $name | Out-Null
+            }
+        } else { $skipped += "the '$name' service (needs admin)" }
+    } else { Write-Host "   no '$name' service" }
+}
 
 $procs = Get-Process -Name 'aiul' -ErrorAction SilentlyContinue
 if ($procs) {
@@ -72,21 +79,75 @@ if ($procs) {
 
 # ---- 2. system proxy ---------------------------------------------------------
 Step '2. system proxy'
-$inet = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
-$server = (Get-ItemProperty -Path $inet -Name ProxyServer -ErrorAction SilentlyContinue).ProxyServer
-if ($server -and $server -match [regex]::Escape($ProxyHostPort)) {
-    Do-Change "WinINET (this user): turn off proxy $server" {
-        Set-ItemProperty -Path $inet -Name ProxyEnable -Value 0
-        Remove-ItemProperty -Path $inet -Name ProxyServer -ErrorAction SilentlyContinue
-        Remove-ItemProperty -Path $inet -Name ProxyOverride -ErrorAction SilentlyContinue
-        # Tell running programs the setting changed, or they keep the cached proxy.
-        Add-Type -Namespace AIUL -Name WinInet -MemberDefinition '
-            [DllImport("wininet.dll", SetLastError = true)]
-            public static extern bool InternetSetOption(IntPtr h, int opt, IntPtr buf, int len);'
-        [AIUL.WinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null  # SETTINGS_CHANGED
-        [AIUL.WinInet]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null  # REFRESH
+
+# Turn the proxy off in one person's registry, if it is ours. $root is their
+# part of the registry: HKCU for you, HKEY_USERS\<SID> for anyone else.
+function Clear-Proxy($root, $label) {
+    $inet = "$root\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+    if (-not (Test-Path $inet)) { return }
+    $server = (Get-ItemProperty -Path $inet -Name ProxyServer -ErrorAction SilentlyContinue).ProxyServer
+    $conn = "$inet\Connections"
+    $blob = (Get-ItemProperty -Path $conn -Name DefaultConnectionSettings -ErrorAction SilentlyContinue).DefaultConnectionSettings
+    # In the binary record, byte 8 holds the flags; 0x02 is "use a proxy server".
+    $blobOurs = $blob -and $blob.Length -gt 12 -and ($blob[8] -band 2) -and
+                ([Text.Encoding]::ASCII.GetString($blob) -match [regex]::Escape($ProxyHostPort))
+    $valueOurs = $server -and $server -match [regex]::Escape($ProxyHostPort)
+    if (-not ($valueOurs -or $blobOurs)) { Write-Host "   ${label}: not ours (or none)"; return }
+
+    Do-Change "${label}: turn off proxy $server" {
+        if ($valueOurs) {
+            Set-ItemProperty -Path $inet -Name ProxyEnable -Value 0
+            Remove-ItemProperty -Path $inet -Name ProxyServer -ErrorAction SilentlyContinue
+            Remove-ItemProperty -Path $inet -Name ProxyOverride -ErrorAction SilentlyContinue
+        }
+        if ($blobOurs) {
+            $b = [byte[]]$blob.Clone()
+            $b[8] = $b[8] -band 0xFD                                              # proxy off
+            $count = [BitConverter]::GetBytes([BitConverter]::ToUInt32($b, 4) + 1) # change counter
+            [Array]::Copy($count, 0, $b, 4, 4)
+            Set-ItemProperty -Path $conn -Name DefaultConnectionSettings -Value $b
+        }
     }
-} else { Write-Host '   WinINET: not ours (or none)' }
+}
+
+function Is-PersonSid($sid) {
+    return ($sid -like 'S-1-5-21-*' -or $sid -like 'S-1-12-1-*') -and $sid -notlike '*_Classes'
+}
+
+if ($isAdmin) {
+    # Everyone signed in: their registry is loaded under HKEY_USERS.
+    $loaded = @(Get-ChildItem -Path Registry::HKEY_USERS | ForEach-Object { $_.PSChildName } | Where-Object { Is-PersonSid $_ })
+    foreach ($sid in $loaded) { Clear-Proxy "Registry::HKEY_USERS\$sid" "WinINET ($sid)" }
+
+    # Everyone signed out: load their registry file for a moment, so nobody signs
+    # in later to a proxy that is not there.
+    $list = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList'
+    foreach ($p in Get-ChildItem -Path $list) {
+        $sid = $p.PSChildName
+        if (-not (Is-PersonSid $sid) -or $loaded -contains $sid) { continue }
+        $hive = Join-Path ([Environment]::ExpandEnvironmentVariables($p.GetValue('ProfileImagePath'))) 'NTUSER.DAT'
+        if (-not (Test-Path $hive)) { continue }
+        $mount = "AIUL-$sid"
+        reg.exe load "HKU\$mount" "$hive" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Host "   could not load $hive (in use?); skipped"; continue }
+        Clear-Proxy "Registry::HKEY_USERS\$mount" "WinINET ($sid, signed out)"
+        [GC]::Collect(); [GC]::WaitForPendingFinalizers()   # release handles, or unload fails
+        reg.exe unload "HKU\$mount" 2>&1 | Out-Null
+    }
+} else {
+    Clear-Proxy 'HKCU:' 'WinINET (you)'
+    $skipped += "other people's proxy settings (needs admin)"
+}
+
+# Tell running programs in this session the setting changed, or they keep the
+# cached proxy. Chrome and Edge also watch the registry themselves.
+if (-not $DryRun) {
+    Add-Type -Namespace AIUL -Name WinInet -MemberDefinition '
+        [DllImport("wininet.dll", SetLastError = true)]
+        public static extern bool InternetSetOption(IntPtr h, int opt, IntPtr buf, int len);' -ErrorAction SilentlyContinue
+    [AIUL.WinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null  # SETTINGS_CHANGED
+    [AIUL.WinInet]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null  # REFRESH
+}
 
 $winhttp = (netsh winhttp show proxy) -join ' '
 if ($winhttp -match [regex]::Escape($ProxyHostPort)) {
@@ -99,10 +160,16 @@ if ($winhttp -match [regex]::Escape($ProxyHostPort)) {
 Step '3. environment variables'
 # SetEnvironmentVariable with a target of User/Machine writes the registry AND
 # broadcasts WM_SETTINGCHANGE, so new programs stop seeing the variable.
+$listed = @()
+$managed = [Environment]::GetEnvironmentVariable($ManagedList, 'Machine')
+if ($managed) { $listed = $managed -split ',' | Where-Object { $_ } }
+
 foreach ($scope in 'User','Machine') {
-    foreach ($name in $EnvVars) {
+    foreach ($name in ($EnvVars + $listed + $ManagedList | Select-Object -Unique)) {
         $value = [Environment]::GetEnvironmentVariable($name, $scope)
-        if (-not (Is-Ours $value)) { continue }
+        if (-not $value) { continue }
+        $ours = (Is-Ours $value) -or ($scope -eq 'Machine' -and ($listed -contains $name -or $name -eq $ManagedList))
+        if (-not $ours) { continue }
         if ($scope -eq 'Machine' -and -not $isAdmin) { $skipped += "machine variable $name (needs admin)"; continue }
         Do-Change "$scope variable $name=$value" {
             [Environment]::SetEnvironmentVariable($name, $null, $scope)

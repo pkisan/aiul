@@ -19,7 +19,7 @@ import (
 // can, so the names we set are recorded in one more variable, AIUL_MANAGED_VARS,
 // and removal takes exactly those.
 const (
-	machineEnvKey = `SYSTEM\CurrentControlSet\Control\Session Manager\Environment`
+	machineEnvKey   = `SYSTEM\CurrentControlSet\Control\Session Manager\Environment`
 	managedVarsName = "AIUL_MANAGED_VARS"
 )
 
