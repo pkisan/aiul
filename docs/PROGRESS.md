@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-24 (Linux agent built, container-verified; awaiting owner on Ubuntu)
+Last updated: 2026-09-25 (X3 Windows installed agent started; Mac reinstall + Ubuntu L4 await owner)
 
 ## PLAN: cross-OS demo — started 2026-09-24
 
@@ -128,6 +128,54 @@ Progress:
       ("not enrolled in an MDM"), NOT at chmod: the kill switch run after the
       20:07 failure removed /etc/aiul-dev-unmanaged. Chmod fix still unproven
       on macOS. NEXT: owner recreates the marker, reinstalls the same pkg.
+
+## PLAN: X3 Windows installed agent — started 2026-09-25
+
+Owner decisions (2026-09-25): start Windows while L4 (Ubuntu) and the Mac
+reinstall still wait on the owner; **two services** like macOS (root helper +
+unprivileged worker); proxy for **every signed-in user**. Target DESKTOP-Q12UTEE
+(x64). Claude cannot run Windows here: unit tests of the pure parts on the Mac,
+`GOOS=windows go vet/build`; the owner runs it on the PC and sends logs.
+
+Design (same shape as macOS/Linux):
+- services (x/sys/windows/svc/mgr): `aiul-helper` as LocalSystem, `aiul` as
+  the virtual account `NT SERVICE\aiul` (its own SID, so the ACLs below can
+  name it; stricter than LocalService, which every such service shares).
+  Auto start, restart on failure, worker depends on helper. Env via the
+  service's registry `Environment` value (AIUL_STATE_DIR, dev override, debug).
+- files: binary `C:\Program Files\AIUL\aiul.exe`; `C:\ProgramData\AIUL\`
+  state\ (CA copy, spool, helper socket; SYSTEM+Admins+NT SERVICE\aiul only),
+  logs\agent.err.log + helper.err.log (the service writes its own stderr
+  there), public\ (CA + bundle for SSL_CERT_FILE etc., readable by Users),
+  agent.conf (endpoint + token; SYSTEM, Admins, worker read).
+- helper IPC: same unix-socket protocol (AF_UNIX works on Windows 10 1803+),
+  socket in state\, guarded by that directory's ACL instead of chown/chmod.
+- proxy: WinINET per person, written by the SYSTEM helper into each loaded
+  HKEY_USERS\<SID> hive: ProxyEnable/ProxyServer=`https=127.0.0.1:8899`/
+  ProxyOverride AND the Connections\DefaultConnectionSettings blob (what
+  WinINET/Chrome actually read). Chrome/Edge watch the key, apply live. Worker
+  cannot read others' hives -> ErrProxyStateHidden -> helper re-applies each
+  30 s tick (covers new sign-ins). Unset also loads signed-out profiles'
+  NTUSER.DAT (`reg load`) so nobody signs in to a dead proxy (rule 7).
+- env: machine variables (HKLM Session Manager\Environment) + WM_SETTINGCHANGE;
+  names we set recorded in AIUL_MANAGED_VARS so removal takes exactly those.
+- trust: LocalMachine\Root via certutil (Chrome, Edge, Node's system CA).
+  Firefox not covered. CA bundle: Windows has no PEM file, so the root store is
+  exported with crypt32 to build it.
+- process lookup: GetExtendedTcpTable (port -> PID), QueryFullProcessImageName.
+  Working directory NOT read (needs another process's PEB): tasks come only
+  from what a parser reports (Cursor does). ".exe" stripped from names.
+- MDM: dev override only (W5 later). killswitch.ps1: both services, every
+  user's proxy incl. the blob, AIUL_MANAGED_VARS, both Root stores.
+
+Steps (commit each):
+- [ ] W-a shared code: IsAdmin(), per-OS config/socket paths, exit hook so a
+      service can report "stopped", Windows service wrapper in cmd/aiul
+- [ ] W-b platform Windows: service, proxy (+ blob, tested), env, trust,
+      process (+ table parse, tested), CA bundle export
+- [ ] W-c killswitch.ps1 updated; enroll-device.ps1 (X5 piece) builds nothing,
+      copies aiul.exe, writes agent.conf, runs install
+- [ ] W-d owner runs it on DESKTOP-Q12UTEE; fix what breaks
 
 ## PLAN: X4 Linux installed agent — started 2026-09-24
 
