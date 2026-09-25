@@ -192,7 +192,7 @@ Steps (commit each):
       — if Chrome finds no WPAD it should fall back to our manual proxy;
       (2) AF_UNIX socket needs Windows 10 1803+; (3) PowerShell 5.1 quirks
       (only parsed in pwsh 7).
-- [ ] W-d owner runs it on DESKTOP-Q12UTEE; fix what breaks
+- [ ] W-d owner runs it on DESKTOP-Q12UTEE; fix what breaks  <- NEXT (awaiting owner). dist/aiul.exe built from 259297b.
 
 ## PLAN: X4 Linux installed agent — started 2026-09-24
 
