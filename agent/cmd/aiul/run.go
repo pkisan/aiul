@@ -7,8 +7,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/pkisan/aiul/internal/ca"
@@ -180,7 +178,7 @@ func cmdRun(args []string) int {
 	// On any exit, remove the system proxy. If this process is not running, no
 	// traffic must depend on it. Rule 7.
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	notifyStop(stop)
 	go func() {
 		<-stop
 		// Only undo what we were asked to manage. Removing a proxy setting we
@@ -190,7 +188,7 @@ func cmdRun(args []string) int {
 			_ = privileged.ProxyOff()
 		}
 		cancel()
-		os.Exit(0)
+		exitProcess(0)
 	}()
 
 	go agentLoop(ctx, log, forwarder, manageProxy, privileged, root, issuer)

@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -116,8 +117,9 @@ func cmdInstall(args []string) int {
 		return 0
 	}
 
-	if os.Geteuid() != 0 {
+	if !platform.IsAdmin() {
 		fmt.Fprintln(os.Stderr, "aiul install --apply must run as root: sudo aiul install --apply")
+		fmt.Fprintln(os.Stderr, "(on Windows: from an Administrator PowerShell)")
 		return 1
 	}
 	if !confirm(args, "Apply all of the above to this Mac?") {
@@ -196,8 +198,9 @@ binary, the CA trust and the stored device token. Safe to run twice.
 `
 
 func cmdUninstall(args []string) int {
-	if os.Geteuid() != 0 {
+	if !platform.IsAdmin() {
 		fmt.Fprintln(os.Stderr, "aiul uninstall must run as root: sudo aiul uninstall")
+		fmt.Fprintln(os.Stderr, "(on Windows: from an Administrator PowerShell)")
 		return 1
 	}
 
@@ -308,7 +311,7 @@ func reportForwarding() {
 
 	// The file holds a credential. The worker's own group must be able to read it
 	// — install has just arranged that — but nobody else on the machine should.
-	if info, err := os.Stat(agentConfigPath); err == nil {
+	if info, err := os.Stat(agentConfigPath); err == nil && runtime.GOOS != "windows" {
 		if mode := info.Mode().Perm(); mode&0o007 != 0 {
 			fmt.Printf("WARNING: %s is mode %#o and holds a device token.\n", agentConfigPath, mode)
 			fmt.Printf("         Fix with: sudo chmod 640 %s\n", agentConfigPath)

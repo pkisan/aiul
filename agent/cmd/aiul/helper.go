@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/pkisan/aiul/internal/helper"
 	"github.com/pkisan/aiul/internal/platform"
@@ -68,8 +66,8 @@ func cmdHelper(args []string) int {
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
-	if os.Geteuid() != 0 {
-		log.Warn("not running as root; the privileged operations will fail")
+	if !platform.IsAdmin() {
+		log.Warn("not running as root (or SYSTEM on Windows); the privileged operations will fail")
 	}
 
 	server := helper.NewServer(privilegedOps{}, log)
@@ -85,14 +83,14 @@ func cmdHelper(args []string) int {
 	// On the way out, take the system proxy with us: if the helper is gone, the
 	// worker cannot ask for it to be removed later. Rule 7.
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	notifyStop(stop)
 
 	go func() {
 		<-stop
 		log.Info("stopping; removing the system proxy so traffic keeps flowing")
 		_ = platform.Proxy().Unset()
 		ln.Close()
-		os.Exit(0)
+		exitProcess(0)
 	}()
 
 	log.Info("helper listening", "socket", socketPath, "group", gid)

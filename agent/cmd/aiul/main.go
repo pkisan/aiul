@@ -14,38 +14,48 @@ import (
 var version = "0.0.1-dev"
 
 func main() {
+	// Started by Windows as a service: the service wrapper runs the command.
+	if runAsWindowsService() {
+		return
+	}
+
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)
 	}
+	os.Exit(dispatch(os.Args[1:]))
+}
 
-	switch os.Args[1] {
+// dispatch runs one command and returns its exit code.
+func dispatch(args []string) int {
+	switch args[0] {
 	case "version":
 		fmt.Printf("aiul %s (%s/%s, %s)\n", version, runtime.GOOS, runtime.GOARCH, runtime.Version())
+		return 0
 	case "ca":
-		os.Exit(cmdCA(os.Args[2:]))
+		return cmdCA(args[1:])
 	case "proxy":
-		os.Exit(cmdProxy(os.Args[2:]))
+		return cmdProxy(args[1:])
 	case "run":
-		os.Exit(cmdRun(os.Args[2:]))
+		return cmdRun(args[1:])
 	case "helper":
-		os.Exit(cmdHelper(os.Args[2:]))
+		return cmdHelper(args[1:])
 	case "install":
-		os.Exit(cmdInstall(os.Args[2:]))
+		return cmdInstall(args[1:])
 	case "uninstall":
-		os.Exit(cmdUninstall(os.Args[2:]))
+		return cmdUninstall(args[1:])
 	case "status":
-		os.Exit(cmdStatus(os.Args[2:]))
+		return cmdStatus(args[1:])
 	case "doctor":
-		os.Exit(cmdDoctor(os.Args[2:]))
+		return cmdDoctor(args[1:])
 	case "parsers":
-		os.Exit(cmdParsers(os.Args[2:]))
+		return cmdParsers(args[1:])
 	case "login":
-		os.Exit(cmdLogin(os.Args[2:]))
+		return cmdLogin(args[1:])
 	default:
-		fmt.Fprintf(os.Stderr, "aiul: unknown command %q\n\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "aiul: unknown command %q\n\n", args[0])
 		usage()
-		os.Exit(2)
+		return 2
 	}
 }
 

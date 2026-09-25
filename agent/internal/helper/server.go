@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/pkisan/aiul/internal/tasks"
@@ -48,6 +49,12 @@ func (s *Server) Listen(path string, gid int) (net.Listener, error) {
 	ln, err := net.Listen("unix", path)
 	if err != nil {
 		return nil, fmt.Errorf("listen on %s: %w", path, err)
+	}
+
+	// Windows has neither socket groups nor mode bits; the directory's access
+	// list guards the socket there (see SocketPath).
+	if runtime.GOOS == "windows" {
+		return ln, nil
 	}
 
 	if gid >= 0 {

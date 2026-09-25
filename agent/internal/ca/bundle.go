@@ -68,7 +68,14 @@ func (r *Root) WriteBundle() (string, error) {
 	return path, nil
 }
 
+// systemRoots, when set, builds the system roots in memory instead of reading a
+// file. Windows ships no PEM file and sets it (bundle_windows.go).
+var systemRoots func() ([]byte, string, error)
+
 func readSystemBundle() ([]byte, string, error) {
+	if systemRoots != nil {
+		return systemRoots()
+	}
 	for _, candidate := range systemBundles {
 		data, err := os.ReadFile(candidate)
 		if err == nil && bytes.Contains(data, []byte("BEGIN CERTIFICATE")) {

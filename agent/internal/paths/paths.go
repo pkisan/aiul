@@ -24,8 +24,14 @@ import (
 // and it is useful for tests.
 const StateDirEnv = "AIUL_STATE_DIR"
 
-// SystemStateDir is where the installed worker keeps everything.
-const SystemStateDir = "/var/db/aiul"
+// SystemStateDir is where the installed worker keeps everything. It must match
+// platform.WorkerStateDir; it is repeated to keep this package free of build tags.
+var SystemStateDir = func() string {
+	if runtime.GOOS == "windows" {
+		return `C:\ProgramData\AIUL\state`
+	}
+	return "/var/db/aiul"
+}()
 
 // serviceUserName must match platform.ServiceUserName. It is repeated rather than
 // imported to keep this package free of build tags.

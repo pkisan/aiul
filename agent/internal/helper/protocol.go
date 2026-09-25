@@ -19,13 +19,27 @@ package helper
 
 import (
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/pkisan/aiul/internal/paths"
 )
 
 // SocketPath is where the helper listens. /var/run is root-owned, so nobody
 // unprivileged can replace the socket with their own and impersonate the helper.
-const SocketPath = "/var/run/aiul-helper.sock"
+//
+// Windows 10 and later have unix sockets too. There the socket sits in the
+// worker's state directory, whose access list admits only SYSTEM,
+// Administrators and the worker's own service account: Windows has no socket
+// group or mode bits, so the directory does the guarding.
+var SocketPath = func() string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(paths.SystemStateDir, "aiul-helper.sock")
+	}
+	return "/var/run/aiul-helper.sock"
+}()
 
 // The complete list of verbs. Adding one is a security decision, not a detail.
 const (
