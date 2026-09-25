@@ -118,6 +118,16 @@ Progress:
       than "user" (no capture of them here). If the Mac mini still shows the
       suggestion prompt as human after this build, take a research capture
       there. Existing mini rows stay as they are.
+- [ ] X2 package retry (2026-09-24 20:07): `aiul-09ead6b.pkg` failed in
+      `aiul install --apply` at `chmod /var/db: operation not permitted`.
+      The shared Darwin/Linux installer had a Linux-only parent-directory chmod;
+      macOS already has traversable `/var/db` and can reject changing it.
+      Fixed by guarding that chmod with `runtime.GOOS == "linux"`.
+      Built `dist/aiul-mac-fix-09ead6b.pkg`; owner must install and confirm.
+      2026-09-25 12:43: owner installed it, failed again, but at the MDM gate
+      ("not enrolled in an MDM"), NOT at chmod: the kill switch run after the
+      20:07 failure removed /etc/aiul-dev-unmanaged. Chmod fix still unproven
+      on macOS. NEXT: owner recreates the marker, reinstalls the same pkg.
 
 ## PLAN: X4 Linux installed agent — started 2026-09-24
 
