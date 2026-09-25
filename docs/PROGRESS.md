@@ -128,6 +128,11 @@ Progress:
       ("not enrolled in an MDM"), NOT at chmod: the kill switch run after the
       20:07 failure removed /etc/aiul-dev-unmanaged. Chmod fix still unproven
       on macOS. NEXT: owner recreates the marker, reinstalls the same pkg.
+      **INSTALLED 2026-09-25 19:30**: marker recreated, same pkg installed,
+      postinstall finished, status all yes (4/4 services). Chmod fix confirmed
+      on macOS. But the kill switch had also removed /etc/aiul/agent.conf, so
+      the agent spools and forwards nothing until the owner re-provisions
+      against the 8088 dev backend and rewrites that file.
 
 ## PLAN: X3 Windows installed agent — started 2026-09-25
 
