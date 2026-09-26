@@ -5,6 +5,7 @@ package platform
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -85,6 +86,9 @@ func (WindowsService) Install(binaryPath string, extraEnv map[string]string) err
 	stopService(m, WorkerServiceName)
 	stopService(m, HelperServiceName)
 
+	if err := lockDataDir(); err != nil {
+		return err
+	}
 	for _, dir := range []string{WorkerStateDir, LogDir, PublicCADir, filepath.Dir(InstalledBinaryPath)} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("create %s: %w", dir, err)
@@ -156,6 +160,66 @@ func (WindowsService) Install(binaryPath string, extraEnv map[string]string) err
 		}
 	}
 	return nil
+}
+
+// lockDataDir closes C:\ProgramData\AIUL to everyone but SYSTEM and
+// Administrators before anything secret goes in it.
+//
+// ProgramData lets every user create files and folders, and whoever creates
+// something owns it and may change who can read it. An ordinary user could
+// create C:\ProgramData\AIUL\state before the install and later read the CA's
+// private key from it, and with that key make any website look genuine to
+// every program on the PC. So: first shut the door (users may read, only
+// SYSTEM and Administrators may write), then refuse if anything already inside
+// belongs to someone else. In that order, nothing can slip in between.
+func lockDataDir() error {
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", dataDir, err)
+	}
+	if err := run("icacls", dataDir, "/inheritance:r",
+		"/grant:r", "*S-1-5-18:(OI)(CI)F",
+		"/grant:r", "*S-1-5-32-544:(OI)(CI)F",
+		"/grant:r", "*S-1-5-32-545:(OI)(CI)RX"); err != nil {
+		return fmt.Errorf("restrict %s: %w", dataDir, err)
+	}
+	return checkOwners(dataDir)
+}
+
+// checkOwners fails on the first file or folder under root owned by anyone but
+// SYSTEM, Administrators, the worker or the person running the install.
+func checkOwners(root string) error {
+	trusted := map[string]bool{"S-1-5-18": true, "S-1-5-32-544": true}
+	// The worker's account exists only once its service does (an upgrade).
+	if sid, _, _, err := windows.LookupSID("", ServiceUserName); err == nil {
+		trusted[sid.String()] = true
+	}
+	// Some PCs make the administrator themself, not the group, the owner of
+	// what they create.
+	if u, err := windows.GetCurrentProcessToken().GetTokenUser(); err == nil {
+		trusted[u.User.Sid.String()] = true
+	}
+
+	return filepath.WalkDir(root, func(path string, _ fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("check %s: %w", path, err)
+		}
+		sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+		if err != nil {
+			return fmt.Errorf("read the owner of %s: %w", path, err)
+		}
+		owner, _, err := sd.Owner()
+		if err != nil {
+			return fmt.Errorf("read the owner of %s: %w", path, err)
+		}
+		if trusted[owner.String()] {
+			return nil
+		}
+		name := owner.String()
+		if account, domain, _, err := owner.LookupAccount(""); err == nil {
+			name = domain + `\` + account
+		}
+		return fmt.Errorf("%s belongs to %s, not to an administrator, so that account could read what the agent keeps there. Delete %s and install again", path, name, dataDir)
+	})
 }
 
 // ensureService creates the service, or updates one left by an earlier install.

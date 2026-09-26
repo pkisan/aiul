@@ -79,7 +79,11 @@ if (-not $Token) {
     Say 'Provisioning this device with the local backend'
     $provision = @('php', 'artisan', 'aiul:provision-device', $env:COMPUTERNAME, '--tenant=dev', '--platform=windows')
     if ($User) { $provision += "--user=$User" }
+    # Windows PowerShell 5.1 turns any stderr line of a redirected native command
+    # into an error, which 'Stop' would make fatal; docker prints warnings there.
+    $ErrorActionPreference = 'Continue'
     $out = & docker compose -f (Join-Path $Repo 'compose.demo.yaml') exec -T app @provision 2>&1 | Out-String
+    $ErrorActionPreference = 'Stop'
     if ($out -match '(aiul_[A-Za-z0-9_-]+)') { $Token = $Matches[1] }
     if (-not $Token) {
         Write-Host 'Could not obtain a device token. Is Docker Desktop running, and the backend up?' -ForegroundColor Red
@@ -112,7 +116,20 @@ if ($answer -notmatch '^(y|yes)$') { Write-Host 'Nothing was changed.'; exit 0 }
 
 # ---- 5. do it ------------------------------------------------------------------
 Say "Writing $Config"
-New-Item -ItemType Directory -Force -Path (Split-Path $Config) | Out-Null
+$Data = Split-Path $Config
+New-Item -ItemType Directory -Force -Path $Data | Out-Null
+# ProgramData lets any user create files here, and whoever creates a file may
+# read it. Shut that door before the token is written: users may read, only
+# SYSTEM and Administrators may write. Then make sure nobody else owns the
+# folder, and start agent.conf afresh (an existing file keeps its owner).
+icacls $Data /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' /grant:r '*S-1-5-32-544:(OI)(CI)F' /grant:r '*S-1-5-32-545:(OI)(CI)RX' | Out-Null
+$owner = (Get-Acl $Data).GetOwner([Security.Principal.SecurityIdentifier]).Value
+$me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+if ($owner -notin @('S-1-5-18', 'S-1-5-32-544', $me)) {
+    Write-Host "$Data belongs to $owner, not to an administrator. Delete it and run this again." -ForegroundColor Red
+    exit 1
+}
+Remove-Item -Path $Config -Force -ErrorAction SilentlyContinue
 Set-Content -Path $Config -Encoding ascii -Value @("AIUL_ENDPOINT=$Endpoint", "AIUL_DEVICE_TOKEN=$Token")
 # Lock it at once: ProgramData lets every user read by default. The install adds
 # read access for the agent's own service account.
