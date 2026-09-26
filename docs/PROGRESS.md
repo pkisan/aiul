@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-25 (X3 Windows installed agent started; Mac reinstall + Ubuntu L4 await owner)
+Last updated: 2026-09-26 (X3 desk review fixes 1f99f3a; W-d, Mac agent.conf, Ubuntu L4 await owner)
 
 ## PLAN: cross-OS demo — started 2026-09-24
 
@@ -197,7 +197,16 @@ Steps (commit each):
       — if Chrome finds no WPAD it should fall back to our manual proxy;
       (2) AF_UNIX socket needs Windows 10 1803+; (3) PowerShell 5.1 quirks
       (only parsed in pwsh 7).
-- [ ] W-d owner runs it on DESKTOP-Q12UTEE; fix what breaks  <- NEXT (awaiting owner). dist/aiul.exe built from 259297b.
+- [x] W-c2 desk review before the PC run (`1f99f3a`): (1) SECURITY —
+      ProgramData lets any user create files and the creator may read them, so
+      a user could pre-create state\ and later read the CA key. Install now
+      icacls-locks C:\ProgramData\AIUL first (SYSTEM+Admins F, Users RX), then
+      refuses if anything inside is owned by anyone but SYSTEM, Administrators,
+      the worker or the installer; enroll-device.ps1 locks + owner-checks the
+      folder before writing the token. (2) PS 5.1: `docker ... 2>&1` under
+      ErrorActionPreference Stop aborts on any docker warning -> Continue there.
+      vet/build clean for windows; both .ps1 parse in pwsh 7. Not run on Windows.
+- [ ] W-d owner runs it on DESKTOP-Q12UTEE; fix what breaks  <- NEXT (awaiting owner). dist/aiul.exe built from 1f99f3a.
 
 ## PLAN: X4 Linux installed agent — started 2026-09-24
 
