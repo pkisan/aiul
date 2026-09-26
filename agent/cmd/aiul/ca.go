@@ -42,8 +42,8 @@ func cmdCA(args []string) int {
 const caUsage = `Usage:
   aiul ca init [--force]   create the development root CA on this machine
   aiul ca info             show where it lives, its name, fingerprint and expiry
-  aiul ca trust [--yes]    add it to the macOS System keychain (asks first)
-  aiul ca untrust [--yes]  remove it from the System keychain
+  aiul ca trust [--yes]    trust it system-wide (asks first)
+  aiul ca untrust [--yes]  remove that trust
   aiul ca ensure           make sure this device has a usable root CA (the installer runs this)
   aiul ca device [--renew] show this device's own signing certificate (D3)
   aiul ca demo-server      serve https://localhost:8443 with a certificate we mint
@@ -66,7 +66,7 @@ func caInit(args []string) int {
 	fmt.Printf("  valid until  %s\n", root.Cert.NotAfter.Format(time.RFC1123))
 	fmt.Printf("  SHA-256      %s\n", ca.Fingerprint(root.Cert))
 	fmt.Println()
-	fmt.Println("Nothing on this Mac trusts it yet. 'aiul ca trust' is the next step,")
+	fmt.Println("Nothing on this " + machine + " trusts it yet. 'aiul ca trust' is the next step,")
 	fmt.Println("and it shows you the exact command before running anything.")
 	return 0
 }
@@ -87,10 +87,10 @@ func caInfo() int {
 	fmt.Printf("  valid until  %s\n", root.Cert.NotAfter.Format(time.RFC1123))
 	fmt.Printf("  SHA-256      %s\n", ca.Fingerprint(root.Cert))
 	if trusted {
-		fmt.Println("  keychain     TRUSTED in the System keychain")
-		fmt.Println("\n  Undo with:   aiul ca untrust      (or sudo ./scripts/killswitch.sh)")
+		fmt.Println("  trust        TRUSTED in " + trustStore)
+		fmt.Println("\n  Undo with:   aiul ca untrust      (or " + killSwitch + ")")
 	} else {
-		fmt.Println("  keychain     not trusted (nothing on this Mac accepts certificates we mint)")
+		fmt.Println("  trust        not trusted (nothing on this " + machine + " accepts certificates we mint)")
 	}
 	return 0
 }
@@ -104,29 +104,29 @@ func caTrust(args []string) int {
 	certPath, _, _ := ca.Paths()
 	installer := platform.Trust()
 
-	fmt.Println("This changes a system setting on your Mac.")
+	fmt.Println("This changes a system setting on your " + machine + ".")
 	fmt.Println()
-	fmt.Println("What it does: it tells macOS to trust the certificate below as a")
+	fmt.Println("What it does: it tells the system to trust the certificate below as a")
 	fmt.Println("certificate authority for TLS. After this, any certificate signed by")
-	fmt.Println("that key is accepted by Safari, Chrome, curl and most macOS software.")
-	fmt.Println("That is powerful, which is why the key is on your machine at 0600 and")
+	fmt.Println("that key is accepted by browsers, curl and most other software.")
+	fmt.Println("That is powerful, which is why only you can read the key and")
 	fmt.Println("why one command undoes it.")
 	fmt.Println()
 	fmt.Printf("  certificate  %s\n", root.Cert.Subject.CommonName)
 	fmt.Printf("  file         %s\n", certPath)
 	fmt.Printf("  SHA-256      %s\n", ca.Fingerprint(root.Cert))
 	fmt.Println()
-	fmt.Println("Exact command that will run (sudo will ask for your password):")
+	fmt.Println("Exact command that will run:")
 	for _, c := range installer.InstallCommands(certPath) {
 		fmt.Printf("  $ %s\n", c)
 	}
 	fmt.Println()
 	fmt.Println("Undo at any time:")
 	fmt.Println("  $ aiul ca untrust")
-	fmt.Println("  $ sudo ./scripts/killswitch.sh      # undoes this and every other change")
+	fmt.Println("  $ " + killSwitch + "      # undoes this and every other change")
 	fmt.Println()
 
-	if !confirm(args, "Add this certificate to the System keychain?") {
+	if !confirm(args, "Add this certificate to "+trustStore+"?") {
 		fmt.Println("Cancelled. Nothing was changed.")
 		return 1
 	}
@@ -147,7 +147,7 @@ func caUntrust(args []string) int {
 	}
 	installer := platform.Trust()
 
-	fmt.Println("Removing our development root CA from the System keychain.")
+	fmt.Println("Removing our development root CA from " + trustStore + ".")
 	fmt.Println("Exact commands (sudo will ask for your password):")
 	for _, c := range installer.UninstallCommands(certPath) {
 		fmt.Printf("  $ %s\n", c)

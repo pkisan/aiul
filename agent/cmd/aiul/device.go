@@ -154,7 +154,7 @@ func cmdCADevice(args []string) int {
 		// that does not exist.
 		if os.IsPermission(errors.Unwrap(err)) || os.IsPermission(err) {
 			fmt.Printf("This device has a signing certificate at %s,\n", certPath)
-			fmt.Println("but this account cannot read it. Try: sudo aiul ca device")
+			fmt.Println("but this account cannot read it. Try: " + asAdmin("aiul ca device"))
 
 			return 1
 		}
@@ -265,7 +265,7 @@ func cmdCAEnsure(args []string) int {
 	// and a trusted root whose key we have thrown away is nothing but confusion in
 	// Keychain Access. Removal works by name, so it finds whatever is there.
 	if trusted, _ := platform.Trust().IsTrusted(ca.CommonNamePrefix); trusted {
-		fmt.Println("Removing the old certificate from the System keychain first.")
+		fmt.Println("Removing the old certificate from " + trustStore + " first.")
 		if err := platform.Trust().Uninstall(""); err != nil {
 			fmt.Fprintf(os.Stderr, "aiul ca ensure: could not remove the old trust setting: %v\n", err)
 			return 1

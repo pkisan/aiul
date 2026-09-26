@@ -18,23 +18,6 @@ const proxyAddr = "127.0.0.1:8899"
 
 func proxyURL() string { return "http://" + proxyAddr }
 
-const installUsage = `Usage:
-  aiul install [--apply] [--yes]
-
-Without --apply this is a DRY RUN: it prints every command it would run and
-changes nothing. That is the default on purpose.
-
-With --apply it will, as root:
-  - create the _aiul service account, which the worker runs as
-  - install the binary and TWO launchd jobs: a tiny root helper, and the worker
-    (proxy, parsing, redaction, forwarding) running unprivileged as _aiul
-  - trust the development CA in the System keychain
-  - point every network service's HTTPS proxy at ` + proxyAddr + `
-  - write environment variables to /etc/zshenv and a login LaunchAgent
-
-Undo all of it with 'sudo aiul uninstall' or 'sudo ./scripts/killswitch.sh'.
-`
-
 func cmdInstall(args []string) int {
 	apply := contains(args, "--apply")
 
@@ -85,7 +68,7 @@ func cmdInstall(args []string) int {
 
 	self, _ := os.Executable()
 
-	fmt.Println("What 'aiul install --apply' will do to this Mac")
+	fmt.Printf("What 'aiul install --apply' will do to this %s\n", machine)
 	fmt.Println("===============================================")
 	fmt.Println()
 	fmt.Println("1. Create the service account the worker runs as")
@@ -107,8 +90,8 @@ func cmdInstall(args []string) int {
 	printCommands(platform.Env().WriteCommands(vars))
 
 	fmt.Println("To undo everything, at any time:")
-	fmt.Println("   $ sudo aiul uninstall")
-	fmt.Println("   $ sudo ./scripts/killswitch.sh")
+	fmt.Println("   $ " + asAdmin("aiul uninstall"))
+	fmt.Println("   $ " + killSwitch)
 	fmt.Println()
 
 	if !apply {
@@ -118,11 +101,10 @@ func cmdInstall(args []string) int {
 	}
 
 	if !platform.IsAdmin() {
-		fmt.Fprintln(os.Stderr, "aiul install --apply must run as root: sudo aiul install --apply")
-		fmt.Fprintln(os.Stderr, "(on Windows: from an Administrator PowerShell)")
+		fmt.Fprintln(os.Stderr, "aiul install --apply needs administrator rights: "+asAdmin("aiul install --apply"))
 		return 1
 	}
-	if !confirm(args, "Apply all of the above to this Mac?") {
+	if !confirm(args, "Apply all of the above to this "+machine+"?") {
 		fmt.Println("Cancelled. Nothing was changed.")
 		return 1
 	}
@@ -166,7 +148,7 @@ func cmdInstall(args []string) int {
 		fmt.Printf("… %s\n", step.name)
 		if err := step.do(); err != nil {
 			fmt.Fprintf(os.Stderr, "\nFailed to %s: %v\n", step.name, err)
-			fmt.Fprintln(os.Stderr, "Rolling back so this Mac is left working.")
+			fmt.Fprintln(os.Stderr, "Rolling back so this "+machine+" is left working.")
 			// In this order, so traffic is flowing normally before anything else is
 			// touched. A half-finished install must never leave a proxy setting
 			// behind: the setting outlives the process that wrote it.
@@ -189,24 +171,15 @@ func cmdInstall(args []string) int {
 	return 0
 }
 
-const uninstallUsage = `Usage:
-  aiul uninstall [--yes]
-
-Removes everything aiul changed: the proxy setting on every network service, the
-environment variables, the /etc/zshenv block, both launchd jobs, the installed
-binary, the CA trust and the stored device token. Safe to run twice.
-`
-
 func cmdUninstall(args []string) int {
 	if !platform.IsAdmin() {
-		fmt.Fprintln(os.Stderr, "aiul uninstall must run as root: sudo aiul uninstall")
-		fmt.Fprintln(os.Stderr, "(on Windows: from an Administrator PowerShell)")
+		fmt.Fprintln(os.Stderr, "aiul uninstall needs administrator rights: "+asAdmin("aiul uninstall"))
 		return 1
 	}
 
 	certPath, _, _ := ca.Paths()
 
-	fmt.Println("This will remove every change aiul made to this Mac:")
+	fmt.Printf("This will remove every change aiul made to this %s:\n", machine)
 	printCommands(platform.Proxy().UnsetCommands())
 	printCommands(platform.Env().RemoveCommands())
 	printCommands(platform.Service().UninstallCommands())
@@ -244,7 +217,7 @@ func cmdUninstall(args []string) int {
 	fmt.Println("\nThe CA files under ~/Library/Application Support/AIUL/ were left in place.")
 	fmt.Println("Delete them by hand if you want them gone, along with the spooled events.")
 	if failed {
-		fmt.Fprintln(os.Stderr, "\nSome steps failed. Run 'sudo ./scripts/killswitch.sh' and then 'aiul status'.")
+		fmt.Fprintln(os.Stderr, "\nSome steps failed. Run '"+killSwitch+"' and then 'aiul status'.")
 		return 1
 	}
 	fmt.Println("Done. Verify with: aiul status")
@@ -294,12 +267,12 @@ func reportForwarding() {
 	if config["AIUL_ENDPOINT"] == "" {
 		fmt.Println()
 		fmt.Println("NOTE: no backend is configured, so events will be captured and kept on this")
-		fmt.Printf("      Mac rather than sent anywhere. To forward them, write %s:\n", agentConfigPath)
+		fmt.Printf("      %s rather than sent anywhere. To forward them, write %s:\n", machine, agentConfigPath)
 		fmt.Println()
 		fmt.Println("        AIUL_ENDPOINT=https://your-backend/api/aiul/events")
 		fmt.Println("        AIUL_DEVICE_TOKEN=aiul_...")
 		fmt.Println()
-		fmt.Println("      then: sudo launchctl kickstart -k system/com.aiul.agent")
+		fmt.Println("      then: " + restartWorker)
 
 		return
 	}

@@ -56,7 +56,7 @@ func cmdDoctor(args []string) int {
 		fmt.Println("run the suggested command yourself when you are ready.")
 	}
 	fmt.Println()
-	fmt.Println("To undo everything at any time: sudo ./scripts/killswitch.sh")
+	fmt.Println("To undo everything at any time: " + killSwitch)
 	return 0
 }
 
@@ -114,7 +114,7 @@ func runChecks() []check {
 			name:   "system proxy points at us",
 			ok:     len(pointing) > 0,
 			detail: proxyDetail(pointing, notPointing),
-			fix:    "sudo aiul install --apply",
+			fix:    asAdmin("aiul install --apply"),
 		})
 	}
 
@@ -125,7 +125,7 @@ func runChecks() []check {
 			name:   "environment variables are set for terminals",
 			ok:     len(vars) > 0,
 			detail: envDetail(vars),
-			fix:    "sudo aiul install --apply",
+			fix:    asAdmin("aiul install --apply"),
 		})
 	}
 
@@ -135,7 +135,7 @@ func runChecks() []check {
 		name:   "background jobs are loaded",
 		ok:     running,
 		detail: jobDetail(running),
-		fix:    "sudo aiul install --apply",
+		fix:    asAdmin("aiul install --apply"),
 	})
 
 	// --- the privilege split --------------------------------------------------
@@ -145,7 +145,7 @@ func runChecks() []check {
 		name:   "traffic is parsed WITHOUT root",
 		ok:     helperUp && uid >= 0,
 		detail: privilegeDetail(helperUp, uid),
-		fix:    "sudo aiul install --apply   (running by hand is fine; this only applies to the installed agent)",
+		fix:    asAdmin("aiul install --apply") + "   (running by hand is fine; this only applies to the installed agent)",
 	})
 
 	// --- MDM -----------------------------------------------------------------
@@ -182,7 +182,7 @@ func runChecks() []check {
 	// --- the tools -----------------------------------------------------------
 	tools := platform.Tools().Detect()
 	out = append(out, check{
-		name:   "AI tools found on this Mac",
+		name:   "AI tools found on this " + machine,
 		ok:     len(tools) > 0,
 		detail: toolsDetail(tools),
 		fix:    "install one of: claude, codex, gemini, opencode, Cursor, VS Code",
@@ -202,9 +202,9 @@ func proxyIsListening() bool {
 
 func trustDetail(trusted bool) string {
 	if trusted {
-		return "in the System keychain; software on this Mac accepts certificates we mint"
+		return "in " + trustStore + "; software on this " + machine + " accepts certificates we mint"
 	}
-	return "not in the System keychain, so tools will reject our certificates and be tunneled instead"
+	return "not in " + trustStore + ", so tools will reject our certificates and be tunneled instead"
 }
 
 func listeningDetail(listening bool) string {
@@ -333,7 +333,7 @@ func cmdStatus(args []string) int {
 	}
 
 	if proxied > 0 || trusted || running || len(vars) > 0 {
-		fmt.Println("\nundo everything   sudo ./scripts/killswitch.sh")
+		fmt.Println("\nundo everything   " + killSwitch)
 	} else {
 		fmt.Println("\nThis machine has no aiul settings applied.")
 	}

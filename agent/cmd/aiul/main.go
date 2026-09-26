@@ -73,7 +73,7 @@ Usage:
 
   aiul login      link this device to your account (prints a code to enter)
 
-  aiul install    configure this Mac (DRY RUN unless you pass --apply)
+  aiul install    configure this machine (DRY RUN unless you pass --apply)
   aiul uninstall  remove every change aiul made
   aiul status     a few lines: what is on right now
   aiul doctor     explain in plain English what is and is not configured
