@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-26 (X3 desk review fixes 1f99f3a; W-d, Mac agent.conf, Ubuntu L4 await owner)
+Last updated: 2026-09-26 (CLI wording fbdd28e, X5 guide f9879b8; W-d, Mac agent.conf, Ubuntu L4 await owner)
 
 ## PLAN: cross-OS demo — started 2026-09-24
 
@@ -37,6 +37,9 @@ Milestones, each stops for the owner's confirmation (rule 13):
 - **X5 — one enrol command per OS** (enroll-device.sh for Mac+Linux,
   enroll-device.ps1 for Windows) against the local Docker backend, and
   docs/TEST-ON-ANOTHER-MACHINE.md replacing TEST-ON-ANOTHER-MAC.md.
+  **X5 DRAFTED 2026-09-26 (`f9879b8`)**: docs/TEST-ON-ANOTHER-MACHINE.md
+  written, TEST-ON-ANOTHER-MAC.md removed. Update its per-OS status lines
+  once W-d (Windows) and L4 (Ubuntu) pass.
 
 Progress:
 - [x] X1 DONE 2026-09-24 (confirmed on the Mac mini). `compose.demo.yaml`
@@ -206,7 +209,11 @@ Steps (commit each):
       folder before writing the token. (2) PS 5.1: `docker ... 2>&1` under
       ErrorActionPreference Stop aborts on any docker warning -> Continue there.
       vet/build clean for windows; both .ps1 parse in pwsh 7. Not run on Windows.
-- [ ] W-d owner runs it on DESKTOP-Q12UTEE; fix what breaks  <- NEXT (awaiting owner). dist/aiul.exe built from 1f99f3a.
+- [x] W-c3 CLI wording per OS (`fbdd28e`): cmd/aiul/words.go (machine,
+      trustStore, killSwitch, restartWorker, asAdmin) — no more "this Mac",
+      sudo or System keychain on Windows/Linux. Dead installUsage/uninstallUsage
+      consts deleted.
+- [ ] W-d owner runs it on DESKTOP-Q12UTEE; fix what breaks  <- NEXT (awaiting owner). dist/aiul.exe built from fbdd28e.
 
 ## PLAN: X4 Linux installed agent — started 2026-09-24
 
@@ -2160,12 +2167,21 @@ real prompt in plaintext**. Remove with `sudo rm -rf /var/db/aiul`.
 
 ## Left — later phases
 
-- [ ] Phase 2 — proxy engine (CONNECT, classify, mint, stream, SSE reassembly, parsers, spool)
-- [ ] Phase 3 — redaction
-- [ ] Phase 4 — endpoint agent (darwin platform impls, install/uninstall/status/doctor, forwarder)
-- [ ] Phase 5 — task tagging (lsof → pid → cwd → git branch → task ID)
-- [ ] Phase 6 — Laravel ingestion + storage + scoring
-- [ ] Phase 7 — Inertia + Vue dashboard
+Phases 0–7 are DONE on macOS; Phase 8 is built without signing. What is left
+for production (answered to the owner 2026-09-26):
+- [ ] P1 hosted backend: real server, domain, TLS, APP_ENV=production, backups,
+      queue + scheduler supervised (retention only runs when the scheduler does)
+- [ ] P2 D3 production CA: per-tenant root in KMS/HSM; backend signs each
+      device's intermediate (today the root is generated ON the device)
+- [ ] P3 D9 production half: BodyStore wrap/unwrap become KMS calls
+- [ ] P4 Phase 8: Developer ID signing + notarization (macOS), Authenticode +
+      MSI (Windows), .deb or signed script (Ubuntu); MDM/Intune push profiles
+      incl. trust + Full Disk Access (macOS)
+- [ ] P5 real MDM gate on Windows (W5: Enrollments / dsregcmd) and a policy for Linux
+- [ ] P6 Firefox trust on Windows and Linux (enterprise policy ImportEnterpriseRoots)
+- [ ] P7 deployment integration test: install / upgrade / uninstall per OS in CI
+- [ ] P8 non-technical (ROADMAP §4): employee notice, raw-prompt access owner,
+      retention per tenant, legal review per country
 
 ## Blockers / open questions for the user
 
