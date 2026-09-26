@@ -2178,7 +2178,7 @@ for production (answered to the owner 2026-09-26):
       MSI (Windows), .deb or signed script (Ubuntu); MDM/Intune push profiles
       incl. trust + Full Disk Access (macOS)
 - [ ] P5 real MDM gate on Windows (W5: Enrollments / dsregcmd) and a policy for Linux
-- [ ] P6 Firefox trust on Windows and Linux (enterprise policy ImportEnterpriseRoots)
+- [ ] P6 Firefox trust on Windows and Linux (policies.json: ImportEnterpriseRoots on Windows, Certificates.Install on Linux)
 - [ ] P7 deployment integration test: install / upgrade / uninstall per OS in CI
 - [ ] P8 non-technical (ROADMAP §4): employee notice, raw-prompt access owner,
       retention per tenant, legal review per country
