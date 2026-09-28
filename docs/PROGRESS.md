@@ -2,7 +2,7 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-26 (CLI wording fbdd28e, X5 guide f9879b8; W-d, Mac agent.conf, Ubuntu L4 await owner)
+Last updated: 2026-09-28 (ChatGPT widget fix ab0bf12 awaits install; W-d, Ubuntu L4 await owner)
 
 ## PLAN: cross-OS demo — started 2026-09-24
 
@@ -136,6 +136,19 @@ Progress:
       on macOS. But the kill switch had also removed /etc/aiul/agent.conf, so
       the agent spools and forwards nothing until the owner re-provisions
       against the 8088 dev backend and rewrites that file.
+
+## ChatGPT widget answers — 2026-09-28
+
+Mac agent.conf restored by the owner 12:03 (new token, device linked to Punit
+Kisan): `forwarding=true` again. Then a "weather in Switzerland" answer showed
+only "\ue200genui\ue202" boxes. Research capture 12:21 (research mode ON then
+OFF, `~/aiul-research` deleted after reading): the closing batch of ops comes as
+a bare `{"v":[...]}` without `"o":"patch"` and was dropped whole; the widget is
+marked in the text as U+E200 genui U+E202 .. U+E201. Fix `ab0bf12`: unlabelled
+batches read like patches; markers -> "[widget]"; cite removed, entity -> name
+(ASSUMED shapes, not in a capture). Replayed the real capture: full answer.
+Built `dist/aiul-ab0bf12.pkg`. NEXT: owner installs it, one ChatGPT weather
+prompt, expect the full text with "[widget]". Old rows stay as stored.
 
 ## PLAN: X3 Windows installed agent — started 2026-09-25
 
