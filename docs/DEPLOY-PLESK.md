@@ -97,6 +97,19 @@ agent that is already installed and only needs pointing here.
 
 (The same over SSH: `$PHP artisan aiul:provision-device <hostname> --user=<email> --platform=<darwin|linux|windows>`.)
 
+## Deleting a person's data
+
+Over SSH. Their account, devices and consent stay; only captured usage and its
+stored text go. It shows what it will delete and asks first.
+
+```bash
+$PHP artisan aiul:delete-user-data kim@vardaam.com --all                               # everything
+$PHP artisan aiul:delete-user-data kim@vardaam.com --from=2026-09-01 --to=2026-09-15   # a date range (UTC, inclusive)
+$PHP artisan aiul:delete-user-data kim@vardaam.com --last=5                            # last 5 prompts + their answers
+```
+
+Add `--dry-run` to only see the counts, `--force` to skip the question.
+
 ## Updating later
 
 ```bash

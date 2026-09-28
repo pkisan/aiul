@@ -62,6 +62,10 @@ Steps (commit each):
       Device::provision() with aiul:provision-device (re-issue also clears
       `revoked`). Hostname limited to [A-Za-z0-9._-] because it lands in
       shell commands people copy.
+- [x] U11 `aiul:delete-user-data <email> --all | --from/--to | --last=N`
+      (+ --dry-run, --force). A prompt is deleted with its whole turn (agent
+      steps + answer); bodies first, then rows; emptied sessions removed,
+      others re-measured. Account, devices, consent kept.
       NEXT: owner uploads the new zip, issues tokens, re-points old devices, then decides whether to
       delete the local dummy users dev@example.com / manager@example.com.
 
