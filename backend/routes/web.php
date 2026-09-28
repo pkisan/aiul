@@ -49,6 +49,7 @@ Route::middleware(['auth', 'verified', SetTenantFromUser::class, EnsureConsented
     Route::post('/people', [PeopleController::class, 'store'])->name('people.store');
     Route::patch('/people/{person}', [PeopleController::class, 'update'])->name('people.update');
     Route::post('/people/{person}/password', [PeopleController::class, 'resetPassword'])->name('people.password');
+    Route::post('/people/{person}/devices', [PeopleController::class, 'issueDevice'])->name('people.devices');
 
     Route::get('/my-data', [UsageDashboardController::class, 'myData'])->name('usage.my-data');
 

@@ -90,12 +90,12 @@ Run the seeder line again; it prints a new one.
 
 ## 7. Point devices at it
 
-```bash
-# on the server, one token per device
-$PHP artisan aiul:provision-device <hostname> --user=<person's email>
-# on the device (Mac / Ubuntu)
-./scripts/enroll-device.sh --endpoint https://genailog.vardaam.site/api/aiul/events --token aiul_xxx
-```
+*People* → **Device token** next to the person → device name (`hostname` on
+their computer) and OS → **Create token**. The page shows the token once, with
+the exact command to run on that computer: one for a new install, one for an
+agent that is already installed and only needs pointing here.
+
+(The same over SSH: `$PHP artisan aiul:provision-device <hostname> --user=<email> --platform=<darwin|linux|windows>`.)
 
 ## Updating later
 

@@ -46,6 +46,40 @@ class Device extends Model
         return [$plain, hash('sha256', $plain)];
     }
 
+    public const PLATFORMS = ['darwin', 'linux', 'windows'];
+
+    /**
+     * Register a machine, or give an existing one a new token, and return the
+     * plain token ONCE. Used by `aiul:provision-device` and the People page.
+     *
+     * One record per machine: provisioning the same hostname again replaces the
+     * token (the old one stops working) instead of adding a second row.
+     * A null $userId keeps whoever the device was already assigned to.
+     *
+     * @return array{0: self, 1: string}
+     */
+    public static function provision(int $tenantId, string $hostname, string $platform, ?int $userId = null): array
+    {
+        [$plain, $hash] = static::issueToken();
+
+        $existing = static::withoutGlobalScope('tenant')
+            ->where('tenant_id', $tenantId)
+            ->where('hostname', $hostname)
+            ->first();
+
+        $device = static::withoutGlobalScope('tenant')->updateOrCreate(
+            ['tenant_id' => $tenantId, 'hostname' => $hostname],
+            [
+                'platform' => $platform,
+                'token_hash' => $hash,
+                'revoked' => false,
+                'user_id' => $userId ?? $existing?->user_id,
+            ],
+        );
+
+        return [$device, $plain];
+    }
+
     /**
      * Find the device a presented token belongs to.
      *

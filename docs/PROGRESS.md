@@ -56,7 +56,13 @@ Steps (commit each):
       consent_version bumped to 2026-09-28: everyone re-accepts once.
       DEPLOY-PLESK.md rewritten for a blank Plesk site (site PHP binary path,
       pdo_pgsql, document root, scheduled task).
-      NEXT: owner deploys to Plesk following docs/DEPLOY-PLESK.md, then decides whether to
+- [x] U10 site live on Plesk (owner, 2026-09-28). People page gets
+      "Device token": device name + OS -> token shown once plus the command
+      for a new install and for re-pointing an installed agent. Shared
+      Device::provision() with aiul:provision-device (re-issue also clears
+      `revoked`). Hostname limited to [A-Za-z0-9._-] because it lands in
+      shell commands people copy.
+      NEXT: owner uploads the new zip, issues tokens, re-points old devices, then decides whether to
       delete the local dummy users dev@example.com / manager@example.com.
 
 ## PLAN: cross-OS demo — started 2026-09-24

@@ -35,9 +35,10 @@ class PeopleController extends Controller
             ->pluck('at', 'user_id');
         $devices = Device::query()
             ->whereNotNull('user_id')
-            ->selectRaw('user_id, count(*) as n')
-            ->groupBy('user_id')
-            ->pluck('n', 'user_id');
+            ->where('revoked', false)
+            ->orderBy('hostname')
+            ->get(['user_id', 'hostname', 'platform', 'last_seen_at'])
+            ->groupBy('user_id');
 
         return Inertia::render('People', [
             'people' => User::where('tenant_id', $request->user()->tenant_id)
@@ -45,11 +46,14 @@ class PeopleController extends Controller
                 ->get(['id', 'name', 'email', 'role', 'can_view_raw_prompts', 'created_at'])
                 ->map(fn (User $u) => [
                     ...$u->only(['id', 'name', 'email', 'role', 'can_view_raw_prompts', 'created_at']),
-                    'devices' => (int) ($devices[$u->id] ?? 0),
+                    'devices' => ($devices[$u->id] ?? collect())
+                        ->map(fn ($d) => $d->only(['hostname', 'platform', 'last_seen_at']))->values(),
                     'last_active' => $lastActive[$u->id] ?? null,
                 ]),
-            // A new password is shown once, straight after it is made.
+            // A new password or device token is shown once, straight after it is made.
             'issued' => session('issued'),
+            'deviceToken' => session('deviceToken'),
+            'endpoint' => url('/api/aiul/events'),
         ]);
     }
 
@@ -102,6 +106,30 @@ class PeopleController extends Controller
         $person->update(['password' => $password, 'remember_token' => Str::random(60)]);
 
         return back()->with('issued', ['email' => $person->email, 'password' => $password]);
+    }
+
+    /**
+     * A token for one of this person's machines, shown once. The same device
+     * name again replaces its token, which is also how a leaked one is revoked.
+     */
+    public function issueDevice(Request $request, User $person): RedirectResponse
+    {
+        $this->authorizeTarget($request, $person);
+
+        $data = $request->validate([
+            // Shown on pages and passed to shell commands by people: keep it plain.
+            'hostname' => ['required', 'string', 'max:100', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/'],
+            'platform' => ['required', Rule::in(Device::PLATFORMS)],
+        ], ['hostname.regex' => 'Use letters, numbers, dots, dashes or underscores only.']);
+
+        [, $token] = Device::provision($person->tenant_id, $data['hostname'], $data['platform'], $person->id);
+
+        return back()->with('deviceToken', [
+            'person' => $person->name,
+            'hostname' => $data['hostname'],
+            'platform' => $data['platform'],
+            'token' => $token,
+        ]);
     }
 
     private function accessRules(): array

@@ -46,27 +46,7 @@ class ProvisionDevice extends Command
             }
         }
 
-        [$plain, $hash] = Device::issueToken();
-
-        // One record per machine. Re-provisioning replaces the token rather than
-        // adding a second device with the same hostname: running this twice used to
-        // leave a trail of rows, and a device that reports under one of them looks
-        // like a different machine from the one that reported under the other.
-        $device = Device::withoutGlobalScope('tenant')->updateOrCreate(
-            [
-                'tenant_id' => $tenant->id,
-                'hostname' => $this->argument('hostname'),
-            ],
-            [
-                'platform' => $this->option('platform'),
-                'token_hash' => $hash,
-                // Keep an existing assignment when --user is not given.
-                'user_id' => $user?->id ?? Device::withoutGlobalScope('tenant')
-                    ->where('tenant_id', $tenant->id)
-                    ->where('hostname', $this->argument('hostname'))
-                    ->value('user_id'),
-            ],
-        );
+        [$device, $plain] = Device::provision($tenant->id, $this->argument('hostname'), $this->option('platform'), $user?->id);
 
         $this->info("Device #{$device->id} registered for tenant '{$tenant->slug}'.");
         $this->line($device->user_id
@@ -77,8 +57,8 @@ class ProvisionDevice extends Command
         $this->line('  Token (shown once — copy it now):');
         $this->line("  {$plain}");
         $this->newLine();
-        $this->line('  On the device, store it with:');
-        $this->line("  security add-generic-password -U -s com.aiul.agent -a device-token -w '{$plain}'");
+        $this->line('  On the device:');
+        $this->line('  ./scripts/enroll-device.sh --endpoint '.url('/api/aiul/events')." --token {$plain}");
 
         return self::SUCCESS;
     }

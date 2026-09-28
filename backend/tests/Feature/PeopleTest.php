@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ConsentRecord;
+use App\Models\Device;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Support\TenantContext;
@@ -62,6 +63,48 @@ class PeopleTest extends TestCase
         $this->actingAs($admin)->post("/people/{$stranger->id}/password")->assertNotFound();
         $this->actingAs($admin)->patch("/people/{$admin->id}", ['role' => 'member'])->assertStatus(422);
         $this->assertSame('admin', $admin->fresh()->role);
+    }
+
+    public function test_an_admin_issues_a_device_token_that_works_once_reissued(): void
+    {
+        $admin = $this->user(User::ROLE_ADMIN);
+        $kim = $this->user(User::ROLE_MEMBER);
+
+        $this->actingAs($admin)
+            ->post("/people/{$kim->id}/devices", ['hostname' => 'DESKTOP-Q12UTEE', 'platform' => 'windows'])
+            ->assertSessionHas('deviceToken');
+        $first = session('deviceToken')['token'];
+
+        $device = Device::byToken($first);
+        $this->assertNotNull($device, 'the token shown must be the one that works');
+        $this->assertSame($kim->id, $device->user_id);
+        $this->assertSame('windows', $device->platform);
+
+        // Same name again: one device, new token, old one dead.
+        $this->actingAs($admin)->post("/people/{$kim->id}/devices", ['hostname' => 'DESKTOP-Q12UTEE', 'platform' => 'windows']);
+        $this->assertNull(Device::byToken($first));
+        $this->assertNotNull(Device::byToken(session('deviceToken')['token']));
+        $this->assertSame(1, Device::withoutGlobalScope('tenant')->count());
+    }
+
+    public function test_device_tokens_are_admin_only_and_names_are_plain(): void
+    {
+        $kim = $this->user(User::ROLE_MEMBER);
+        $stranger = $this->user(User::ROLE_MEMBER, Tenant::create(['slug' => 'other', 'name' => 'Other']));
+        $admin = $this->user(User::ROLE_ADMIN);
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))
+            ->post("/people/{$kim->id}/devices", ['hostname' => 'mac', 'platform' => 'darwin'])->assertForbidden();
+        $this->actingAs($admin)
+            ->post("/people/{$stranger->id}/devices", ['hostname' => 'mac', 'platform' => 'darwin'])->assertNotFound();
+        $this->actingAs($admin)
+            ->post("/people/{$kim->id}/devices", ['hostname' => 'mac; rm -rf /', 'platform' => 'darwin'])
+            ->assertSessionHasErrors('hostname');
+        $this->actingAs($admin)
+            ->post("/people/{$kim->id}/devices", ['hostname' => 'mac', 'platform' => 'beos'])
+            ->assertSessionHasErrors('platform');
+
+        $this->assertSame(0, Device::withoutGlobalScope('tenant')->count());
     }
 
     public function test_the_seeder_makes_one_super_admin_with_a_generated_password(): void
