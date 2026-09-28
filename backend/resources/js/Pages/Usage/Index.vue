@@ -271,7 +271,6 @@ const selectClass =
 
                     <p class="px-1 text-xs leading-relaxed text-gray-500">
                         <strong class="font-medium text-gray-700">AI time</strong> — {{ aiTimeDefinition }}
-                        <template v-if="canViewRaw"> Prompt previews you see here are recorded; each person sees who read their prompts under My data.</template>
                     </p>
                 </aside>
             </div>

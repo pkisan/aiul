@@ -59,6 +59,6 @@ Route::middleware(['auth', 'verified', SetTenantFromUser::class, EnsureConsented
     Route::get('/usage/project', [UsageDashboardController::class, 'project'])->name('usage.project');
     Route::get('/usage/{interaction}', [UsageDashboardController::class, 'show'])->name('usage.show');
 
-    // Raw prompt text: policy-checked and audit-logged on every single view.
+    // Old links to the separate text page.
     Route::get('/usage/{interaction}/raw', [UsageDashboardController::class, 'raw'])->name('usage.raw');
 });

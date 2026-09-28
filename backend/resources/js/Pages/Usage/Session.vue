@@ -195,7 +195,7 @@ const folded = (t) => t.asked.prompt_preview.length > PROMPT_FOLD && !openPrompt
                     <p class="border-t border-gray-100 pt-6 text-xs leading-relaxed text-gray-400">
                         Grey bubbles on the right are what the person typed. Text without a bubble is the answer they
                         read. "Agent worked on its own" lines are the agent feeding itself tool results — not the
-                        person. Opening this page is recorded in the audit log.
+                        person.
                     </p>
                 </div>
             </main>

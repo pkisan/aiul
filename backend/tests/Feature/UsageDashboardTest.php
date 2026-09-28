@@ -161,7 +161,6 @@ class UsageDashboardTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page->missing('prompt')->where('canViewRaw', false));
 
-        $this->assertSame(0, ConsentRecord::withoutGlobalScope('tenant')->where('kind', ConsentRecord::KIND_RAW_VIEW)->count());
     }
 
     public function test_an_admin_without_the_flag_still_cannot_read_prompt_text(): void
@@ -174,43 +173,7 @@ class UsageDashboardTest extends TestCase
             ->assertInertia(fn ($page) => $page->missing('prompt'));
     }
 
-    public function test_opening_prompt_text_is_written_to_the_audit_log(): void
-    {
-        $subject = $this->user();
-        $interaction = $this->interaction(['user_id' => $subject->id], 'a prompt about pineapples');
-        $admin = $this->user(User::ROLE_ADMIN, raw: true);
-
-        $response = $this->actingAs($admin)
-            ->get("/usage/{$interaction->id}?reason=investigating+a+leak")
-            ->assertOk();
-
-        $this->assertSame('a prompt about pineapples', $response->viewData('page')['props']['prompt']);
-
-        $record = ConsentRecord::withoutGlobalScope('tenant')->where('kind', ConsentRecord::KIND_RAW_VIEW)->first();
-
-        $this->assertNotNull($record, 'every raw view must be recorded');
-        $this->assertSame(ConsentRecord::KIND_RAW_VIEW, $record->kind);
-        $this->assertSame($admin->id, $record->actor_user_id);
-        $this->assertSame($subject->id, $record->user_id);
-        $this->assertSame($interaction->id, $record->ai_interaction_id);
-        $this->assertSame('investigating a leak', $record->reason);
-    }
-
-    public function test_reading_anyones_prompt_needs_no_reason_but_is_still_recorded(): void
-    {
-        $subject = $this->user();
-        $interaction = $this->interaction(['user_id' => $subject->id]);
-        $admin = $this->user(User::ROLE_ADMIN, raw: true);
-
-        // A grant-holding admin opens with one click: no reason typed.
-        $this->actingAs($admin)->get("/usage/{$interaction->id}")->assertOk();
-
-        $record = ConsentRecord::withoutGlobalScope('tenant')->where('kind', ConsentRecord::KIND_RAW_VIEW)->first();
-        $this->assertNotNull($record, 'every raw view must be recorded');
-        $this->assertSame('no reason given', $record->reason);
-    }
-
-    public function test_anyone_may_read_their_own_prompt_and_it_is_still_recorded(): void
+    public function test_anyone_may_read_their_own_prompt(): void
     {
         $member = $this->user();
         $interaction = $this->interaction(['user_id' => $member->id], 'my own words');
@@ -218,7 +181,6 @@ class UsageDashboardTest extends TestCase
         $response = $this->actingAs($member)->get("/usage/{$interaction->id}")->assertOk();
 
         $this->assertSame('my own words', $response->viewData('page')['props']['prompt']);
-        $this->assertSame(1, ConsentRecord::withoutGlobalScope('tenant')->where('kind', ConsentRecord::KIND_RAW_VIEW)->count());
     }
 
     public function test_nobody_can_reach_another_tenants_interaction(): void
@@ -234,25 +196,15 @@ class UsageDashboardTest extends TestCase
 
     }
 
-    public function test_my_data_shows_what_was_captured_and_who_looked(): void
+    public function test_my_data_shows_what_was_captured(): void
     {
         $member = $this->user();
-        $interaction = $this->interaction(['user_id' => $member->id]);
-        $admin = $this->user(User::ROLE_ADMIN, raw: true);
-
-        // Somebody reads their prompt.
-        $this->actingAs($admin)->get("/usage/{$interaction->id}?reason=support+request")->assertOk();
+        $this->interaction(['user_id' => $member->id]);
 
         $response = $this->actingAs($member)->get('/my-data')->assertOk();
         $props = $response->viewData('page')['props'];
 
         $this->assertSame(1, $props['summary']['total']);
-        $this->assertCount(1, $props['interactions']);
-
-        // The point of the page: the person can see who read their words, and why.
-        $this->assertCount(1, $props['whoLooked']);
-        $this->assertSame($admin->name, $props['whoLooked'][0]['actor']);
-        $this->assertSame('support request', $props['whoLooked'][0]['reason']);
     }
 
     public function test_my_data_is_open_to_every_role(): void
@@ -307,7 +259,7 @@ class UsageDashboardTest extends TestCase
         ])->save();
 
         $response = $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
-            ->get("/usage/{$interaction->id}?reason=checking")
+            ->get("/usage/{$interaction->id}")
             ->assertOk();
 
         $props = $response->viewData('page')['props'];
@@ -324,7 +276,7 @@ class UsageDashboardTest extends TestCase
         ])->save();
 
         $response = $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
-            ->get("/usage/{$interaction->id}?reason=checking")
+            ->get("/usage/{$interaction->id}")
             ->assertOk();
 
         $props = $response->viewData('page')['props'];
@@ -421,9 +373,7 @@ class UsageDashboardTest extends TestCase
         $this->assertFalse($utility['final_answer'], 'a utility call is not the answer to anything');
     }
 
-    // The session page reads without a trip to another screen for every row, and
-    // that reading is itself recorded — once for the page, not once per row.
-    public function test_opening_a_session_shows_previews_and_is_audited_once(): void
+    public function test_opening_a_session_shows_previews(): void
     {
         $asked = $this->interaction(['kind' => 'human', 'automated' => false], 'Fix the failing SSO tests.');
         $this->interaction(['ai_session_id' => $asked->ai_session_id, 'kind' => 'agent', 'automated' => true]);
@@ -434,8 +384,6 @@ class UsageDashboardTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('interactions.0.prompt_preview', 'Fix the failing SSO tests.'));
-
-        $this->assertSame(1, ConsentRecord::where('kind', ConsentRecord::KIND_SESSION_VIEW)->count());
     }
 
     public function test_a_manager_without_the_raw_grant_sees_no_prompt_text(): void
@@ -446,8 +394,6 @@ class UsageDashboardTest extends TestCase
             ->get('/usage/session/'.$asked->ai_session_id)
             ->assertOk()
             ->assertInertia(fn ($page) => $page->where('interactions.0.prompt_preview', null));
-
-        $this->assertSame(0, ConsentRecord::where('kind', ConsentRecord::KIND_SESSION_VIEW)->count());
     }
 
     public function test_a_member_cannot_open_a_session(): void
@@ -465,8 +411,8 @@ class UsageDashboardTest extends TestCase
         $interaction = $this->interaction();
 
         $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
-            ->get("/usage/{$interaction->id}/raw?reason=x")
-            ->assertRedirect("/usage/{$interaction->id}?reason=x");
+            ->get("/usage/{$interaction->id}/raw")
+            ->assertRedirect("/usage/{$interaction->id}");
     }
 
     public function test_the_interaction_page_shows_only_what_the_person_typed(): void
@@ -505,9 +451,8 @@ class UsageDashboardTest extends TestCase
             ->assertInertia(fn ($page) => $page->where('summary.interactions', 2));
     }
 
-    // A preview is prompt text: shown only with the grant, and audited once
-    // per person on the page.
-    public function test_prompt_previews_need_the_grant_and_are_audited(): void
+    // A preview is prompt text: shown only with the grant.
+    public function test_prompt_previews_need_the_grant(): void
     {
         $alex = $this->user();
         $this->interaction(['user_id' => $alex->id, 'kind' => 'human'], "Fix\n  the   SSO tests.");
@@ -516,10 +461,6 @@ class UsageDashboardTest extends TestCase
         $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
             ->get('/usage')
             ->assertInertia(fn ($page) => $page->where('list.data.1.preview', 'Fix the SSO tests.'));
-
-        $records = ConsentRecord::withoutGlobalScope('tenant')->where('kind', ConsentRecord::KIND_LIST_VIEW)->get();
-        $this->assertCount(1, $records);
-        $this->assertSame($alex->id, $records[0]->user_id);
     }
 
     // There is no landing page: "/" sends each person to where they work.

@@ -92,7 +92,7 @@ const copy = (text) =>
                     >Add</button>
                     <label v-if="form.role === 'admin'" class="flex items-center gap-2 text-sm text-gray-600 sm:col-span-4">
                         <input v-model="form.can_view_raw_prompts" type="checkbox" class="rounded text-indigo-600" />
-                        May read prompt text (every read is written to the audit log)
+                        May read prompt text
                     </label>
                 </form>
             </Panel>

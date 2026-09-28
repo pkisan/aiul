@@ -45,7 +45,7 @@ class User extends Authenticatable
      * Whether this person may read actual prompt text.
      *
      * Deliberately narrow: being an admin is not enough on its own, the flag has
-     * to be granted as well, and every use of it is audit-logged where it is used.
+     * to be granted as well.
      * That separation is the difference between coaching and surveillance.
      */
     public function canViewRawPrompts(): bool

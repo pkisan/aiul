@@ -10,7 +10,7 @@ const props = defineProps({
     interaction: Object,
     canViewRaw: Boolean,
     person: String,
-    // Present only when canViewRaw: the view was audit-logged before they were sent.
+    // Present only when canViewRaw.
     prompt: String,
     answer: String,
     promptState: String,
@@ -44,7 +44,7 @@ const missing = (state, what) =>
 
         <div class="bg-gray-50 py-8">
             <div class="mx-auto max-w-4xl space-y-4 px-4 sm:px-6 lg:px-8">
-                <Panel title="Conversation" subtitle="Opening this page is recorded in the audit log">
+                <Panel title="Conversation">
                     <div v-if="canViewRaw" class="space-y-3 bg-gray-50/60 px-5 py-5">
                         <div class="text-right text-[11px] font-medium uppercase tracking-wide text-gray-400">{{ promptLabel }}</div>
                         <Message :who="promptWho" :text="promptState === 'present' ? prompt : ''" :placeholder="missing(promptState, 'prompt')" />

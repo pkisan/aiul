@@ -49,7 +49,14 @@ Steps (commit each):
       24 sessions and 222 read records of dev@example.com moved to Punit
       (id 2); dev@example.com and manager@example.com deleted. Backup taken
       first (pg_dump, session scratchpad, not kept in the repo).
-      NEXT: owner verifies (see end-of-task commands), then decides whether to
+- [x] U9 owner (2026-09-28): "My recent interactions" and "Who has read my
+      prompts" removed from My data. With nothing left reading them, the
+      raw/session/list read records are no longer WRITTEN either (old rows stay
+      in the DB). Consent notice no longer promises an audit log, so
+      consent_version bumped to 2026-09-28: everyone re-accepts once.
+      DEPLOY-PLESK.md rewritten for a blank Plesk site (site PHP binary path,
+      pdo_pgsql, document root, scheduled task).
+      NEXT: owner deploys to Plesk following docs/DEPLOY-PLESK.md, then decides whether to
       delete the local dummy users dev@example.com / manager@example.com.
 
 ## PLAN: cross-OS demo — started 2026-09-24

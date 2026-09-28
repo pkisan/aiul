@@ -16,9 +16,9 @@ use Inertia\Response;
  * The admin's list of accounts. There is no public sign-up: everyone who can
  * sign in was added here (or is the super admin the seeder made).
  *
- * No delete button, on purpose. Deleting a user cascades to their consent and
- * audit records, and an audit log that can be erased is not an audit log.
- * Resetting the password locks a leaver out just as well.
+ * No delete button, on purpose. Deleting a user cascades to their consent
+ * records and leaves their usage unassigned. Resetting the password locks a
+ * leaver out just as well.
  */
 class PeopleController extends Controller
 {

@@ -22,7 +22,7 @@ class ConsentController extends Controller
                 'Prompts and answers you send to AI tools on a company device are captured, with the AI account you used.',
                 'Secrets and obvious personal data are masked before anything is stored.',
                 'Traffic to anything that is not an AI provider is never decrypted or logged.',
-                'Managers see usage per person and per project. Reading your actual prompt text needs a separate permission, and every read is written to an audit log.',
+                'Managers see usage per person and per project. Reading your actual prompt text needs a separate permission that only admins can be given.',
             ],
         ]);
     }

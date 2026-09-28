@@ -26,5 +26,5 @@ return [
      */
     'tenant' => env('AIUL_TENANT', 'default'),
 
-    'consent_version' => env('AIUL_CONSENT_VERSION', '2026-09-23'),
+    'consent_version' => env('AIUL_CONSENT_VERSION', '2026-09-28'),
 ];

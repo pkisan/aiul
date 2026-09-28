@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AiInteraction;
 use App\Models\AiSession;
-use App\Models\ConsentRecord;
+use App\Models\Device;
 use App\Models\User;
 use App\Services\BodyStore;
 use App\Services\PromptText;
@@ -51,7 +51,7 @@ class UsageDashboardController extends Controller
             'summary' => $report->summary(),
             'list' => $filters['view'] === 'sessions'
                 ? $report->sessions()
-                : $this->withPreviews($request, $report->prompts(), $canViewRaw),
+                : $this->withPreviews($report->prompts(), $canViewRaw),
             'perPerson' => $report->perPerson(),
             'perTool' => $report->perTool(),
             'perProject' => $report->perProject(),
@@ -72,28 +72,10 @@ class UsageDashboardController extends Controller
 
     private const PERIODS = [1, 7, 30, 90, 365];
 
-    /**
-     * The opening of each prompt, for someone allowed to read prompt text.
-     *
-     * A preview IS prompt text, so it is audited like a session view: one
-     * record per person whose words were on the page, not one per row.
-     */
-    private function withPreviews(Request $request, LengthAwarePaginator $page, bool $canViewRaw): LengthAwarePaginator
+    /** The opening of each prompt, for someone allowed to read prompt text. */
+    private function withPreviews(LengthAwarePaginator $page, bool $canViewRaw): LengthAwarePaginator
     {
         $rows = $page->getCollection();
-
-        if ($canViewRaw) {
-            foreach ($rows->groupBy(fn ($row) => $row['user_id'] ?? 0) as $userId => $group) {
-                ConsentRecord::create([
-                    'tenant_id' => $request->user()->tenant_id,
-                    'user_id' => $userId ?: $request->user()->id,
-                    'kind' => ConsentRecord::KIND_LIST_VIEW,
-                    'actor_user_id' => $request->user()->id,
-                    'reason' => 'saw '.$group->count().' prompt preview(s) on the usage page',
-                    'ip' => $request->ip(),
-                ]);
-            }
-        }
 
         // ponytail: one body fetch per row (25 per page); batch or cache if the store is slow.
         return $page->setCollection($rows->map(function ($row) use ($canViewRaw) {
@@ -113,19 +95,6 @@ class UsageDashboardController extends Controller
 
         $report = new UsageReport(days: (int) $request->integer('days', 30) ?: 30);
         $canViewRaw = $request->user()->canViewRawPrompts();
-
-        // One record for the page, not one per row: an audit log with forty
-        // entries for a single visit is an audit log nobody reads.
-        if ($canViewRaw) {
-            ConsentRecord::create([
-                'tenant_id' => $session->tenant_id,
-                'user_id' => $session->user_id ?? $request->user()->id,
-                'kind' => ConsentRecord::KIND_SESSION_VIEW,
-                'actor_user_id' => $request->user()->id,
-                'reason' => 'opened session #'.$session->id,
-                'ip' => $request->ip(),
-            ]);
-        }
 
         return Inertia::render('Usage/Session', [
             'session' => [
@@ -177,9 +146,8 @@ class UsageDashboardController extends Controller
      * One interaction: metadata for anyone allowed to see it, and the
      * prompt and answer text on the same page for anyone allowed to read it.
      *
-     * Reading the text is still the privileged part: the policy is checked and the
-     * view is written to the audit log BEFORE the text is fetched. If the log
-     * write fails, nobody reads anything.
+     * Reading the text is the privileged part: the policy is checked before the
+     * text is fetched.
      */
     public function show(Request $request, AiInteraction $interaction): Response
     {
@@ -196,16 +164,6 @@ class UsageDashboardController extends Controller
         ];
 
         if ($props['canViewRaw']) {
-            ConsentRecord::create([
-                'tenant_id' => $interaction->tenant_id,
-                'user_id' => $interaction->user_id ?? $request->user()->id,
-                'kind' => ConsentRecord::KIND_RAW_VIEW,
-                'actor_user_id' => $request->user()->id,
-                'ai_interaction_id' => $interaction->id,
-                'reason' => $request->string('reason')->trim()->toString() ?: 'no reason given',
-                'ip' => $request->ip(),
-            ]);
-
             // Cleaned on the way out too: rows stored before PromptText existed
             // still carry the tool's wrappers.
             $prompt = PromptText::clean($this->bodies->get($interaction->prompt_object));
@@ -225,12 +183,9 @@ class UsageDashboardController extends Controller
     }
 
     /** The old separate text page: the text now lives on the interaction page. */
-    public function raw(Request $request, AiInteraction $interaction): RedirectResponse
+    public function raw(AiInteraction $interaction): RedirectResponse
     {
-        return redirect()->route('usage.show', array_filter([
-            'interaction' => $interaction->id,
-            'reason' => $request->string('reason')->trim()->toString(),
-        ]));
+        return redirect()->route('usage.show', $interaction->id);
     }
 
     private function bodyState(?string $text, ?int $chars): string
@@ -243,54 +198,25 @@ class UsageDashboardController extends Controller
     }
 
     /**
-     * "My data": what has been captured about the person asking.
-     *
-     * Everyone can see this about themselves, whatever their role. Transparency
-     * is the part that makes the rest acceptable.
+     * "My data": what has been captured about the person asking. Everyone can
+     * see this about themselves, whatever their role.
      */
     public function myData(Request $request): Response
     {
         $user = $request->user();
 
-        $interactions = AiInteraction::where('user_id', $user->id)
-            ->latest('occurred_at')
-            ->limit(100)
-            ->get();
-
         return Inertia::render('Usage/MyData', [
             'summary' => [
                 'total' => AiInteraction::where('user_id', $user->id)->count(),
                 'first_seen' => AiInteraction::where('user_id', $user->id)->min('occurred_at'),
-                'devices' => \App\Models\Device::where('user_id', $user->id)
+                'devices' => Device::where('user_id', $user->id)
                     ->get(['id', 'hostname', 'platform', 'last_seen_at']),
             ],
-            'interactions' => $interactions->map(fn ($i) => [
-                'id' => $i->id,
-                'occurred_at' => $i->occurred_at,
-                'tool' => $i->tool,
-                'model' => $i->model,
-                'project' => $i->repo ? basename($i->repo) : null,
-                'automated' => $i->automated,
-                'prompt_chars' => $i->prompt_chars,
-                'redacted' => $i->redacted,
-            ]),
-            'whoLooked' => ConsentRecord::where('user_id', $user->id)
-                ->whereIn('kind', ConsentRecord::READ_KINDS)
-                ->with('actor:id,name')
-                ->where('actor_user_id', '!=', $user->id)
-                ->latest()
-                ->limit(50)
-                ->get()
-                ->map(fn ($record) => [
-                    'at' => $record->created_at,
-                    'actor' => $record->actor?->name ?? 'unknown',
-                    'reason' => $record->reason,
-                ]),
             'explanation' => [
                 'Prompts and answers you send to AI tools on a managed device are captured.',
                 'Secrets and obvious personal data are masked before anything is stored.',
                 'Traffic to anything that is not an AI provider is never decrypted or logged.',
-                'Anyone who opens your actual prompt text appears in the list below.',
+                'Only admins given explicit permission can read prompt text.',
             ],
         ]);
     }

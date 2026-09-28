@@ -43,7 +43,6 @@ class SuperAdminSeeder extends Seeder
                 'tenant_id' => $tenant->id,
                 'name' => env('AIUL_ADMIN_NAME') ?: 'Super Admin',
                 'role' => User::ROLE_ADMIN,
-                // Every read of prompt text is still written to the audit log.
                 'can_view_raw_prompts' => true,
                 'password' => $password, // hashed by the model's cast
             ],
