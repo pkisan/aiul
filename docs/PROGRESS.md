@@ -4,6 +4,23 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-28 (ChatGPT widget fix ab0bf12 awaits install; W-d, Ubuntu L4 await owner)
 
+## Device rename + Linux/Windows downloads — 2026-09-28
+
+- [x] Device rename (`1c104af`): People page, click a device name. PATCH
+      /people/{person}/devices/{device}; admin, same tenant, device must belong
+      to that person; plain name, unique per tenant. Token unchanged (devices
+      are found by token hash). 95/95 backend tests.
+- [x] enroll-device.sh bug: on Linux it also ran the macOS "build the package"
+      step and failed without the repo. Now macOS only.
+- [x] release.yml: one tag -> aiul-macos zip, aiul-linux tar.gz (amd64+arm64,
+      no mac metadata), aiul-windows zip; docs/TESTERS-LINUX.md and
+      TESTERS-WINDOWS.md. Dry-run: Ubuntu 24.04 container unpacks cleanly,
+      binary reports the tag, enrol plan shown, "n" changes nothing. Windows
+      zip checked for contents only.
+      STILL OPEN: L4 (real GNOME desktop) and W-d (real Windows PC) have never
+      passed; the tester guides say so.
+      NEXT: owner deploys the Plesk zip (rename + dark mode), tags v0.2.0.
+
 ## Dark mode: AI answers unreadable — fixed 2026-09-28
 
 Owner screenshot: session page answer text black on the dark background.

@@ -47,10 +47,18 @@ branch name gives the ticket.
 
 ## Test it on your machine
 
-macOS only for now. Download `aiul-macos-<version>.zip` (not "Source code") from the
-[latest release](https://github.com/pkisan/aiul/releases/latest) and follow the
-`TESTING.md` inside it (also at [docs/TESTERS.md](docs/TESTERS.md)). No Go, no
-Docker, no backend.
+Download the file for your computer from the
+[latest release](https://github.com/pkisan/aiul/releases/latest), not
+"Source code":
+
+| Computer | Download | Guide |
+| --- | --- | --- |
+| macOS | `aiul-macos-<version>.zip` | [docs/TESTERS.md](docs/TESTERS.md) |
+| Ubuntu (GNOME) | `aiul-linux-<version>.tar.gz` | [docs/TESTERS-LINUX.md](docs/TESTERS-LINUX.md) |
+| Windows 10/11 | `aiul-windows-<version>.zip` | [docs/TESTERS-WINDOWS.md](docs/TESTERS-WINDOWS.md) |
+
+The same guide is inside the download as `TESTING.md`. No Go, no Docker, no
+backend.
 
 ## Try it without changing anything
 

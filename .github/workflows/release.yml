@@ -2,10 +2,14 @@
 #
 #   git tag v0.1.0 && git push origin v0.1.0
 #
-# Produces one GitHub Release with aiul-macos-<tag>.zip: the unsigned .pkg, the
-# enrol script and the kill switch, laid out as the scripts expect (scripts/,
-# dist/), so they run unchanged and never need Go, Docker or the backend code.
-# macOS only for now; Linux and Windows join when they are verified.
+# Produces one GitHub Release with one download per OS, all from this one tag
+# (so every binary reports the same `aiul version`):
+#   aiul-macos-<tag>.zip       unsigned .pkg, enrol script, kill switch
+#   aiul-linux-<tag>.tar.gz    amd64 + arm64 binaries, enrol script, kill switch
+#   aiul-windows-<tag>.zip     aiul.exe, enrol script, kill switch (PowerShell)
+# Each is laid out as its scripts expect (scripts/, dist/), so they run
+# unchanged and never need Go, Docker or the backend code. Everything is cross-
+# compiled on the Mac runner: the agent is pure Go (CGO_ENABLED=0).
 #
 # GitHub also attaches "Source code (zip)" to every release — the whole repo,
 # backend included. That cannot be turned off; the release notes point testers
@@ -41,16 +45,33 @@ jobs:
           AIUL_VERSION: ${{ github.ref_name }}
         run: ./scripts/build.sh && ./scripts/package.sh
 
-      - name: Assemble tester bundle
+      - name: Assemble tester bundles
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          B="aiul-macos-$TAG"
-          mkdir -p "$B/scripts" "$B/dist"
-          cp scripts/enroll-device.sh scripts/killswitch.sh "$B/scripts/"
-          cp dist/aiul-*.pkg "$B/dist/"
-          cp docs/TESTERS.md "$B/TESTING.md"
-          zip -r "$B.zip" "$B" # zip keeps the executable bits
+          M="aiul-macos-$TAG"
+          mkdir -p "$M/scripts" "$M/dist"
+          cp scripts/enroll-device.sh scripts/killswitch.sh "$M/scripts/"
+          cp dist/aiul-*.pkg "$M/dist/"
+          cp docs/TESTERS.md "$M/TESTING.md"
+          zip -r "$M.zip" "$M" # zip keeps the executable bits
+
+          L="aiul-linux-$TAG"
+          mkdir -p "$L/scripts" "$L/packaging/scripts" "$L/dist"
+          cp scripts/enroll-device.sh scripts/killswitch.sh scripts/killswitch-linux.sh "$L/scripts/"
+          cp packaging/scripts/postinstall "$L/packaging/scripts/"
+          cp dist/aiul-linux-amd64 dist/aiul-linux-arm64 "$L/dist/"
+          cp docs/TESTERS-LINUX.md "$L/TESTING.md"
+          # tar keeps the executable bits; no macOS metadata, which GNU tar on
+          # Ubuntu would warn about.
+          COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs -czf "$L.tar.gz" "$L"
+
+          W="aiul-windows-$TAG"
+          mkdir -p "$W/scripts" "$W/dist"
+          cp scripts/enroll-device.ps1 scripts/killswitch.ps1 "$W/scripts/"
+          cp dist/aiul.exe "$W/dist/"
+          cp docs/TESTERS-WINDOWS.md "$W/TESTING.md"
+          zip -r "$W.zip" "$W"
 
       - name: Publish release
         env:
@@ -58,8 +79,13 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           cat > notes.md <<EOF
-          **macOS only.** Download **aiul-macos-$TAG.zip** below, unzip it and follow TESTING.md inside.
+          Download the file for your computer, unpack it and follow TESTING.md inside:
+
+          - **macOS**: aiul-macos-$TAG.zip
+          - **Ubuntu (GNOME)**: aiul-linux-$TAG.tar.gz
+          - **Windows 10/11**: aiul-windows-$TAG.zip
 
           Ignore "Source code (zip / tar.gz)": GitHub adds those to every release; they are the developer repository, not the installer.
           EOF
-          gh release create "$TAG" "aiul-macos-$TAG.zip" --title "$TAG (macOS)" --notes-file notes.md
+          gh release create "$TAG" "aiul-macos-$TAG.zip" "aiul-linux-$TAG.tar.gz" "aiul-windows-$TAG.zip" \
+            --title "$TAG" --notes-file notes.md
