@@ -2,10 +2,10 @@
 # enroll-device.sh — put the agent on this Mac or Ubuntu machine and point it at
 # a backend.
 #
-#   ./scripts/enroll-device.sh                                  # backend on this machine
-#   ./scripts/enroll-device.sh --user admin@example.com         # ...linked to that person
-#   ./scripts/enroll-device.sh --endpoint https://genailog.vardaam.site/api/aiul/events \
-#                             --token aiul_xxx                  # backend elsewhere
+#   ./scripts/enroll-device.sh --token aiul_xxx       # the live site, genailog.vardaam.site
+#                                                     # (token: People -> Device token)
+#   ./scripts/enroll-device.sh --local [--user EMAIL] # the Docker backend on this machine
+#   ./scripts/enroll-device.sh --endpoint URL --token aiul_xxx   # any other backend
 #   ./scripts/enroll-device.sh --uninstall
 #
 # THIS ONE CHANGES THE MACHINE. It installs the agent, which sets the system
@@ -21,6 +21,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO="$PWD"
 PORT="${AIUL_PORT:-8088}"
+LIVE_ENDPOINT="https://genailog.vardaam.site/api/aiul/events"
 ENDPOINT=""
 TOKEN=""
 USER_EMAIL=""
@@ -31,6 +32,7 @@ OS="$(uname -s)"   # Darwin or Linux
 while [ $# -gt 0 ]; do
   case "$1" in
     --endpoint) ENDPOINT="$2"; shift 2 ;;
+    --local)    ENDPOINT="http://127.0.0.1:$PORT/api/aiul/events"; shift ;;
     --token)    TOKEN="$2"; shift 2 ;;
     --user)     USER_EMAIL="$2"; shift 2 ;;
     --pkg)      PKG="$2"; shift 2 ;;
@@ -85,7 +87,7 @@ fi
 
 # ---- 2. where events go -----------------------------------------------------
 if [ -z "$ENDPOINT" ]; then
-  ENDPOINT="http://127.0.0.1:$PORT/api/aiul/events"
+  ENDPOINT="$LIVE_ENDPOINT"
 fi
 
 # ---- 3. a device token ------------------------------------------------------
@@ -108,9 +110,10 @@ if [ -z "$TOKEN" ]; then
       fi
       ;;
     *)
-      echo "A remote endpoint needs a token from whoever runs that backend:" >&2
-      echo "  php artisan aiul:provision-device <hostname> --tenant=<slug>" >&2
-      echo "Then pass it here with --token." >&2
+      echo "This needs a device token for $(hostname -s)." >&2
+      echo "  An admin makes one at ${ENDPOINT%/api/aiul/events}/people -> Device token." >&2
+      echo "  Then: ./scripts/enroll-device.sh --token aiul_xxx" >&2
+      echo "  (Testing against Docker on this machine instead? Add --local.)" >&2
       exit 1
       ;;
   esac

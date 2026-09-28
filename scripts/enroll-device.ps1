@@ -3,9 +3,9 @@
 #
 # Run from an ADMINISTRATOR PowerShell, in the repository folder:
 #
-#   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1                            # backend on this PC
-#   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -User admin@example.com    # ...linked to that person
-#   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -Endpoint https://genailog.vardaam.site/api/aiul/events -Token aiul_xxx
+#   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -Token aiul_xxx          # the live site (token: People -> Device token)
+#   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -Local [-User EMAIL]    # the Docker backend on this PC
+#   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -Endpoint URL -Token aiul_xxx
 #   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -Uninstall
 #
 # THIS ONE CHANGES THE MACHINE. It installs two Windows services, trusts a
@@ -20,6 +20,7 @@ param(
     [string]$Endpoint = '',
     [string]$Token = '',
     [string]$User = '',
+    [switch]$Local,
     [switch]$Uninstall
 )
 
@@ -64,16 +65,18 @@ if (-not (Test-Path $Bin)) {
 Write-Host "Agent: $Bin ($(& $Bin version))"
 
 # ---- 2. where events go --------------------------------------------------------
-if (-not $Endpoint) { $Endpoint = "http://127.0.0.1:$Port/api/aiul/events" }
+if ($Local) { $Endpoint = "http://127.0.0.1:$Port/api/aiul/events" }
+if (-not $Endpoint) { $Endpoint = 'https://genailog.vardaam.site/api/aiul/events' }
 
 # ---- 3. a device token ---------------------------------------------------------
 # Provisioned against the Docker backend on this PC when none was given. Someone
 # else's backend means asking them for a token.
 if (-not $Token) {
     if ($Endpoint -notmatch '^http://(127\.0\.0\.1|localhost)') {
-        Write-Host 'A remote endpoint needs a token from whoever runs that backend:' -ForegroundColor Red
-        Write-Host '  php artisan aiul:provision-device <pc-name> --tenant=<slug> --platform=windows'
-        Write-Host 'Then pass it here with -Token.'
+        Write-Host "This needs a device token for $env:COMPUTERNAME." -ForegroundColor Red
+        Write-Host ('  An admin makes one at ' + ($Endpoint -replace '/api/aiul/events$', '/people') + ' -> Device token.')
+        Write-Host '  Then: powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -Token aiul_xxx'
+        Write-Host '  (Testing against Docker on this PC instead? Add -Local.)'
         exit 1
     }
     Say 'Provisioning this device with the local backend'

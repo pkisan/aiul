@@ -11,9 +11,9 @@ second changes the machine, shows every change first and asks before it does.
 
 | | Backend (all three) | Agent | Undo the agent |
 | --- | --- | --- | --- |
-| macOS | `docker compose -f compose.demo.yaml up -d --build` | `./scripts/enroll-device.sh --user admin@example.com` | `sudo ./scripts/killswitch.sh` |
-| Ubuntu (GNOME) | same | `./scripts/enroll-device.sh --user admin@example.com` | `sudo ./scripts/killswitch.sh` |
-| Windows 10/11 | same | `powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -User admin@example.com` (Administrator) | `powershell -ExecutionPolicy Bypass -File scripts\killswitch.ps1` (Administrator) |
+| macOS | `docker compose -f compose.demo.yaml up -d --build` | `./scripts/enroll-device.sh --local --user admin@example.com` | `sudo ./scripts/killswitch.sh` |
+| Ubuntu (GNOME) | same | `./scripts/enroll-device.sh --local --user admin@example.com` | `sudo ./scripts/killswitch.sh` |
+| Windows 10/11 | same | `powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -Local -User admin@example.com` (Administrator) | `powershell -ExecutionPolicy Bypass -File scripts\killswitch.ps1` (Administrator) |
 
 Status of each, as of 2026-09-26:
 

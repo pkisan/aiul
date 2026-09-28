@@ -112,6 +112,6 @@ cat <<NEXT
 
   Next, put the agent on this machine:
 
-    ./scripts/enroll-device.sh
+    ./scripts/enroll-device.sh --local
 
 NEXT
