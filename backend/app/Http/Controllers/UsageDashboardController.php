@@ -87,6 +87,9 @@ class UsageDashboardController extends Controller
             ],
             'interactions' => $report->interactionsForSession($session, withPreviews: $canViewRaw),
             'canViewRaw' => $canViewRaw,
+            // The sidebar: the same person's other sessions, latest activity
+            // first. Metadata only — no prompt text is fetched for it.
+            'sidebar' => (new UsageReport(days: 30, userId: $session->user_id))->sessions(40)->items(),
         ]);
     }
 
