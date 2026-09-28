@@ -227,6 +227,11 @@ Steps (commit each):
       sudo or System keychain on Windows/Linux. Dead installUsage/uninstallUsage
       consts deleted.
 - [ ] W-d owner runs it on DESKTOP-Q12UTEE; fix what breaks  <- NEXT (awaiting owner). dist/aiul.exe built from fbdd28e.
+      2026-09-28 run 1: Docker engine not started (500 on _ping), then
+      `quay.io/minio/minio:latest` 401 — MinIO's official images no longer
+      pull anywhere. Fixed `14293be`: compose.demo.yaml uses
+      bitnamilegacy/minio (amd64+arm64, has mc+sh), verified from nothing here.
+      The PC needs the new compose.demo.yaml (code not pushed yet).
 
 ## PLAN: X4 Linux installed agent — started 2026-09-24
 
