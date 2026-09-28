@@ -3,6 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Pagination from '@/Components/Usage/Pagination.vue';
 import Panel from '@/Components/Usage/Panel.vue';
 import Tag from '@/Components/Usage/Tag.vue';
+import SearchSelect from '@/Components/SearchSelect.vue';
 import { ago, count, duration, initials, toolName, when } from '@/Components/Usage/format';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed } from 'vue';
@@ -56,9 +57,6 @@ const tools = computed(() => {
 const maxTool = computed(() => Math.max(1, ...tools.value.map((t) => t.prompts)));
 const maxPerson = computed(() => Math.max(1, ...props.perPerson.map((p) => p.prompts)));
 const topProjects = computed(() => props.perProject.slice(0, 8));
-
-const selectClass =
-    'rounded-lg border-gray-300 bg-white py-1.5 pl-3 pr-8 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:ring-indigo-500';
 </script>
 
 <template>
@@ -95,19 +93,31 @@ const selectClass =
 
             <!-- Filters -->
             <div class="flex flex-wrap items-center gap-2">
-                <select :value="filters.person ?? ''" :class="selectClass" aria-label="Person" @change="go({ person: $event.target.value || null })">
-                    <option value="">Everyone</option>
-                    <option v-for="p in options.people" :key="p.id" :value="p.id">{{ p.name }}</option>
-                </select>
-                <select :value="filters.tool ?? ''" :class="selectClass" aria-label="Tool" @change="go({ tool: $event.target.value || null })">
-                    <option value="">All tools</option>
-                    <option v-for="t in options.tools" :key="t" :value="t">{{ toolName(t) }}</option>
-                </select>
-                <select :value="filters.project ?? ''" :class="selectClass" class="max-w-[16rem]" aria-label="Project" @change="go({ project: $event.target.value || null })">
-                    <option value="">All projects</option>
-                    <option value="-">Outside a project</option>
-                    <option v-for="p in options.projects" :key="p.repo" :value="p.repo" :title="p.repo">{{ p.name }}</option>
-                </select>
+                <SearchSelect
+                    class="w-44"
+                    label="Person"
+                    :model-value="filters.person ?? ''"
+                    :options="[{ value: '', label: 'Everyone' }, ...options.people.map((p) => ({ value: p.id, label: p.name }))]"
+                    @update:model-value="(v) => go({ person: v || null })"
+                />
+                <SearchSelect
+                    class="w-40"
+                    label="Tool"
+                    :model-value="filters.tool ?? ''"
+                    :options="[{ value: '', label: 'All tools' }, ...options.tools.map((t) => ({ value: t, label: toolName(t) }))]"
+                    @update:model-value="(v) => go({ tool: v || null })"
+                />
+                <SearchSelect
+                    class="w-48 max-w-[16rem]"
+                    label="Project"
+                    :model-value="filters.project ?? ''"
+                    :options="[
+                        { value: '', label: 'All projects' },
+                        { value: '-', label: 'Outside a project' },
+                        ...options.projects.map((p) => ({ value: p.repo, label: p.name, title: p.repo })),
+                    ]"
+                    @update:model-value="(v) => go({ project: v || null })"
+                />
                 <button
                     v-if="filtered"
                     type="button"

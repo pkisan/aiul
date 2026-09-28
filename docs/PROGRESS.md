@@ -4,6 +4,19 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-28 (ChatGPT widget fix ab0bf12 awaits install; W-d, Ubuntu L4 await owner)
 
+## Searchable filters on /usage — 2026-09-28
+
+v0.2.0 released by owner (3 downloads, workflow green). Owner asked for
+searchable dropdowns: new Components/SearchSelect.vue (type to narrow, arrows,
+Enter, Escape) on the person, tool and project filters. People page role and
+OS selects stay native (3 fixed choices each). Checked with headless Chrome
+over CDP on a throwaway DB copy (aiul_shot, dropped after): light, dark,
+"No matches", Enter filters via URL. Note: `php artisan serve` does NOT pass
+DB_DATABASE to its worker; use `php -S` from public/ for a DB copy.
+FOUND: redaction has no rule for our own `aiul_` device tokens; one was stored
+in a prompt (owner's screenshot). Not fixed yet, owner to decide.
+NEXT: owner uploads a Plesk zip (rename, dark mode, search).
+
 ## Device rename + Linux/Windows downloads — 2026-09-28
 
 - [x] Device rename (`1c104af`): People page, click a device name. PATCH
