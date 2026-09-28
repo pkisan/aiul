@@ -14,7 +14,13 @@ live and local (already possible: `enroll-device.sh --token` vs `--local`).
       dist/ (pkg, linux amd64/arm64, exe) + docs/TESTERS.md as TESTING.md, and
       publishes the release. Dry-run of every step in a scratch clone passed
       (tests ok, 16-file zip, exec bits kept). NOT yet run on GitHub.
-      NEXT: owner pushes, tags v0.1.0, checks the release page.
+      v0.1.0 released 2026-09-28. Owner opened GitHub's automatic "Source
+      code (zip)" (whole repo, cannot be disabled) and asked for Mac-only,
+      necessary files only. Now: aiul-macos-<tag>.zip = TESTING.md,
+      scripts/enroll-device.sh, scripts/killswitch.sh, dist/aiul-<tag>.pkg;
+      release notes say "macOS only, ignore Source code". Dry-run: 5 files,
+      bundled enrol script finds the pkg.
+      NEXT: owner pushes and tags v0.1.1.
 
 ## PLAN: dashboard cleanup for genailog.vardaam.site (Plesk) — started 2026-09-28
 

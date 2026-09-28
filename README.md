@@ -47,7 +47,7 @@ branch name gives the ticket.
 
 ## Test it on your machine
 
-Download `aiul-<version>.zip` from the
+macOS only for now. Download `aiul-macos-<version>.zip` (not "Source code") from the
 [latest release](https://github.com/pkisan/aiul/releases/latest) and follow the
 `TESTING.md` inside it (also at [docs/TESTERS.md](docs/TESTERS.md)). No Go, no
 Docker, no backend.

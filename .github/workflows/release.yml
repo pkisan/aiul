@@ -2,12 +2,14 @@
 #
 #   git tag v0.1.0 && git push origin v0.1.0
 #
-# Produces one GitHub Release with aiul-<tag>.zip. The zip mirrors the repo
-# layout the enrol scripts expect (scripts/, packaging/scripts/, dist/), so the
-# scripts run unchanged and never need Go, Docker or the backend code.
+# Produces one GitHub Release with aiul-macos-<tag>.zip: the unsigned .pkg, the
+# enrol script and the kill switch, laid out as the scripts expect (scripts/,
+# dist/), so they run unchanged and never need Go, Docker or the backend code.
+# macOS only for now; Linux and Windows join when they are verified.
 #
-# Everything in it is UNSIGNED (signing is Phase 8). TESTING.md in the zip says
-# what that means on each OS.
+# GitHub also attaches "Source code (zip)" to every release — the whole repo,
+# backend included. That cannot be turned off; the release notes point testers
+# at the right file instead.
 
 name: release
 
@@ -43,13 +45,10 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          B="aiul-$TAG"
-          mkdir -p "$B/scripts" "$B/packaging/scripts" "$B/dist"
-          cp scripts/enroll-device.sh scripts/killswitch.sh scripts/killswitch-linux.sh \
-             scripts/enroll-device.ps1 scripts/killswitch.ps1 "$B/scripts/"
-          cp packaging/scripts/postinstall "$B/packaging/scripts/"
-          # dist/aiul (the bare universal binary) is inside the .pkg already.
-          cp dist/aiul-*.pkg dist/aiul-linux-amd64 dist/aiul-linux-arm64 dist/aiul.exe "$B/dist/"
+          B="aiul-macos-$TAG"
+          mkdir -p "$B/scripts" "$B/dist"
+          cp scripts/enroll-device.sh scripts/killswitch.sh "$B/scripts/"
+          cp dist/aiul-*.pkg "$B/dist/"
           cp docs/TESTERS.md "$B/TESTING.md"
           zip -r "$B.zip" "$B" # zip keeps the executable bits
 
@@ -57,4 +56,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" "aiul-$TAG.zip" --title "$TAG" --generate-notes
+        run: |
+          cat > notes.md <<EOF
+          **macOS only.** Download **aiul-macos-$TAG.zip** below, unzip it and follow TESTING.md inside.
+
+          Ignore "Source code (zip / tar.gz)": GitHub adds those to every release; they are the developer repository, not the installer.
+          EOF
+          gh release create "$TAG" "aiul-macos-$TAG.zip" --title "$TAG (macOS)" --notes-file notes.md
