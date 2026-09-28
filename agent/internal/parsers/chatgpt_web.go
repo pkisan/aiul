@@ -159,15 +159,8 @@ func (p ChatGPTWeb) reassemble(events []string) (answer, model string) {
 
 		case "patch":
 			// A batch of operations, each with its own path.
-			var ops []patchOp
-			if err := json.Unmarshal(op.V, &ops); err != nil {
-				continue
-			}
-			for _, inner := range ops {
-				if inner.O == "append" && inner.P != nil && isContentPart(*inner.P) {
-					b.WriteString(stringValue(inner.V))
-					appendingText = true
-				}
+			if appendBatch(&b, op.V) {
+				appendingText = true
 			}
 
 		case "add", "replace", "remove":
@@ -179,14 +172,72 @@ func (p ChatGPTWeb) reassemble(events []string) (answer, model string) {
 			appendingText = false
 
 		case "":
-			// A continuation of the previous append: {"v":" more text"}.
-			if op.P == nil && appendingText {
+			if op.P != nil {
+				break
+			}
+			// A batch sent without its "patch" label: {"v":[{"p":...},...]}. Seen
+			// 2026-09-28 closing an answer that carried a weather widget; each op
+			// names its own path, so it does not depend on the previous target.
+			if len(op.V) > 0 && op.V[0] == '[' {
+				if appendBatch(&b, op.V) {
+					appendingText = true
+				}
+			} else if appendingText {
+				// A continuation of the previous append: {"v":" more text"}.
 				b.WriteString(stringValue(op.V))
 			}
 		}
 	}
 
-	return b.String(), model
+	return readableMarkers(b.String()), model
+}
+
+// appendBatch writes the text appends in a batch of operations and reports
+// whether there were any.
+func appendBatch(b *strings.Builder, raw json.RawMessage) bool {
+	var ops []patchOp
+	if err := json.Unmarshal(raw, &ops); err != nil {
+		return false
+	}
+	found := false
+	for _, inner := range ops {
+		if inner.O == "append" && inner.P != nil && isContentPart(*inner.P) {
+			b.WriteString(stringValue(inner.V))
+			found = true
+		}
+	}
+	return found
+}
+
+// ChatGPT marks rich content inside the answer text with private-use
+// characters: U+E200 <kind> U+E202 <payload> U+E201. The browser draws a widget,
+// a link or a citation pill there; stored as-is it shows as boxes.
+var chatGPTMarker = regexp.MustCompile("\ue200([a-z_]+)\ue202([^\ue201]*)\ue201")
+
+// readableMarkers turns each marker into what a reader of the stored answer
+// needs. "genui" (a widget, captured 2026-09-28) becomes "[widget]".
+//
+// ponytail: "cite" and "entity" are handled from their usual shape but are not
+// yet in a capture; if a stored answer shows raw markers again, capture it.
+func readableMarkers(s string) string {
+	return chatGPTMarker.ReplaceAllStringFunc(s, func(m string) string {
+		parts := chatGPTMarker.FindStringSubmatch(m)
+		switch kind, payload := parts[1], parts[2]; kind {
+		case "genui":
+			return "[widget]"
+		case "cite":
+			return "" // a source pill after a sentence; the sentence stands alone
+		case "entity":
+			// ["city","Zurich",...]: the second item is the name shown in the text.
+			var items []string
+			if json.Unmarshal([]byte(payload), &items) == nil && len(items) > 1 {
+				return items[1]
+			}
+			return payload
+		default:
+			return payload
+		}
+	})
 }
 
 // isContentPart reports whether a patch path points at text the person reads.

@@ -442,6 +442,52 @@ func TestChatGPTWebConversation(t *testing.T) {
 	}
 }
 
+// An answer with a widget (a weather card), from a real turn on 2026-09-28 with
+// the text shortened. Two things the plain answer did not have: the widget's
+// private-use marker in the text, and a closing batch sent as a bare
+// {"v":[...]} with no "patch" label, which used to be dropped whole.
+func TestChatGPTWebWidgetAnswer(t *testing.T) {
+	res, err := ChatGPTWeb{}.Parse(Exchange{
+		Host:    "chatgpt.com",
+		Path:    "/backend-api/f/conversation",
+		ReqBody: []byte(`{"action":"next","model":"auto","messages":[{"author":{"role":"user"},"content":{"content_type":"text","parts":["What's the weather in the India"]}}]}`),
+		SSE: []string{
+			`"v1"`,
+			`{"type":"message_marker","message_id":"ac0e","marker":"search_start","event":"first"}`,
+			// The widget tool's own message repeats the marker; it is not the answer.
+			`{"v":{"message":{"id":"72cf","author":{"role":"tool","name":"web.run"},"content":{"content_type":"text","parts":["genui_run result of \ue200genui\ue202{\"weather_widget_v3_with_source\":{\"location\":\"India\"}}\ue201:\n\n"]}}}}`,
+			`{"v":{"message":{"id":"2fc4","author":{"role":"assistant","metadata":{"real_author":"tool:web"}},"content":{"content_type":"text","parts":[""]},"status":"in_progress","metadata":{"model_slug":"gpt-5-6"}}}}`,
+			`{"type":"message_marker","message_id":"2fc4","marker":"user_visible_token","event":"first"}`,
+			`{"p":"/message/content/parts/0","o":"append","v":"For **India today"}`,
+			`{"v":"**, it is warm"}`,
+			`{"p":"","o":"patch","v":[{"p":"/message/content/parts/0","o":"append","v":" with some haze.\n\n\ue200genui\ue202RyYW\ue201\n\n"},{"p":"/message/metadata/content_references","o":"append","v":[{"matched_text":"\ue200genui\ue202RyYW\ue201","type":"hidden"}]}]}`,
+			`{"v":[{"p":"/message/content/parts/0","o":"append","v":"Tell me your city."},{"p":"/message/status","o":"replace","v":"finished_successfully"},{"p":"/message/end_turn","o":"replace","v":true}]}`,
+			`{"type":"message_marker","message_id":"2fc4","marker":"last_token","event":"last"}`,
+			`{"p":"/message/metadata/conversation_followup_suggestions_eligible","o":"replace","v":true}`,
+			`{"type":"server_ste_metadata","metadata":{"tool_name":"SonicBrowserTool","model_slug":"gpt-5-6"}}`,
+			`{"type":"message_stream_complete"}`,
+			`[DONE]`,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "For **India today**, it is warm with some haze.\n\n[widget]\n\nTell me your city."
+	if res.Answer != want {
+		t.Errorf("answer = %q\nwant     %q", res.Answer, want)
+	}
+	if res.Model != "gpt-5-6" {
+		t.Errorf("model = %q", res.Model)
+	}
+}
+
+func TestChatGPTMarkersBecomeReadable(t *testing.T) {
+	in := "Today in \ue200entity\ue202[\"country\",\"Switzerland\"]\ue201 it is mild.\ue200cite\ue202turn0search1\ue201 \ue200genui\ue202x\ue201"
+	if got, want := readableMarkers(in), "Today in Switzerland it is mild. [widget]"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 // Logged-out chatgpt.com (an incognito window) posts a form and streams HTML.
 // Fixture from a real turn on 2026-09-24, tokens removed.
 func TestChatGPTWebLoggedOut(t *testing.T) {
