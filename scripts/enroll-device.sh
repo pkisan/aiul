@@ -78,7 +78,7 @@ if [ "$OS" = "Linux" ]; then
 elif [ -z "$PKG" ]; then
   PKG="$(ls -t "$REPO"/dist/aiul-*.pkg 2>/dev/null | head -1 || true)"
 fi
-if [ -z "$PKG" ] || [ ! -f "$PKG" ]; then
+if [ "$OS" != "Linux" ] && { [ -z "$PKG" ] || [ ! -f "$PKG" ]; }; then
   say "Building the package"
   "$REPO/scripts/build.sh" && "$REPO/scripts/package.sh"
   PKG="$(ls -t "$REPO"/dist/aiul-*.pkg | head -1)"
