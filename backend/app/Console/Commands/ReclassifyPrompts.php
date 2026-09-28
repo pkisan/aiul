@@ -26,7 +26,7 @@ class ReclassifyPrompts extends Command
         $changed = 0;
 
         AiInteraction::withoutGlobalScope('tenant')
-            ->where(fn ($q) => $q->where('kind', 'human')->orWhere(fn ($q) => $q->whereNull('kind')->where('automated', false)))
+            ->humanPrompts()
             ->whereNotNull('prompt_object')
             ->chunkById(200, function ($rows) use ($bodies, &$changed) {
                 foreach ($rows as $row) {

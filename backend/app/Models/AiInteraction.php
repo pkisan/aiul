@@ -3,10 +3,10 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class AiInteraction extends Model
 {
@@ -34,14 +34,18 @@ class AiInteraction extends Model
         return $this->belongsTo(Device::class);
     }
 
-    public function score(): HasOne
+    public function user(): BelongsTo
     {
-        return $this->hasOne(QualityScore::class);
+        return $this->belongsTo(User::class);
     }
 
-    /** An interaction with no task goes in the "untagged" bucket. */
-    public function isUntagged(): bool
+    /**
+     * What a person typed, as opposed to an agent's own steps or the tool's
+     * housekeeping. Rows from before `kind` existed fall back to `automated`.
+     */
+    public function scopeHumanPrompts(Builder $query): Builder
     {
-        return blank($this->task_id);
+        return $query->where(fn ($q) => $q->where('kind', 'human')
+            ->orWhere(fn ($q) => $q->whereNull('kind')->where('automated', false)));
     }
 }

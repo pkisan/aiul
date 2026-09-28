@@ -1,86 +1,62 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import Panel from '@/Components/Usage/Panel.vue';
-import Score from '@/Components/Usage/Score.vue';
+import Pagination from '@/Components/Usage/Pagination.vue';
 import Tag from '@/Components/Usage/Tag.vue';
-import { count, when } from '@/Components/Usage/format';
+import { count, toolName, when } from '@/Components/Usage/format';
 import { Head, Link } from '@inertiajs/vue3';
 
 defineProps({ repo: String, name: String, interactions: Object, canViewRaw: Boolean });
+
+const kinds = { human: 'Prompt', agent: 'Agent step', utility: "Tool's own call" };
 </script>
 
 <template>
-    <Head :title="name ?? 'Unknown project'" />
+    <Head :title="name ?? 'Outside a project'" />
 
     <AuthenticatedLayout>
-        <template #header>
-            <div class="flex items-center gap-3">
+        <div class="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
+            <div>
                 <Link :href="route('usage.index')" class="text-sm text-gray-500 hover:text-gray-900">← AI usage</Link>
-                <h2 class="text-xl font-semibold leading-tight text-gray-800">{{ name ?? 'Unknown project' }}</h2>
-                <span v-if="repo" class="truncate text-xs text-gray-400">{{ repo }}</span>
+                <h1 class="mt-1 text-2xl font-semibold tracking-tight text-gray-900">{{ name ?? 'Outside a project' }}</h1>
+                <p v-if="repo" class="mt-0.5 truncate font-mono text-xs text-gray-400">{{ repo }}</p>
             </div>
-        </template>
 
-        <div class="bg-gray-50 py-8">
-            <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-                <Panel :title="`${interactions.total} interactions`">
+            <section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div class="overflow-x-auto">
                     <table class="min-w-full text-sm">
-                        <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                        <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
                             <tr>
-                                <th class="px-5 py-2 text-left font-medium">When</th>
-                                <th class="px-3 py-2 text-left font-medium">Branch</th>
-                                <th class="px-3 py-2 text-left font-medium">Tool</th>
-                                <th class="px-3 py-2 text-left font-medium">Kind</th>
-                                <th class="px-5 py-2 text-right font-medium">Score</th>
+                                <th class="px-5 py-2.5">When</th>
+                                <th class="px-3 py-2.5">Person</th>
+                                <th class="px-3 py-2.5">Tool</th>
+                                <th class="px-3 py-2.5">Branch</th>
+                                <th class="px-3 py-2.5">Kind</th>
+                                <th class="px-5 py-2.5 text-right">Size</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="i in interactions.data" :key="i.id" class="hover:bg-gray-50">
-                                <td class="px-5 py-2">
-                                    <Link :href="route('usage.show', i.id)" class="text-gray-900 hover:underline">
+                                <td class="whitespace-nowrap px-5 py-2.5">
+                                    <Link :href="route('usage.session', i.session_id) + '#i-' + i.id" class="text-gray-900 hover:underline">
                                         {{ when(i.occurred_at) }}
                                     </Link>
-                                    <span class="block text-xs text-gray-400 tabular-nums">
-                                        {{ count(i.prompt_chars) }} in / {{ count(i.answer_chars) }} out chars
-                                    </span>
                                 </td>
-                                <td class="px-3 py-2 text-gray-600">{{ i.branch ?? '—' }}</td>
-                                <td class="px-3 py-2"><Tag v-if="i.tool" :label="i.tool" tone="blue" /></td>
-                                <td class="px-3 py-2 text-gray-500">{{ i.automated ? 'follow-up' : 'prompt' }}</td>
-                                <td class="px-5 py-2 text-right"><Score :value="i.score" /></td>
+                                <td class="px-3 py-2.5 text-gray-700">{{ i.person ?? 'Unassigned device' }}</td>
+                                <td class="px-3 py-2.5"><Tag v-if="i.tool" :label="toolName(i.tool)" tone="blue" /></td>
+                                <td class="px-3 py-2.5 text-gray-600">{{ i.branch ?? '—' }}</td>
+                                <td class="px-3 py-2.5 text-gray-500">{{ kinds[i.kind] ?? i.kind }}</td>
+                                <td class="whitespace-nowrap px-5 py-2.5 text-right text-xs tabular-nums text-gray-400">
+                                    {{ count(i.prompt_chars) }} in / {{ count(i.answer_chars) }} out
+                                </td>
                             </tr>
                             <tr v-if="!interactions.data.length">
-                                <td colspan="5" class="px-5 py-10 text-center text-gray-500">
-                                    Nothing captured for this project in the period.
-                                </td>
+                                <td colspan="6" class="px-5 py-12 text-center text-gray-500">Nothing captured for this project in the period.</td>
                             </tr>
                         </tbody>
                     </table>
-
-                    <div
-                        v-if="interactions.last_page > 1"
-                        class="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-sm"
-                    >
-                        <span class="text-gray-500">Page {{ interactions.current_page }} of {{ interactions.last_page }}</span>
-                        <span class="flex gap-1">
-                            <Link
-                                v-for="link in interactions.links"
-                                :key="link.label"
-                                :href="link.url ?? ''"
-                                :only="['interactions']"
-                                :preserve-scroll="true"
-                                v-html="link.label"
-                                class="rounded-md px-2 py-1"
-                                :class="{
-                                    'bg-gray-900 text-white': link.active,
-                                    'text-gray-600 hover:bg-gray-100': !link.active && link.url,
-                                    'text-gray-300': !link.url,
-                                }"
-                            />
-                        </span>
-                    </div>
-                </Panel>
-            </div>
+                </div>
+                <Pagination :page="interactions" noun="interactions" />
+            </section>
         </div>
     </AuthenticatedLayout>
 </template>

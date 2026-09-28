@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\ScoreInteraction;
 use App\Models\AiInteraction;
 use App\Models\AiSession;
 use App\Models\Device;
@@ -177,10 +176,6 @@ class EventIngestionController extends Controller
 
         $session->increment('interaction_count');
         $session->forceFill(['ended_at' => $occurredAt])->save();
-
-        // Scoring is queued: ingestion must stay fast, and a scoring bug must
-        // never cost us an event.
-        ScoreInteraction::dispatch($interaction->id, $device->tenant_id);
 
         return $interaction->event_id;
     }

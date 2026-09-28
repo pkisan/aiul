@@ -13,7 +13,7 @@ class ConsentController extends Controller
     public function show(Request $request): Response|RedirectResponse
     {
         if ($request->user()->hasConsented()) {
-            return redirect()->intended(route('dashboard'));
+            return redirect()->intended(route('home'));
         }
 
         return Inertia::render('Consent', [
@@ -41,6 +41,6 @@ class ConsentController extends Controller
             'ip' => $request->ip(),
         ]);
 
-        return redirect()->intended(route('dashboard'));
+        return redirect()->intended(route('home'));
     }
 }

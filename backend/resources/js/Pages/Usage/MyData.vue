@@ -1,5 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import { toolName, when } from '@/Components/Usage/format';
 import { Head } from '@inertiajs/vue3';
 
 defineProps({
@@ -34,7 +35,7 @@ defineProps({
                     </div>
                     <div class="rounded-lg bg-white p-4 shadow">
                         <div class="text-sm text-gray-500">Since</div>
-                        <div class="text-lg font-semibold">{{ summary.first_seen ?? '—' }}</div>
+                        <div class="text-lg font-semibold">{{ when(summary.first_seen) }}</div>
                     </div>
                     <div class="rounded-lg bg-white p-4 shadow">
                         <div class="text-sm text-gray-500">My devices</div>
@@ -51,7 +52,7 @@ defineProps({
                     <table class="min-w-full text-sm">
                         <tbody class="divide-y">
                             <tr v-for="(row, index) in whoLooked" :key="index">
-                                <td class="px-4 py-2 text-gray-500">{{ row.at }}</td>
+                                <td class="px-4 py-2 text-gray-500">{{ when(row.at) }}</td>
                                 <td class="px-4 py-2 font-medium">{{ row.actor }}</td>
                                 <td class="px-4 py-2">{{ row.reason }}</td>
                             </tr>
@@ -71,27 +72,25 @@ defineProps({
                             <tr>
                                 <th class="px-4 py-2">When</th>
                                 <th class="px-4 py-2">Tool</th>
-                                <th class="px-4 py-2">Task</th>
+                                <th class="px-4 py-2">Project</th>
                                 <th class="px-4 py-2">Kind</th>
                                 <th class="px-4 py-2">Masked</th>
-                                <th class="px-4 py-2 text-right">Score</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y">
                             <tr v-for="row in interactions" :key="row.id">
-                                <td class="px-4 py-2 text-gray-500">{{ row.occurred_at }}</td>
-                                <td class="px-4 py-2">{{ row.tool ?? '—' }}</td>
-                                <td class="px-4 py-2">{{ row.task_id ?? 'untagged' }}</td>
+                                <td class="px-4 py-2 text-gray-500">{{ when(row.occurred_at) }}</td>
+                                <td class="px-4 py-2">{{ row.tool ? toolName(row.tool) : '—' }}</td>
+                                <td class="px-4 py-2">{{ row.project ?? '—' }}</td>
                                 <td class="px-4 py-2 text-gray-500">
                                     {{ row.automated ? 'automated follow-up' : 'my prompt' }}
                                 </td>
                                 <td class="px-4 py-2 text-xs text-gray-500">
                                     {{ row.redacted?.length ? row.redacted.join(', ') : '—' }}
                                 </td>
-                                <td class="px-4 py-2 text-right">{{ row.score ?? '—' }}</td>
                             </tr>
                             <tr v-if="!interactions.length">
-                                <td colspan="6" class="px-4 py-6 text-center text-gray-500">
+                                <td colspan="5" class="px-4 py-6 text-center text-gray-500">
                                     Nothing has been captured about you.
                                 </td>
                             </tr>

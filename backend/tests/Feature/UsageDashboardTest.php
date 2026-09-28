@@ -6,7 +6,6 @@ use App\Models\AiInteraction;
 use App\Models\AiSession;
 use App\Models\ConsentRecord;
 use App\Models\Device;
-use App\Models\QualityScore;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\BodyStore;
@@ -111,7 +110,7 @@ class UsageDashboardTest extends TestCase
 
         $this->assertSame('plrb-lms', $lms['name']);
         $this->assertSame(2, $lms['interactions']);
-        $this->assertSame(2, $lms['branches']);
+        $this->assertSame(2, $lms['prompts']);
         $this->assertTrue($perProject->contains(fn ($row) => $row['repo'] === '/Users/dev/other'));
     }
 
@@ -120,7 +119,7 @@ class UsageDashboardTest extends TestCase
         $this->interaction(['repo' => null]);
 
         $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')->assertOk();
-        $unknown = collect($response->viewData('page')['props']['perProject'])->firstWhere('unknown', true);
+        $unknown = collect($response->viewData('page')['props']['perProject'])->firstWhere('repo', null);
 
         $this->assertNotNull($unknown, 'work outside a checkout must appear as its own row');
         $this->assertSame(1, $unknown['interactions']);
@@ -262,67 +261,39 @@ class UsageDashboardTest extends TestCase
         $this->actingAs($this->user(User::ROLE_MANAGER))->get('/my-data')->assertOk();
     }
 
-    public function test_a_task_page_lists_only_that_tasks_interactions(): void
+    public function test_the_prompt_list_paginates_twenty_five_at_a_time(): void
     {
-        $wanted = $this->interaction(['task_id' => 'ABC-123']);
-        $this->interaction(['task_id' => 'XYZ-9']);
-
-        $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/task/ABC-123')->assertOk();
-        $props = $response->viewData('page')['props'];
-
-        $this->assertSame('ABC-123', $props['task']);
-        $ids = collect($props['interactions']['data'])->pluck('id')->all();
-        $this->assertContains($wanted->id, $ids);
-        $this->assertCount(1, $ids);
-    }
-
-    public function test_the_untagged_bucket_has_its_own_task_page(): void
-    {
-        $untagged = $this->interaction(['task_id' => null]);
-        $this->interaction(['task_id' => 'ABC-123']);
-
-        $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/task/untagged')->assertOk();
-        $props = $response->viewData('page')['props'];
-
-        $this->assertTrue($props['untagged']);
-        $this->assertSame([$untagged->id], collect($props['interactions']['data'])->pluck('id')->all());
-    }
-
-    public function test_a_task_page_paginates_twenty_at_a_time(): void
-    {
-        for ($n = 0; $n < 25; $n++) {
-            $this->interaction(['task_id' => null]);
+        for ($n = 0; $n < 30; $n++) {
+            $this->interaction(['kind' => 'human']);
         }
+        $this->interaction(['kind' => 'agent']); // not a prompt: never listed
 
-        $page1 = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/task/untagged')->assertOk();
-        $pager = $page1->viewData('page')['props']['interactions'];
+        $page1 = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage?tool=claude-code')->assertOk();
+        $pager = $page1->viewData('page')['props']['list'];
 
-        $this->assertSame(25, $pager['total']);
-        $this->assertSame(20, $pager['per_page']);
-        $this->assertCount(20, $pager['data']);
+        $this->assertSame(30, $pager['total']);
+        $this->assertCount(25, $pager['data']);
+        // The filters ride along on every page link.
+        $this->assertStringContainsString('tool=claude-code', $pager['next_page_url']);
 
-        $page2 = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/task/untagged?page=2')->assertOk();
-        $pager2 = $page2->viewData('page')['props']['interactions'];
+        $page2 = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage?page=2')->assertOk();
+        $pager2 = $page2->viewData('page')['props']['list'];
 
         $this->assertSame(2, $pager2['current_page']);
         $this->assertCount(5, $pager2['data']);
     }
 
-    public function test_a_member_cannot_open_a_task_page(): void
-    {
-        $this->interaction(['task_id' => 'ABC-123']);
-
-        $this->actingAs($this->user())->get('/usage/task/ABC-123')->assertForbidden();
-    }
-
-    public function test_the_dashboard_carries_a_recent_list_with_ids_to_open(): void
+    public function test_the_prompt_list_carries_ids_to_open(): void
     {
         $interaction = $this->interaction(['task_id' => 'ABC-123']);
 
         $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')->assertOk();
-        $recent = collect($response->viewData('page')['props']['recent']);
+        $row = $response->viewData('page')['props']['list']['data'][0];
 
-        $this->assertTrue($recent->contains(fn ($row) => $row['id'] === $interaction->id));
+        $this->assertSame($interaction->id, $row['id']);
+        $this->assertSame($interaction->ai_session_id, $row['session_id']);
+        $this->assertNull($row['preview'], 'a manager without the grant sees no prompt text');
+        $this->assertArrayNotHasKey('prompt_object', $row, 'storage keys stay on the server');
     }
 
     public function test_a_missing_body_says_empty_when_nothing_was_captured(): void
@@ -373,13 +344,12 @@ class UsageDashboardTest extends TestCase
         $this->actingAs($this->user(User::ROLE_MANAGER))
             ->get('/usage')
             ->assertOk()
-            ->assertInertia(fn ($page) => $page->has('sessions'));
+            ->assertInertia(fn ($page) => $page->has('list.data'));
 
         $sessions = collect((new \App\Services\UsageReport(30))->sessions()->items())
             ->keyBy('id');
 
         $this->assertSame(1, $sessions[$first->ai_session_id]['human_prompts']);
-        $this->assertSame('ABC-123', $sessions[$first->ai_session_id]['task_id']);
     }
 
     // A session still being worked in started hours ago. Ordering by start time
@@ -399,10 +369,10 @@ class UsageDashboardTest extends TestCase
         ]);
 
         $this->actingAs($this->user(User::ROLE_MANAGER))
-            ->get('/usage')
+            ->get('/usage?view=sessions')
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->where('sessions.data.0.id', $old->ai_session_id));
+                ->where('list.data.0.id', $old->ai_session_id));
     }
 
     public function test_a_session_reads_forwards_and_lists_its_interactions(): void
@@ -498,31 +468,11 @@ class UsageDashboardTest extends TestCase
         $this->actingAs($admin)->get("/usage/{$interaction->id}?reason=checking")->assertOk();
 
         $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/audit')->assertOk();
-        $views = $response->viewData('page')['props']['views'];
+        $views = $response->viewData('page')['props']['views']['data'];
 
         $this->assertCount(1, $views);
         $this->assertSame($admin->name, $views[0]['actor']);
         $this->assertSame('checking', $views[0]['reason']);
-    }
-
-    public function test_scores_are_shown_with_their_reasons(): void
-    {
-        $interaction = $this->interaction();
-
-        QualityScore::withoutGlobalScope('tenant')->create([
-            'tenant_id' => $this->tenant->id,
-            'ai_interaction_id' => $interaction->id,
-            'rubric_version' => 1,
-            'score' => 55,
-            'dimensions' => ['clear_goal' => ['score' => 30, 'reason' => 'No clear action.']],
-            'reasons' => ['No clear action.'],
-        ]);
-
-        $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')->assertOk();
-        $weakest = $response->viewData('page')['props']['weakest'];
-
-        $this->assertSame('clear_goal', $weakest[0]['dimension']);
-        $this->assertSame('No clear action.', $weakest[0]['common_reason']);
     }
 
     // Old links to the separate text page still land on the interaction.
@@ -553,25 +503,60 @@ class UsageDashboardTest extends TestCase
         $this->actingAs($this->user(User::ROLE_MANAGER))
             ->get("/usage?person={$alex->id}")
             ->assertInertia(fn ($page) => $page
-                ->where('totals.interactions', 1)
+                ->where('summary.interactions', 1)
                 ->where('filters.person', $alex->id)
-                ->has('people'));
+                ->has('options.people'));
 
         $this->actingAs($this->user(User::ROLE_MANAGER))
             ->get('/usage?tool=claude-code')
-            ->assertInertia(fn ($page) => $page->where('totals.interactions', 1));
+            ->assertInertia(fn ($page) => $page->where('summary.interactions', 1));
+
+        // "-" is work outside any checkout; a path is one project.
+        $this->interaction(['repo' => '/Users/dev/plrb-lms']);
+        $this->actingAs($this->user(User::ROLE_MANAGER))
+            ->get('/usage?project='.urlencode('/Users/dev/plrb-lms'))
+            ->assertInertia(fn ($page) => $page->where('summary.interactions', 1));
+        $this->actingAs($this->user(User::ROLE_MANAGER))
+            ->get('/usage?project=-')
+            ->assertInertia(fn ($page) => $page->where('summary.interactions', 2));
+    }
+
+    // A preview is prompt text: shown only with the grant, and audited once
+    // per person on the page.
+    public function test_prompt_previews_need_the_grant_and_are_audited(): void
+    {
+        $alex = $this->user();
+        $this->interaction(['user_id' => $alex->id, 'kind' => 'human'], "Fix\n  the   SSO tests.");
+        $this->interaction(['user_id' => $alex->id, 'kind' => 'human']);
+
+        $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
+            ->get('/usage')
+            ->assertInertia(fn ($page) => $page->where('list.data.1.preview', 'Fix the SSO tests.'));
+
+        $records = ConsentRecord::withoutGlobalScope('tenant')->where('kind', ConsentRecord::KIND_LIST_VIEW)->get();
+        $this->assertCount(1, $records);
+        $this->assertSame($alex->id, $records[0]->user_id);
+    }
+
+    // There is no landing page: "/" sends each person to where they work.
+    public function test_home_sends_each_role_to_its_own_page(): void
+    {
+        $this->get('/')->assertRedirect('/login');
+        $this->get('/register')->assertNotFound(); // accounts are made by the admin
+        $this->actingAs($this->user())->get('/')->assertRedirect('/my-data');
+        $this->actingAs($this->user(User::ROLE_MANAGER))->get('/')->assertRedirect('/usage');
     }
 
     public function test_first_sign_in_asks_for_consent_and_records_it(): void
     {
         $member = $this->user(consented: false);
 
-        $this->actingAs($member)->get('/dashboard')->assertRedirect('/consent');
+        $this->actingAs($member)->get('/my-data')->assertRedirect('/consent');
         $this->actingAs($member)->post('/consent', [])->assertSessionHasErrors('accept');
         $this->actingAs($member)->post('/consent', ['accept' => true])->assertRedirect();
 
         $this->assertTrue($member->fresh()->hasConsented());
-        $this->actingAs($member)->get('/dashboard')->assertOk();
+        $this->actingAs($member)->get('/my-data')->assertOk();
     }
 
     public function test_old_agent_written_prompts_can_be_reclassified(): void

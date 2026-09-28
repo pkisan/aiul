@@ -20,5 +20,11 @@ return [
      * notice changes: everyone is asked again, and each acceptance is recorded
      * against the version they saw.
      */
+    /*
+     * The company this installation serves. One backend, one tenant: the super
+     * admin seeder and `aiul:provision-device` both use it unless told otherwise.
+     */
+    'tenant' => env('AIUL_TENANT', 'default'),
+
     'consent_version' => env('AIUL_CONSENT_VERSION', '2026-09-23'),
 ];

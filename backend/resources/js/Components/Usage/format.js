@@ -41,3 +41,12 @@ const toolNames = {
     cli: 'Command line',
 };
 export const toolName = (id) => toolNames[id] ?? id ?? 'AI tool';
+
+// "Punit Kisan" -> "PK", for avatars.
+export const initials = (name) =>
+    (name ?? '?')
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0].toUpperCase())
+        .join('') || '?';

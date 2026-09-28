@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\AiInteraction;
 use App\Models\Device;
-use App\Models\QualityScore;
 use App\Models\Tenant;
 use App\Services\BodyStore;
 use App\Support\TenantContext;
@@ -71,14 +70,6 @@ class RetentionTest extends TestCase
         $tenant = $this->tenant('acme', 30);
         $old = $this->interaction($tenant, daysAgo: 45);
 
-        QualityScore::withoutGlobalScope('tenant')->create([
-            'tenant_id' => $tenant->id,
-            'ai_interaction_id' => $old->id,
-            'score' => 82,
-            'rubric_version' => 1,
-            'dimensions' => ['clear_goal' => ['score' => 10, 'reason' => 'names the file']],
-        ]);
-
         $promptKey = $old->prompt_object;
         $answerKey = $old->answer_object;
         Storage::disk('s3')->assertExists($promptKey);
@@ -97,7 +88,6 @@ class RetentionTest extends TestCase
         $this->assertSame(40, $old->prompt_tokens);
         $this->assertSame(2500, $old->duration_ms);
         $this->assertSame(23, $old->prompt_chars);
-        $this->assertSame(82, $old->score->score);
     }
 
     public function test_bodies_inside_the_window_are_left_alone(): void

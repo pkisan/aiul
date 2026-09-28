@@ -2,7 +2,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Markdown from '@/Components/Usage/Markdown.vue';
 import Message from '@/Components/Usage/Message.vue';
-import Score from '@/Components/Usage/Score.vue';
 import Tag from '@/Components/Usage/Tag.vue';
 import { ago, clock, count, duration, toolName, when } from '@/Components/Usage/format';
 import { Head, Link } from '@inertiajs/vue3';
@@ -127,7 +126,7 @@ const folded = (t) => t.asked.prompt_preview.length > PROMPT_FOLD && !openPrompt
                 </p>
 
                 <div v-else class="mx-auto max-w-3xl space-y-12 px-6 py-10">
-                    <section v-for="t in turns" :key="t.key" class="group space-y-5">
+                    <section v-for="t in turns" :id="'i-' + t.key" :key="t.key" class="group scroll-mt-28 space-y-5">
                         <!-- What the person typed, verbatim -->
                         <div v-if="t.asked" class="flex flex-col items-end">
                             <div class="max-w-[85%] rounded-2xl bg-gray-100 px-4 py-3 text-[15px] leading-relaxed text-gray-900">
@@ -144,7 +143,6 @@ const folded = (t) => t.asked.prompt_preview.length > PROMPT_FOLD && !openPrompt
                             <div class="mt-1.5 flex items-center gap-2 text-xs text-gray-400">
                                 <span>{{ t.asked.account ?? who }}</span>
                                 <span class="tabular-nums">{{ clock(t.asked.occurred_at) }}</span>
-                                <span title="Prompt quality score"><Score :value="t.asked.score" /></span>
                                 <Link :href="route('usage.show', t.asked.id)" class="hover:text-gray-700">details</Link>
                             </div>
                         </div>

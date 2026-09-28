@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\ScoreInteraction;
 use App\Models\AiInteraction;
 use App\Models\AiSession;
 use App\Models\Device;
@@ -10,7 +9,6 @@ use App\Models\Tenant;
 use App\Services\BodyStore;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -152,7 +150,6 @@ class EventIngestionTest extends TestCase
 
     public function test_an_event_is_stored_and_its_id_reported_as_accepted(): void
     {
-        Queue::fake();
         [$device, $token] = $this->newDevice();
         $event = $this->anEvent();
 
@@ -180,7 +177,6 @@ class EventIngestionTest extends TestCase
     // then showed 20:59 — the offset added a second time.
     public function test_a_device_in_another_timezone_is_stored_in_utc(): void
     {
-        Queue::fake();
         [$device, $token] = $this->newDevice();
 
         $this->withToken($token)
@@ -196,7 +192,6 @@ class EventIngestionTest extends TestCase
 
     public function test_prompt_text_is_kept_out_of_the_database_and_encrypted_in_object_storage(): void
     {
-        Queue::fake();
         [, $token] = $this->newDevice();
         $event = $this->anEvent(['prompt' => 'a very specific prompt about pineapples']);
 
@@ -221,7 +216,6 @@ class EventIngestionTest extends TestCase
 
     public function test_a_batch_sent_twice_does_not_create_duplicates(): void
     {
-        Queue::fake();
         [, $token] = $this->newDevice();
         $event = $this->anEvent();
 
@@ -237,7 +231,6 @@ class EventIngestionTest extends TestCase
 
     public function test_one_malformed_event_does_not_lose_the_good_ones(): void
     {
-        Queue::fake();
         [, $token] = $this->newDevice();
 
         $good = $this->anEvent();
@@ -254,7 +247,6 @@ class EventIngestionTest extends TestCase
 
     public function test_one_tenant_never_sees_another_tenants_rows(): void
     {
-        Queue::fake();
         [$acme, $acmeToken] = $this->newDevice('acme');
         [$globex, $globexToken] = $this->newDevice('globex');
 
@@ -283,7 +275,6 @@ class EventIngestionTest extends TestCase
 
     public function test_interactions_on_the_same_task_group_into_one_session(): void
     {
-        Queue::fake();
         [, $token] = $this->newDevice();
 
         $this->withToken($token)->postJson('/api/aiul/events', [
@@ -303,7 +294,6 @@ class EventIngestionTest extends TestCase
     // from a repository it had nothing to do with.
     public function test_work_in_another_repository_starts_a_new_session(): void
     {
-        Queue::fake();
         [, $token] = $this->newDevice();
 
         $this->withToken($token)->postJson('/api/aiul/events', [
@@ -318,24 +308,13 @@ class EventIngestionTest extends TestCase
 
     public function test_an_untagged_event_is_kept_rather_than_dropped(): void
     {
-        Queue::fake();
         [, $token] = $this->newDevice();
 
         $this->withToken($token)->postJson('/api/aiul/events', [
             'events' => [$this->anEvent(['task_id' => null, 'branch' => 'main'])],
         ])->assertOk();
 
-        $this->assertTrue(AiInteraction::withoutGlobalScope('tenant')->first()->isUntagged());
-    }
-
-    public function test_a_scoring_job_is_queued_for_each_new_interaction(): void
-    {
-        Queue::fake();
-        [, $token] = $this->newDevice();
-
-        $this->withToken($token)->postJson('/api/aiul/events', ['events' => [$this->anEvent()]])->assertOk();
-
-        Queue::assertPushed(ScoreInteraction::class, 1);
+        $this->assertTrue(AiInteraction::withoutGlobalScope('tenant')->first()->task_id === null);
     }
 
     public function test_the_ai_account_is_stored(): void

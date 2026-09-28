@@ -1,281 +1,266 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import Pagination from '@/Components/Usage/Pagination.vue';
 import Panel from '@/Components/Usage/Panel.vue';
-import StatCard from '@/Components/Usage/StatCard.vue';
-import Score from '@/Components/Usage/Score.vue';
 import Tag from '@/Components/Usage/Tag.vue';
-import { clock, count, duration, when } from '@/Components/Usage/format';
+import { ago, count, duration, initials, toolName, when } from '@/Components/Usage/format';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { reactive } from 'vue';
+import { computed } from 'vue';
 
 const props = defineProps({
     filters: Object,
-    people: Array,
-    tools: Array,
-    totals: Object,
-    perProject: Array,
+    summary: Object,
+    list: Object,
     perPerson: Array,
-    weakest: Array,
+    perTool: Array,
+    perProject: Array,
+    options: Object,
     aiTimeDefinition: String,
     canViewRaw: Boolean,
-    recent: Array,
-    sessions: Object,
 });
 
-// Every change reloads the page with the filters in the URL, so a filtered view
-// can be bookmarked or shared.
-const form = reactive({ ...props.filters });
-const apply = () =>
-    router.get(route('usage.index'), Object.fromEntries(Object.entries(form).filter(([, v]) => v)), {
-        preserveState: true,
-        preserveScroll: true,
-    });
+const periods = [
+    { value: 1, label: 'Today' },
+    { value: 7, label: '7 days' },
+    { value: 30, label: '30 days' },
+    { value: 90, label: '90 days' },
+    { value: 365, label: '1 year' },
+];
+
+// Every change is a visit with the filters in the URL, so any view can be
+// bookmarked or shared. Changing a filter goes back to page 1.
+function go(changes) {
+    const next = { ...props.filters, ...changes };
+    const query = Object.fromEntries(
+        Object.entries(next).filter(([k, v]) => v !== null && v !== '' && !(k === 'days' && v === 30) && !(k === 'view' && v === 'prompts')),
+    );
+    router.get(route('usage.index'), query, { preserveScroll: true, preserveState: true });
+}
+
+const filtered = computed(() => props.filters.person || props.filters.tool || props.filters.project);
+const personName = (id) => props.options.people.find((p) => p.id === id)?.name;
+
+const maxTool = computed(() => Math.max(1, ...props.perTool.map((t) => t.prompts)));
+const maxPerson = computed(() => Math.max(1, ...props.perPerson.map((p) => p.prompts)));
+const topProjects = computed(() => props.perProject.slice(0, 8));
+
+const selectClass =
+    'rounded-lg border-gray-300 bg-white py-1.5 pl-3 pr-8 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:ring-indigo-500';
 </script>
 
 <template>
     <Head title="AI usage" />
 
     <AuthenticatedLayout>
-        <template #header>
-            <div class="flex items-center justify-between">
-                <h2 class="text-xl font-semibold leading-tight text-gray-800">AI usage</h2>
-                <Link :href="route('usage.audit')" class="text-sm text-gray-500 hover:text-gray-900">Audit log</Link>
+        <div class="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
+            <!-- Title and the period in one line of plain numbers -->
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                    <h1 class="text-2xl font-semibold tracking-tight text-gray-900">AI usage</h1>
+                    <p class="mt-1 text-sm text-gray-500">
+                        <span class="font-medium text-gray-900">{{ count(summary.prompts) }}</span> prompts
+                        from <span class="font-medium text-gray-900">{{ count(summary.people) }}</span>
+                        {{ summary.people === 1 ? 'person' : 'people' }} ·
+                        <span class="font-medium text-gray-900">{{ count(summary.sessions) }}</span> sessions ·
+                        <span class="font-medium text-gray-900" :title="aiTimeDefinition">{{ duration(summary.ai_seconds) }}</span>
+                        AI time
+                    </p>
+                </div>
+
+                <div class="inline-flex self-start rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm" role="group" aria-label="Period">
+                    <button
+                        v-for="p in periods"
+                        :key="p.value"
+                        type="button"
+                        class="rounded-md px-3 py-1.5 text-sm font-medium transition"
+                        :class="filters.days === p.value ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'"
+                        :aria-pressed="filters.days === p.value"
+                        @click="go({ days: p.value })"
+                    >{{ p.label }}</button>
+                </div>
             </div>
-        </template>
 
-        <div class="bg-gray-50 py-8">
-            <div class="mx-auto max-w-6xl space-y-6 px-4 sm:px-6 lg:px-8">
-                <div class="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
-                    <label class="text-xs text-gray-500">
-                        Person
-                        <select v-model="form.person" class="mt-1 block w-56 rounded-lg border-gray-300 text-sm" @change="apply">
-                            <option :value="null">Everyone</option>
-                            <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
-                        </select>
-                    </label>
-                    <label class="text-xs text-gray-500">
-                        Tool
-                        <select v-model="form.tool" class="mt-1 block w-44 rounded-lg border-gray-300 text-sm" @change="apply">
-                            <option :value="null">All tools</option>
-                            <option v-for="t in tools" :key="t" :value="t">{{ t }}</option>
-                        </select>
-                    </label>
-                    <label class="text-xs text-gray-500">
-                        Period
-                        <select v-model="form.days" class="mt-1 block w-36 rounded-lg border-gray-300 text-sm" @change="apply">
-                            <option :value="1">Today</option>
-                            <option :value="7">Last 7 days</option>
-                            <option :value="30">Last 30 days</option>
-                            <option :value="90">Last 90 days</option>
-                            <option :value="365">Last year</option>
-                        </select>
-                    </label>
-                </div>
+            <!-- Filters -->
+            <div class="flex flex-wrap items-center gap-2">
+                <select :value="filters.person ?? ''" :class="selectClass" aria-label="Person" @change="go({ person: $event.target.value || null })">
+                    <option value="">Everyone</option>
+                    <option v-for="p in options.people" :key="p.id" :value="p.id">{{ p.name }}</option>
+                </select>
+                <select :value="filters.tool ?? ''" :class="selectClass" aria-label="Tool" @change="go({ tool: $event.target.value || null })">
+                    <option value="">All tools</option>
+                    <option v-for="t in options.tools" :key="t" :value="t">{{ toolName(t) }}</option>
+                </select>
+                <select :value="filters.project ?? ''" :class="selectClass" class="max-w-[16rem]" aria-label="Project" @change="go({ project: $event.target.value || null })">
+                    <option value="">All projects</option>
+                    <option value="-">Outside a project</option>
+                    <option v-for="p in options.projects" :key="p.repo" :value="p.repo" :title="p.repo">{{ p.name }}</option>
+                </select>
+                <button
+                    v-if="filtered"
+                    type="button"
+                    class="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                    @click="go({ person: null, tool: null, project: null })"
+                >Clear filters</button>
+            </div>
 
-                <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                    <StatCard label="Interactions" :value="count(totals.interactions)" :hint="`last ${totals.days} days`" />
-                    <StatCard label="Human prompts" :value="count(totals.human_prompts)" hint="the rest are automated follow-ups" />
-                    <StatCard label="No project" :value="count(totals.untagged)" hint="not run inside a checkout" />
-                    <StatCard label="Tools in use" :value="count(totals.tools)" />
-                </div>
+            <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+                <!-- The list: what people asked, or the sessions it happened in -->
+                <section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                    <div class="flex items-center justify-between gap-4 border-b border-gray-100 px-5">
+                        <nav class="-mb-px flex gap-5" aria-label="List">
+                            <button
+                                v-for="tab in [{ v: 'prompts', l: 'Recent prompts' }, { v: 'sessions', l: 'Sessions' }]"
+                                :key="tab.v"
+                                type="button"
+                                class="border-b-2 py-3.5 text-sm font-medium transition"
+                                :class="filters.view === tab.v ? 'border-indigo-600 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-900'"
+                                :aria-current="filters.view === tab.v ? 'page' : undefined"
+                                @click="go({ view: tab.v })"
+                            >{{ tab.l }}</button>
+                        </nav>
+                        <span v-if="filters.person" class="truncate text-xs text-gray-500">{{ personName(filters.person) }}</span>
+                    </div>
 
-                <!-- Sessions lead, because this is how the work actually happened:
-                     one message to an agent produces a dozen interactions, and a
-                     flat list of them buries the shape of a day. -->
-                <Panel
-                    title="Sessions"
-                    subtitle="One stretch of work: same task, same device, no gap longer than the idle window"
-                >
-                    <div class="divide-y divide-gray-100">
-                        <Link
-                            v-for="s in sessions.data"
-                            :key="s.id"
-                            :href="route('usage.session', s.id)"
-                            class="flex items-center gap-4 px-5 py-3 transition hover:bg-gray-50"
-                        >
-                            <div class="min-w-0 flex-1">
-                                <div class="flex items-center gap-2">
-                                    <span class="truncate text-sm font-medium text-gray-900">
-                                        {{ s.project ?? 'Unknown project' }}
-                                    </span>
-                                    <Tag v-if="s.branch" :label="s.branch" />
-                                    <Tag v-if="s.tool" :label="s.tool" tone="blue" />
+                    <!-- Prompts -->
+                    <ul v-if="filters.view === 'prompts'" class="divide-y divide-gray-100">
+                        <li v-for="p in list.data" :key="p.id">
+                            <Link
+                                :href="route('usage.session', p.session_id) + '#i-' + p.id"
+                                class="flex gap-3 px-5 py-3.5 transition hover:bg-gray-50"
+                            >
+                                <span
+                                    class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300"
+                                    aria-hidden="true"
+                                >{{ initials(p.person ?? p.account) }}</span>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                                        <span class="font-medium text-gray-900">{{ p.person ?? 'Unassigned device' }}</span>
+                                        <Tag :label="toolName(p.tool)" tone="blue" />
+                                        <span v-if="p.project" class="truncate text-gray-500">
+                                            {{ p.project }}<template v-if="p.branch"> · {{ p.branch }}</template>
+                                        </span>
+                                        <span class="ml-auto shrink-0 text-xs text-gray-400" :title="when(p.occurred_at)">{{ ago(p.occurred_at) }}</span>
+                                    </div>
+                                    <p v-if="p.preview" class="mt-1 line-clamp-2 text-sm text-gray-600">{{ p.preview }}</p>
+                                    <p v-else class="mt-1 text-xs text-gray-400">
+                                        {{ count(p.prompt_chars) }} characters<template v-if="p.model"> · {{ p.model }}</template>
+                                        <template v-if="p.account && p.account !== p.person"> · as {{ p.account }}</template>
+                                    </p>
                                 </div>
-                                <div class="mt-0.5 truncate text-xs text-gray-500">
-                                    <!-- Last activity first: it is what a reader
-                                         scans for, and for a session still under
-                                         way the start time is hours stale. -->
-                                    {{ when(s.ended_at) }}
-                                    <template v-if="s.seconds > 0"> · started {{ clock(s.started_at) }}</template>
-                                    <template v-if="s.account || s.person"> · {{ s.account ?? s.person }}</template>
+                            </Link>
+                        </li>
+                    </ul>
+
+                    <!-- Sessions -->
+                    <ul v-else class="divide-y divide-gray-100">
+                        <li v-for="s in list.data" :key="s.id">
+                            <Link :href="route('usage.session', s.id)" class="flex items-center gap-4 px-5 py-3.5 transition hover:bg-gray-50">
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex flex-wrap items-center gap-2 text-sm">
+                                        <span class="truncate font-medium text-gray-900">{{ s.project ?? toolName(s.tool) }}</span>
+                                        <Tag v-if="s.project" :label="toolName(s.tool)" tone="blue" />
+                                        <Tag v-if="s.branch" :label="s.branch" />
+                                    </div>
+                                    <div class="mt-0.5 truncate text-xs text-gray-500">
+                                        {{ s.person ?? s.account ?? 'Unassigned device' }} ·
+                                        <span :title="when(s.ended_at)">{{ ago(s.ended_at ?? s.started_at) }}</span>
+                                    </div>
                                 </div>
-                            </div>
+                                <div class="shrink-0 text-right">
+                                    <div class="text-sm font-medium tabular-nums text-gray-900">{{ s.human_prompts }}</div>
+                                    <div class="text-xs text-gray-400">prompts</div>
+                                </div>
+                                <div class="hidden w-16 shrink-0 text-right sm:block">
+                                    <div class="text-sm tabular-nums text-gray-900">{{ duration(s.seconds) }}</div>
+                                    <div class="text-xs text-gray-400">AI time</div>
+                                </div>
+                            </Link>
+                        </li>
+                    </ul>
 
-                            <div class="hidden shrink-0 text-right sm:block">
-                                <div class="text-sm tabular-nums text-gray-900">{{ s.human_prompts }}</div>
-                                <div class="text-xs text-gray-400">prompts</div>
-                            </div>
-                            <div class="hidden shrink-0 text-right sm:block">
-                                <div class="text-sm tabular-nums text-gray-900">{{ duration(s.seconds) }}</div>
-                                <div class="text-xs text-gray-400">AI time</div>
-                            </div>
-                            <div class="shrink-0 text-right">
-                                <Score :value="s.avg_score" />
-                                <div class="text-xs text-gray-400">avg</div>
-                            </div>
-                        </Link>
-
-                        <p v-if="!sessions.data.length" class="px-5 py-10 text-center text-sm text-gray-500">
-                            Nothing captured yet.
+                    <div v-if="!list.data.length" class="px-5 py-16 text-center">
+                        <p class="text-sm font-medium text-gray-900">Nothing here yet</p>
+                        <p class="mt-1 text-sm text-gray-500">
+                            {{ filtered ? 'No activity matches these filters in this period.' : 'No AI activity captured in this period.' }}
                         </p>
                     </div>
 
-                    <div
-                        v-if="sessions.last_page > 1"
-                        class="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-sm"
-                    >
-                        <span class="text-gray-500"
-                            >Page {{ sessions.current_page }} of {{ sessions.last_page }} ·
-                            {{ sessions.total }} sessions</span
-                        >
-                        <span class="flex gap-1">
-                            <Link
-                                v-for="link in sessions.links"
-                                :key="link.label"
-                                :href="link.url ?? ''"
-                                :only="['sessions']"
-                                :preserve-scroll="true"
-                                v-html="link.label"
-                                class="rounded-md px-2 py-1"
-                                :class="{
-                                    'bg-gray-900 text-white': link.active,
-                                    'text-gray-600 hover:bg-gray-100': !link.active && link.url,
-                                    'text-gray-300': !link.url,
-                                }"
-                            />
-                        </span>
-                    </div>
-                </Panel>
+                    <Pagination :page="list" :noun="filters.view" />
+                </section>
 
-                <div class="grid gap-6 lg:grid-cols-2">
-                    <Panel title="Per project" subtitle="The repository the work happened in">
-                        <table class="min-w-full text-sm">
-                            <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
-                                <tr>
-                                    <th class="px-5 py-2 text-left font-medium">Project</th>
-                                    <th class="px-3 py-2 text-right font-medium">Prompts</th>
-                                    <th class="px-3 py-2 text-right font-medium">AI time</th>
-                                    <th class="px-5 py-2 text-right font-medium">Score</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                <tr v-for="row in perProject" :key="row.repo ?? 'unknown'" class="hover:bg-gray-50">
-                                    <td class="px-5 py-2">
-                                        <Link
-                                            :href="route('usage.project', { repo: row.repo ?? '' })"
-                                            class="font-medium text-gray-900 hover:underline"
-                                        >
-                                            <span v-if="row.unknown" class="text-amber-700">Unknown project</span>
-                                            <span v-else>{{ row.name }}</span>
-                                        </Link>
-                                        <span class="block truncate text-xs text-gray-400">
-                                            {{ row.branches }} branches · {{ row.automated_followups }} follow-ups ·
-                                            {{ count(row.tokens) }} tokens
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-2 text-right tabular-nums">{{ row.human_prompts }}</td>
-                                    <td class="px-3 py-2 text-right tabular-nums text-gray-600">{{ duration(row.ai_seconds) }}</td>
-                                    <td class="px-5 py-2 text-right"><Score :value="row.average_score" /></td>
-                                </tr>
-                                <tr v-if="!perProject.length">
-                                    <td colspan="4" class="px-5 py-10 text-center text-gray-500">Nothing captured yet.</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                <!-- The overview, each row a filter -->
+                <aside class="space-y-5">
+                    <Panel title="People">
+                        <ul class="divide-y divide-gray-100">
+                            <li v-for="p in perPerson" :key="p.user_id ?? 'none'">
+                                <component
+                                    :is="p.user_id ? 'button' : 'div'"
+                                    type="button"
+                                    class="block w-full px-5 py-2.5 text-left transition"
+                                    :class="[p.user_id ? 'hover:bg-gray-50' : '', filters.person === p.user_id ? 'bg-indigo-50 dark:bg-indigo-500/10' : '']"
+                                    @click="p.user_id && go({ person: filters.person === p.user_id ? null : p.user_id })"
+                                >
+                                    <div class="flex items-baseline justify-between gap-3 text-sm">
+                                        <span class="truncate font-medium text-gray-900">{{ p.name }}</span>
+                                        <span class="shrink-0 tabular-nums text-gray-600">{{ count(p.prompts) }}</span>
+                                    </div>
+                                    <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                                        <div class="h-full rounded-full bg-indigo-500" :style="{ width: (p.prompts / maxPerson) * 100 + '%' }" />
+                                    </div>
+                                    <div class="mt-1 text-xs text-gray-400">
+                                        {{ duration(p.ai_seconds) }} AI time · last {{ ago(p.last_seen) }}
+                                    </div>
+                                </component>
+                            </li>
+                            <li v-if="!perPerson.length" class="px-5 py-6 text-center text-sm text-gray-500">No one yet.</li>
+                        </ul>
                     </Panel>
 
-                    <Panel title="Per person">
-                        <table class="min-w-full text-sm">
-                            <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
-                                <tr>
-                                    <th class="px-5 py-2 text-left font-medium">Person</th>
-                                    <th class="px-3 py-2 text-right font-medium">Interactions</th>
-                                    <th class="px-3 py-2 text-right font-medium">AI time</th>
-                                    <th class="px-5 py-2 text-right font-medium">Score</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                <tr v-for="row in perPerson" :key="row.user_id ?? 'none'" class="hover:bg-gray-50">
-                                    <td class="px-5 py-2">
-                                        <Link
-                                            v-if="row.user_id"
-                                            :href="route('usage.index', { ...filters, person: row.user_id })"
-                                            class="font-medium text-gray-900 hover:underline"
-                                        >{{ row.name }}</Link>
-                                        <span v-else class="font-medium text-gray-900">{{ row.name }}</span>
-                                        <span class="block text-xs text-gray-400">{{ row.tasks }} tasks</span>
-                                    </td>
-                                    <td class="px-3 py-2 text-right tabular-nums">{{ count(row.interactions) }}</td>
-                                    <td class="px-3 py-2 text-right tabular-nums text-gray-600">{{ duration(row.ai_seconds) }}</td>
-                                    <td class="px-5 py-2 text-right"><Score :value="row.average_score" /></td>
-                                </tr>
-                                <tr v-if="!perPerson.length">
-                                    <td colspan="4" class="px-5 py-10 text-center text-gray-500">No people yet.</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <Panel title="Tools">
+                        <ul class="space-y-3 px-5 py-4">
+                            <li v-for="t in perTool" :key="t.tool ?? 'none'">
+                                <button type="button" class="block w-full text-left" @click="go({ tool: filters.tool === t.tool ? null : t.tool })">
+                                    <div class="flex justify-between text-sm">
+                                        <span class="text-gray-700" :class="filters.tool === t.tool ? 'font-semibold text-gray-900' : ''">{{ toolName(t.tool) }}</span>
+                                        <span class="tabular-nums text-gray-500">{{ count(t.prompts) }}</span>
+                                    </div>
+                                    <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                                        <div class="h-full rounded-full bg-sky-500" :style="{ width: (t.prompts / maxTool) * 100 + '%' }" />
+                                    </div>
+                                </button>
+                            </li>
+                            <li v-if="!perTool.length" class="text-center text-sm text-gray-500">No prompts yet.</li>
+                        </ul>
                     </Panel>
-                </div>
 
-                <Panel title="Where prompts are weakest" subtitle="Across everyone — for coaching, not ranking">
-                    <ul class="divide-y divide-gray-100">
-                        <li v-for="row in weakest" :key="row.dimension" class="flex items-start gap-4 px-5 py-3">
-                            <Score :value="row.average" class="w-10 shrink-0 text-right" />
-                            <div class="min-w-0 flex-1">
-                                <div class="text-sm font-medium capitalize text-gray-900">
-                                    {{ row.dimension.replaceAll('_', ' ') }}
-                                </div>
-                                <p class="text-sm text-gray-600">{{ row.common_reason }}</p>
-                            </div>
-                            <span class="shrink-0 text-xs text-gray-400">{{ row.sample }} prompts</span>
-                        </li>
-                        <li v-if="!weakest.length" class="px-5 py-10 text-center text-sm text-gray-500">
-                            No scored prompts yet.
-                        </li>
-                    </ul>
-                </Panel>
+                    <Panel title="Projects" subtitle="The repository the work happened in">
+                        <ul class="divide-y divide-gray-100">
+                            <li v-for="p in topProjects" :key="p.repo ?? '-'">
+                                <button
+                                    type="button"
+                                    class="flex w-full items-center justify-between gap-3 px-5 py-2.5 text-left text-sm transition hover:bg-gray-50"
+                                    :class="filters.project === (p.repo ?? '-') ? 'bg-indigo-50 dark:bg-indigo-500/10' : ''"
+                                    :title="p.repo ?? 'Browser chats and tools run outside a repository'"
+                                    @click="go({ project: filters.project === (p.repo ?? '-') ? null : (p.repo ?? '-') })"
+                                >
+                                    <span class="truncate" :class="p.repo ? 'text-gray-900' : 'italic text-gray-500'">{{ p.name ?? 'Outside a project' }}</span>
+                                    <span class="shrink-0 tabular-nums text-gray-500">{{ count(p.prompts) }}</span>
+                                </button>
+                            </li>
+                            <li v-if="!perProject.length" class="px-5 py-6 text-center text-sm text-gray-500">No projects yet.</li>
+                        </ul>
+                        <Link
+                            v-if="filters.project && filters.project !== '-'"
+                            :href="route('usage.project', { repo: filters.project, days: filters.days })"
+                            class="block border-t border-gray-100 px-5 py-2.5 text-sm text-indigo-600 hover:underline dark:text-indigo-400"
+                        >Every interaction in this project →</Link>
+                    </Panel>
 
-                <Panel title="Recent interactions" subtitle="The short path to a single prompt">
-                    <table class="min-w-full text-sm">
-                        <thead class="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
-                            <tr>
-                                <th class="px-5 py-2 text-left font-medium">When</th>
-                                <th class="px-3 py-2 text-left font-medium">Project</th>
-                                <th class="px-3 py-2 text-left font-medium">Tool</th>
-                                <th class="px-5 py-2 text-right font-medium">Score</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            <tr v-for="i in recent" :key="i.id" class="hover:bg-gray-50">
-                                <td class="px-5 py-2">
-                                    <Link :href="route('usage.show', i.id)" class="text-gray-900 hover:underline">
-                                        {{ when(i.occurred_at) }}
-                                    </Link>
-                                </td>
-                                <td class="px-3 py-2 text-gray-600">{{ i.project ?? '—' }}</td>
-                                <td class="px-3 py-2"><Tag v-if="i.tool" :label="i.tool" /></td>
-                                <td class="px-5 py-2 text-right"><Score :value="i.score" /></td>
-                            </tr>
-                            <tr v-if="!recent.length">
-                                <td colspan="4" class="px-5 py-10 text-center text-gray-500">Nothing captured yet.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </Panel>
-
-                <p class="px-1 text-xs leading-relaxed text-gray-500">
-                    <strong class="text-gray-700">How "AI time" is measured.</strong> {{ aiTimeDefinition }}
-                </p>
+                    <p class="px-1 text-xs leading-relaxed text-gray-500">
+                        <strong class="font-medium text-gray-700">AI time</strong> — {{ aiTimeDefinition }}
+                        <template v-if="canViewRaw"> Prompt previews you see here are recorded in the audit log.</template>
+                    </p>
+                </aside>
             </div>
         </div>
     </AuthenticatedLayout>

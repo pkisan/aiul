@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\AiInteraction;
 use App\Models\AiSession;
 use App\Models\ConsentRecord;
+use App\Models\User;
 use App\Services\BodyStore;
 use App\Services\PromptText;
 use App\Services\UsageReport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -18,34 +20,90 @@ class UsageDashboardController extends Controller
 {
     public function __construct(private readonly BodyStore $bodies) {}
 
-    /** The manager's view: usage per task and per person, and where prompts are weak. */
+    /**
+     * The manager's page: who is using which AI tool on what, newest first.
+     * Every filter is in the URL, so a filtered view can be bookmarked or shared.
+     */
     public function index(Request $request): Response
     {
         abort_unless($request->user()->isManager(), 403);
 
+        $days = $request->integer('days', 30);
         $filters = [
-            'days' => (int) $request->integer('days', 30) ?: 30,
+            'days' => in_array($days, self::PERIODS, true) ? $days : 30,
             'person' => $request->integer('person') ?: null,
             'tool' => $request->string('tool')->toString() ?: null,
+            // A repository path, or "-" for work outside any checkout.
+            'project' => $request->string('project')->toString() ?: null,
+            'view' => $request->string('view')->toString() === 'sessions' ? 'sessions' : 'prompts',
         ];
 
-        $report = new UsageReport(days: $filters['days'], userId: $filters['person'], tool: $filters['tool']);
+        $report = new UsageReport(
+            days: $filters['days'],
+            userId: $filters['person'],
+            tool: $filters['tool'],
+            repo: $filters['project'] === '-' ? '' : $filters['project'],
+        );
+        $canViewRaw = $request->user()->canViewRawPrompts();
 
         return Inertia::render('Usage/Index', [
             'filters' => $filters,
-            // Everyone in the tenant, and every tool seen: the choices for the filters.
-            'people' => \App\Models\User::where('tenant_id', $request->user()->tenant_id)
-                ->orderBy('name')->get(['id', 'name', 'email']),
-            'tools' => AiInteraction::query()->whereNotNull('tool')->distinct()->orderBy('tool')->pluck('tool'),
-            'totals' => $report->totals(),
-            'perProject' => $report->perProject(),
+            'summary' => $report->summary(),
+            'list' => $filters['view'] === 'sessions'
+                ? $report->sessions()
+                : $this->withPreviews($request, $report->prompts(), $canViewRaw),
             'perPerson' => $report->perPerson(),
-            'weakest' => $report->weakestDimensions(),
+            'perTool' => $report->perTool(),
+            'perProject' => $report->perProject(),
+            // The filters' choices ignore the filters, or picking one person
+            // would leave only that person to pick.
+            'options' => [
+                'people' => User::where('tenant_id', $request->user()->tenant_id)->orderBy('name')->get(['id', 'name']),
+                'tools' => AiInteraction::query()->whereNotNull('tool')->distinct()->orderBy('tool')->pluck('tool'),
+                'projects' => AiInteraction::query()->whereNotNull('repo')
+                    ->where('occurred_at', '>=', now()->subDays($filters['days']))
+                    ->distinct()->orderBy('repo')->pluck('repo')
+                    ->map(fn ($repo) => ['repo' => $repo, 'name' => basename($repo)]),
+            ],
             'aiTimeDefinition' => $this->aiTimeDefinition(),
-            'canViewRaw' => $request->user()->canViewRawPrompts(),
-            'recent' => $report->recent(),
-            'sessions' => $report->sessions(),
+            'canViewRaw' => $canViewRaw,
         ]);
+    }
+
+    private const PERIODS = [1, 7, 30, 90, 365];
+
+    /**
+     * The opening of each prompt, for someone allowed to read prompt text.
+     *
+     * A preview IS prompt text, so it is audited like a session view: one
+     * record per person whose words were on the page, not one per row.
+     */
+    private function withPreviews(Request $request, LengthAwarePaginator $page, bool $canViewRaw): LengthAwarePaginator
+    {
+        $rows = $page->getCollection();
+
+        if ($canViewRaw) {
+            foreach ($rows->groupBy(fn ($row) => $row['user_id'] ?? 0) as $userId => $group) {
+                ConsentRecord::create([
+                    'tenant_id' => $request->user()->tenant_id,
+                    'user_id' => $userId ?: $request->user()->id,
+                    'kind' => ConsentRecord::KIND_LIST_VIEW,
+                    'actor_user_id' => $request->user()->id,
+                    'reason' => 'saw '.$group->count().' prompt preview(s) on the usage page',
+                    'ip' => $request->ip(),
+                ]);
+            }
+        }
+
+        // ponytail: one body fetch per row (25 per page); batch or cache if the store is slow.
+        return $page->setCollection($rows->map(function ($row) use ($canViewRaw) {
+            $object = $row['prompt_object'];
+            unset($row['prompt_object']);
+
+            return $row + ['preview' => $canViewRaw
+                ? UsageReport::preview(PromptText::clean($this->bodies->get($object)), 220)
+                : null];
+        }));
     }
 
     /** One session, read forwards: the work as it actually happened. */
@@ -115,22 +173,8 @@ class UsageDashboardController extends Controller
         ]);
     }
 
-    /** One task's interactions: kept for links made before projects existed. */
-    public function task(Request $request, string $task): Response
-    {
-        abort_unless($request->user()->isManager(), 403);
-
-        $report = new UsageReport(days: (int) $request->integer('days', 30) ?: 30);
-
-        return Inertia::render('Usage/Task', [
-            'task' => $task,
-            'untagged' => $task === 'untagged',
-            'interactions' => $report->interactionsForTask($task),
-        ]);
-    }
-
     /**
-     * One interaction: metadata and score for anyone allowed to see it, and the
+     * One interaction: metadata for anyone allowed to see it, and the
      * prompt and answer text on the same page for anyone allowed to read it.
      *
      * Reading the text is still the privileged part: the policy is checked and the
@@ -147,9 +191,8 @@ class UsageDashboardController extends Controller
                 'prompt_chars', 'answer_chars', 'prompt_tokens', 'response_tokens',
                 'duration_ms', 'streamed', 'automated', 'redacted', 'occurred_at', 'ai_session_id',
             ]),
-            'score' => $interaction->score?->only(['score', 'rubric_version', 'dimensions', 'reasons']),
             'canViewRaw' => Gate::allows('viewRaw', $interaction),
-            'person' => $interaction->user_id ? \App\Models\User::find($interaction->user_id)?->name : null,
+            'person' => $interaction->user_id ? User::find($interaction->user_id)?->name : null,
         ];
 
         if ($props['canViewRaw']) {
@@ -205,16 +248,17 @@ class UsageDashboardController extends Controller
         abort_unless($request->user()->isManager(), 403);
 
         return Inertia::render('Usage/Audit', [
-            'views' => ConsentRecord::where('kind', ConsentRecord::KIND_RAW_VIEW)
-                ->with(['tenant'])
+            'views' => ConsentRecord::whereIn('kind', ConsentRecord::READ_KINDS)
+                ->with(['actor:id,name', 'subject:id,name'])
                 ->latest()
-                ->limit(200)
-                ->get()
-                ->map(fn ($record) => [
+                ->latest('id')
+                ->paginate(50)
+                ->through(fn ($record) => [
                     'id' => $record->id,
                     'at' => $record->created_at,
-                    'actor' => \App\Models\User::find($record->actor_user_id)?->name ?? 'unknown',
-                    'subject' => \App\Models\User::find($record->user_id)?->name ?? 'unassigned',
+                    'kind' => $record->kind,
+                    'actor' => $record->actor?->name ?? 'unknown',
+                    'subject' => $record->subject?->name ?? 'unassigned',
                     'interaction_id' => $record->ai_interaction_id,
                     'reason' => $record->reason,
                     'ip' => $record->ip,
@@ -233,7 +277,6 @@ class UsageDashboardController extends Controller
         $user = $request->user();
 
         $interactions = AiInteraction::where('user_id', $user->id)
-            ->with('score:id,ai_interaction_id,score')
             ->latest('occurred_at')
             ->limit(100)
             ->get();
@@ -250,21 +293,21 @@ class UsageDashboardController extends Controller
                 'occurred_at' => $i->occurred_at,
                 'tool' => $i->tool,
                 'model' => $i->model,
-                'task_id' => $i->task_id,
+                'project' => $i->repo ? basename($i->repo) : null,
                 'automated' => $i->automated,
                 'prompt_chars' => $i->prompt_chars,
                 'redacted' => $i->redacted,
-                'score' => $i->score?->score,
             ]),
             'whoLooked' => ConsentRecord::where('user_id', $user->id)
-                ->where('kind', ConsentRecord::KIND_RAW_VIEW)
+                ->whereIn('kind', ConsentRecord::READ_KINDS)
+                ->with('actor:id,name')
                 ->where('actor_user_id', '!=', $user->id)
                 ->latest()
                 ->limit(50)
                 ->get()
                 ->map(fn ($record) => [
                     'at' => $record->created_at,
-                    'actor' => \App\Models\User::find($record->actor_user_id)?->name ?? 'unknown',
+                    'actor' => $record->actor?->name ?? 'unknown',
                     'reason' => $record->reason,
                 ]),
             'explanation' => [

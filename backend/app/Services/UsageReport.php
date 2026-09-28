@@ -18,13 +18,15 @@ use Illuminate\Support\Facades\DB;
 class UsageReport
 {
     /**
-     * @param  ?int  $userId  only this person's work (the admin's person filter)
+     * @param  ?int  $userId  only this person's work
      * @param  ?string  $tool  only this tool
+     * @param  ?string  $repo  only this project; '' means "outside any checkout"
      */
     public function __construct(
         private readonly int $days = 30,
         private readonly ?int $userId = null,
         private readonly ?string $tool = null,
+        private readonly ?string $repo = null,
     ) {}
 
     private function since(): Carbon
@@ -43,361 +45,213 @@ class UsageReport
 
         return $query->where($column, '>=', $this->since())
             ->when($this->userId, fn ($q) => $q->where($table.'user_id', $this->userId))
-            ->when($this->tool, fn ($q) => $q->where($table.'tool', $this->tool));
+            ->when($this->tool, fn ($q) => $q->where($table.'tool', $this->tool))
+            ->when($this->repo !== null, fn ($q) => $this->repo === ''
+                ? $q->whereNull($table.'repo')
+                : $q->where($table.'repo', $this->repo));
     }
 
-    /**
-     * Usage per task: how many prompts, how much AI time, the average score.
-     *
-     * Untagged work is NOT hidden — it comes back as its own row, because an
-     * "untagged" bucket that quietly disappears is how a dashboard starts lying.
-     */
-    public function perTask(): array
+    /** AiInteraction::scopeHumanPrompts as SQL, for counting inside a group. */
+    private const HUMAN = "(kind = 'human' or (kind is null and automated = false))";
+
+    /** "AI time" for a query over sessions: see the definition on the page. */
+    private const SESSION_SECONDS = 'coalesce(sum(extract(epoch from (ended_at - started_at))), 0)';
+
+    /** The one-line summary at the top of the page. */
+    public function summary(): array
     {
         $interactions = AiInteraction::query()
             ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
-            ->select([
-                'task_id',
-                DB::raw('count(*) as interaction_count'),
-                DB::raw('count(*) filter (where automated = false) as human_prompts'),
-                DB::raw('count(*) filter (where automated = true) as automated_followups'),
-                DB::raw('sum(prompt_tokens + response_tokens) as tokens'),
-                DB::raw('max(occurred_at) as last_seen'),
-            ])
-            ->groupBy('task_id')
-            ->get()
-            ->keyBy(fn ($row) => $row->task_id ?? '');
+            ->selectRaw('count(*) as interactions, count(distinct user_id) as people')
+            ->first();
 
-        $time = $this->secondsPerTask();
-        $scores = $this->averageScorePerTask();
-
-        return $interactions->map(function ($row) use ($time, $scores) {
-            $key = $row->task_id ?? '';
-
-            return [
-                'task_id' => $row->task_id,
-                'untagged' => blank($row->task_id),
-                'interactions' => (int) $row->interaction_count,
-                'human_prompts' => (int) $row->human_prompts,
-                'automated_followups' => (int) $row->automated_followups,
-                'tokens' => (int) $row->tokens,
-                'ai_seconds' => (int) ($time[$key] ?? 0),
-                'average_score' => isset($scores[$key]) ? round($scores[$key], 1) : null,
-                'last_seen' => $row->last_seen,
-            ];
-        })->sortByDesc('interactions')->values()->all();
-    }
-
-    /**
-     * "AI time" is the summed duration of sessions: stretches of work on one task
-     * with no gap longer than the idle window.
-     *
-     * It is NOT wall-clock time between the first and last prompt of the day, which
-     * would count lunch, and it is not the sum of response times, which would count
-     * only the seconds the model was typing. The dashboard states this definition
-     * on the page, because a metric people cannot explain is a metric they will
-     * argue with.
-     */
-    private function secondsPerTask(): array
-    {
-        return AiSession::query()
+        $sessions = AiSession::query()
             ->tap(fn ($q) => $this->inRange($q, 'started_at'))
             ->whereNotNull('ended_at')
-            ->select([
-                'task_id',
-                DB::raw('sum(extract(epoch from (ended_at - started_at))) as seconds'),
-            ])
-            ->groupBy('task_id')
-            ->pluck('seconds', 'task_id')
-            ->mapWithKeys(fn ($seconds, $task) => [(string) $task => (int) $seconds])
-            ->all();
-    }
-
-    private function averageScorePerTask(): array
-    {
-        return AiInteraction::query()
-            ->join('quality_scores', 'quality_scores.ai_interaction_id', '=', 'ai_interactions.id')
-            ->tap(fn ($q) => $this->inRange($q, 'ai_interactions.occurred_at'))
-            ->select(['ai_interactions.task_id', DB::raw('avg(quality_scores.score) as average')])
-            ->groupBy('ai_interactions.task_id')
-            ->pluck('average', 'task_id')
-            ->mapWithKeys(fn ($average, $task) => [(string) $task => (float) $average])
-            ->all();
-    }
-
-    /**
-     * Usage per project, where a project is the repository the work happened in.
-     *
-     * This is the unit the dashboard is built on. Tickets are not: a ticket key in
-     * a branch name is a convention this team does not follow, and a rule that
-     * only reports for teams who already write "ABC-123" in their branches
-     * reports nothing at all. A checkout is something every interaction has.
-     */
-    public function perProject(): array
-    {
-        $interactions = AiInteraction::query()
-            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
-            ->select([
-                'repo',
-                DB::raw('count(*) as interaction_count'),
-                DB::raw('count(*) filter (where automated = false) as human_prompts'),
-                DB::raw('count(*) filter (where automated = true) as automated_followups'),
-                DB::raw('sum(prompt_tokens + response_tokens) as tokens'),
-                DB::raw('count(distinct branch) as branches'),
-                DB::raw('max(occurred_at) as last_seen'),
-            ])
-            ->groupBy('repo')
-            ->get();
-
-        $time = $this->secondsPerProject();
-        $scores = $this->averageScorePerProject();
-
-        return $interactions->map(function ($row) use ($time, $scores) {
-            $key = (string) ($row->repo ?? '');
-
-            return [
-                'repo' => $row->repo,
-                // The last path segment is what a person calls the project; the
-                // full path is kept because two checkouts can share a name.
-                'name' => $row->repo ? basename($row->repo) : null,
-                'unknown' => blank($row->repo),
-                'interactions' => (int) $row->interaction_count,
-                'human_prompts' => (int) $row->human_prompts,
-                'automated_followups' => (int) $row->automated_followups,
-                'branches' => (int) $row->branches,
-                'tokens' => (int) $row->tokens,
-                'ai_seconds' => (int) ($time[$key] ?? 0),
-                'average_score' => isset($scores[$key]) ? round($scores[$key], 1) : null,
-                'last_seen' => $row->last_seen,
-            ];
-        })->sortByDesc('interactions')->values()->all();
-    }
-
-    private function secondsPerProject(): array
-    {
-        return AiSession::query()
-            ->tap(fn ($q) => $this->inRange($q, 'started_at'))
-            ->whereNotNull('ended_at')
-            ->select(['repo', DB::raw('sum(extract(epoch from (ended_at - started_at))) as seconds')])
-            ->groupBy('repo')
-            ->pluck('seconds', 'repo')
-            ->mapWithKeys(fn ($seconds, $repo) => [(string) $repo => (int) $seconds])
-            ->all();
-    }
-
-    private function averageScorePerProject(): array
-    {
-        return AiInteraction::query()
-            ->join('quality_scores', 'quality_scores.ai_interaction_id', '=', 'ai_interactions.id')
-            ->tap(fn ($q) => $this->inRange($q, 'ai_interactions.occurred_at'))
-            ->select(['ai_interactions.repo', DB::raw('avg(quality_scores.score) as average')])
-            ->groupBy('ai_interactions.repo')
-            ->pluck('average', 'repo')
-            ->mapWithKeys(fn ($average, $repo) => [(string) $repo => (float) $average])
-            ->all();
-    }
-
-    /** One project's interactions, newest first. */
-    public function interactionsForProject(?string $repo, int $perPage = 20): LengthAwarePaginator
-    {
-        $query = AiInteraction::query()
-            ->with('score:id,ai_interaction_id,score')
-            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
-            ->latest('occurred_at');
-
-        blank($repo) ? $query->whereNull('repo') : $query->where('repo', $repo);
-
-        return $query->paginate($perPage)->through(fn ($i) => [
-            'id' => $i->id,
-            'tool' => $i->tool,
-            'model' => $i->model,
-            'branch' => $i->branch,
-            'automated' => (bool) $i->automated,
-            'prompt_chars' => $i->prompt_chars,
-            'answer_chars' => $i->answer_chars,
-            'score' => $i->score?->score,
-            'occurred_at' => $i->occurred_at,
-        ]);
-    }
-
-    /** Usage per person, for the same period. */
-    public function perPerson(): array
-    {
-        $rows = AiInteraction::query()
-            ->leftJoin('users', 'users.id', '=', 'ai_interactions.user_id')
-            ->leftJoin('quality_scores', 'quality_scores.ai_interaction_id', '=', 'ai_interactions.id')
-            ->tap(fn ($q) => $this->inRange($q, 'ai_interactions.occurred_at'))
-            ->select([
-                'ai_interactions.user_id',
-                DB::raw('max(users.name) as name'),
-                DB::raw('count(distinct ai_interactions.id) as interactions'),
-                DB::raw('count(distinct ai_interactions.task_id) as tasks'),
-                DB::raw('avg(quality_scores.score) as average_score'),
-            ])
-            ->groupBy('ai_interactions.user_id')
-            ->get();
-
-        $time = AiSession::query()
-            ->tap(fn ($q) => $this->inRange($q, 'started_at'))
-            ->whereNotNull('ended_at')
-            ->select(['user_id', DB::raw('sum(extract(epoch from (ended_at - started_at))) as seconds')])
-            ->groupBy('user_id')
-            ->pluck('seconds', 'user_id');
-
-        return $rows->map(fn ($row) => [
-            'user_id' => $row->user_id,
-            'name' => $row->name ?? 'Unassigned device',
-            'interactions' => (int) $row->interactions,
-            'tasks' => (int) $row->tasks,
-            'ai_seconds' => (int) ($time[$row->user_id] ?? 0),
-            'average_score' => $row->average_score ? round((float) $row->average_score, 1) : null,
-        ])->sortByDesc('interactions')->values()->all();
-    }
-
-    /**
-     * The weakest scoring dimensions across the tenant, with their reasons. This
-     * is the coaching view: what everyone could do better, rather than who is
-     * worst.
-     */
-    public function weakestDimensions(): array
-    {
-        $scores = \App\Models\QualityScore::query()
-            ->whereHas('interaction', fn ($q) => $q->tap(fn ($q) => $this->inRange($q, 'occurred_at')))
-            ->get(['dimensions']);
-
-        $totals = [];
-
-        foreach ($scores as $score) {
-            foreach ($score->dimensions ?? [] as $name => $dimension) {
-                $totals[$name]['sum'] = ($totals[$name]['sum'] ?? 0) + $dimension['score'];
-                $totals[$name]['count'] = ($totals[$name]['count'] ?? 0) + 1;
-                $totals[$name]['reasons'][$dimension['reason']] =
-                    ($totals[$name]['reasons'][$dimension['reason']] ?? 0) + 1;
-            }
-        }
-
-        $out = [];
-
-        foreach ($totals as $name => $totalsForName) {
-            arsort($totalsForName['reasons']);
-
-            $out[] = [
-                'dimension' => $name,
-                'average' => round($totalsForName['sum'] / $totalsForName['count'], 1),
-                'sample' => $totalsForName['count'],
-                'common_reason' => array_key_first($totalsForName['reasons']),
-            ];
-        }
-
-        usort($out, fn ($a, $b) => $a['average'] <=> $b['average']);
-
-        return $out;
-    }
-
-    public function totals(): array
-    {
-        $interactions = AiInteraction::query()->tap(fn ($q) => $this->inRange($q, 'occurred_at'));
+            ->selectRaw('count(*) as sessions, '.self::SESSION_SECONDS.' as seconds')
+            ->first();
 
         return [
             'days' => $this->days,
-            'interactions' => (clone $interactions)->count(),
-            'human_prompts' => (clone $interactions)->where('automated', false)->count(),
-            // Work outside any checkout: a browser, or a tool run from a
-            // directory that is not a repository. It has no project to belong to.
-            'untagged' => (clone $interactions)->whereNull('repo')->count(),
-            'tools' => (clone $interactions)->distinct()->count('tool'),
+            'prompts' => AiInteraction::query()->humanPrompts()->tap(fn ($q) => $this->inRange($q, 'occurred_at'))->count(),
+            'interactions' => (int) $interactions->interactions,
+            'people' => (int) $interactions->people,
+            'sessions' => (int) $sessions->sessions,
+            'ai_seconds' => (int) $sessions->seconds,
         ];
     }
 
     /**
-     * One task's interactions, newest first — the drill-down behind the per-task
-     * rows. The literal 'untagged' addresses the bucket with no branch ticket;
-     * real task IDs never look like that, so there is no collision.
-     *
-     * Paginated, because the untagged bucket grows without bound and a 100-row
-     * dump is how a page starts timing out.
+     * What people typed, newest first: the page's main list. Agent steps and the
+     * tool's own calls are left out — they are on the session page, under the
+     * prompt that caused them.
      */
-    public function interactionsForTask(string $task, int $perPage = 20): LengthAwarePaginator
+    public function prompts(int $perPage = 25): LengthAwarePaginator
     {
-        $query = AiInteraction::query()
-            ->with('score:id,ai_interaction_id,score')
+        return AiInteraction::query()
+            ->humanPrompts()
             ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
-            ->latest('occurred_at');
-
-        if ($task === 'untagged') {
-            $query->whereNull('task_id');
-        } else {
-            $query->where('task_id', $task);
-        }
-
-        return $query->paginate($perPage)->through(fn ($i) => [
-            'id' => $i->id,
-            'tool' => $i->tool,
-            'model' => $i->model,
-            'task_id' => $i->task_id,
-            'automated' => (bool) $i->automated,
-            'prompt_chars' => $i->prompt_chars,
-            'score' => $i->score?->score,
-            'occurred_at' => $i->occurred_at,
-        ]);
+            ->with('user:id,name')
+            ->latest('occurred_at')
+            ->latest('id')
+            ->paginate($perPage)
+            ->withQueryString()
+            ->onEachSide(1)
+            ->through(fn (AiInteraction $i) => [
+                'id' => $i->id,
+                'session_id' => $i->ai_session_id,
+                'user_id' => $i->user_id,
+                'person' => $i->user?->name,
+                'account' => $i->account,
+                'tool' => $i->tool,
+                'model' => $i->model,
+                'project' => $i->repo ? basename($i->repo) : null,
+                'branch' => $i->branch,
+                'prompt_chars' => $i->prompt_chars,
+                'answer_chars' => $i->answer_chars,
+                'occurred_at' => $i->occurred_at,
+                // Filled in by the controller, and only for someone allowed
+                // to read prompt text.
+                'prompt_object' => $i->prompt_object,
+            ]);
     }
 
     /**
-     * Work grouped the way it actually happened: one row per session.
-     *
-     * A session is a stretch of interactions on one task from one device with no
-     * gap longer than the idle window, which is how the ingestion groups them.
-     * A flat list of interactions buries the shape of the work — one message to
-     * an agent produces a dozen rows — so the dashboard leads with sessions and
-     * lets a reader open one.
-     *
-     * Paginated, because 25 rows is only the newest work: older sessions were
-     * unreachable until this returned a paginator. The page name is custom so
-     * the `page` parameter stays free for other lists on the same view.
+     * Work grouped the way it happened: one row per session, by LAST activity —
+     * a session still under way started hours ago, and sorting by start buried
+     * it under every session opened since.
      */
-    public function sessions(int $perPage = 15): LengthAwarePaginator
+    public function sessions(int $perPage = 25): LengthAwarePaginator
     {
         return AiSession::query()
             ->tap(fn ($q) => $this->inRange($q, 'started_at'))
-            ->withCount([
-                'interactions as human_prompts' => fn ($q) => $q->where('automated', false),
-            ])
-            ->withAvg(
-                ['interactions as avg_score' => fn ($q) => $q->join(
-                    'quality_scores', 'quality_scores.ai_interaction_id', '=', 'ai_interactions.id'
-                )],
-                'quality_scores.score'
-            )
+            ->withCount(['interactions as human_prompts' => fn ($q) => $q->humanPrompts()])
             ->with('user:id,name')
             // The AI account the tool named, if any; the person is the fallback.
             ->addSelect(['account' => AiInteraction::select('account')
                 ->whereColumn('ai_session_id', 'ai_sessions.id')
                 ->whereNotNull('account')
                 ->limit(1)])
-            // Ordered by LAST ACTIVITY, not by when it began. A session still
-            // under way started hours ago, and sorting by start buried the one
-            // the reader is in underneath every session opened since.
             ->latest('ended_at')
-            ->paginate($perPage, ['*'], 'sessions_page')
+            ->latest('id')
+            ->paginate($perPage)
             ->withQueryString()
+            ->onEachSide(1)
             ->through(fn (AiSession $s) => [
                 'id' => $s->id,
                 'tool' => $s->tool,
-                'task_id' => $s->task_id,
                 'branch' => $s->branch,
                 'repo' => $s->repo,
                 'project' => $s->repo ? basename($s->repo) : null,
+                'user_id' => $s->user_id,
                 'person' => $s->user?->name,
                 'account' => $s->account,
                 'interactions' => $s->interaction_count,
                 'human_prompts' => $s->human_prompts,
-                'avg_score' => $s->avg_score === null ? null : round((float) $s->avg_score, 1),
                 'started_at' => $s->started_at,
                 'ended_at' => $s->ended_at,
-                // The model owns this definition, so the session list and the
-                // per-task "AI time" can never drift apart.
                 'seconds' => $s->durationSeconds(),
             ]);
+    }
+
+    /** Per person: prompts, AI time, last seen. Unassigned devices are one row. */
+    public function perPerson(): array
+    {
+        $rows = AiInteraction::query()
+            ->leftJoin('users', 'users.id', '=', 'ai_interactions.user_id')
+            ->tap(fn ($q) => $this->inRange($q, 'ai_interactions.occurred_at'))
+            ->groupBy('ai_interactions.user_id')
+            ->select([
+                'ai_interactions.user_id',
+                DB::raw('max(users.name) as name'),
+                DB::raw('count(*) filter (where '.self::HUMAN.') as prompts'),
+                DB::raw('count(*) as interactions'),
+                DB::raw('max(ai_interactions.occurred_at) as last_seen'),
+            ])
+            ->get();
+
+        $time = AiSession::query()
+            ->tap(fn ($q) => $this->inRange($q, 'started_at'))
+            ->whereNotNull('ended_at')
+            ->groupBy('user_id')
+            ->selectRaw('user_id, '.self::SESSION_SECONDS.' as seconds')
+            ->pluck('seconds', 'user_id');
+
+        return $rows->map(fn ($row) => [
+            'user_id' => $row->user_id,
+            'name' => $row->name ?? 'Unassigned device',
+            'prompts' => (int) $row->prompts,
+            'interactions' => (int) $row->interactions,
+            'ai_seconds' => (int) ($time[$row->user_id] ?? 0),
+            'last_seen' => $row->last_seen,
+        ])->sortByDesc('prompts')->values()->all();
+    }
+
+    /** Prompts per tool, for the "which tools" bars. */
+    public function perTool(): array
+    {
+        return AiInteraction::query()
+            ->humanPrompts()
+            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
+            ->groupBy('tool')
+            ->selectRaw('tool, count(*) as prompts')
+            ->orderByDesc('prompts')
+            ->get()
+            ->map(fn ($row) => ['tool' => $row->tool, 'prompts' => (int) $row->prompts])
+            ->all();
+    }
+
+    /**
+     * Per project, where a project is the repository the work happened in.
+     * Work outside any checkout (a browser chat) is its own row, never hidden.
+     */
+    public function perProject(): array
+    {
+        return AiInteraction::query()
+            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
+            ->groupBy('repo')
+            ->select([
+                'repo',
+                DB::raw('count(*) filter (where '.self::HUMAN.') as prompts'),
+                DB::raw('count(*) as interactions'),
+                DB::raw('max(occurred_at) as last_seen'),
+            ])
+            ->get()
+            ->map(fn ($row) => [
+                'repo' => $row->repo,
+                // The last path segment is what a person calls the project; the
+                // full path is kept because two checkouts can share a name.
+                'name' => $row->repo ? basename($row->repo) : null,
+                'prompts' => (int) $row->prompts,
+                'interactions' => (int) $row->interactions,
+                'last_seen' => $row->last_seen,
+            ])
+            ->sortByDesc('interactions')->values()->all();
+    }
+
+    /** One project's interactions, newest first. */
+    public function interactionsForProject(?string $repo, int $perPage = 25): LengthAwarePaginator
+    {
+        $query = AiInteraction::query()
+            ->with('user:id,name')
+            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
+            ->latest('occurred_at')
+            ->latest('id');
+
+        blank($repo) ? $query->whereNull('repo') : $query->where('repo', $repo);
+
+        return $query->paginate($perPage)->withQueryString()->onEachSide(1)->through(fn ($i) => [
+            'id' => $i->id,
+            'session_id' => $i->ai_session_id,
+            'person' => $i->user?->name,
+            'tool' => $i->tool,
+            'model' => $i->model,
+            'branch' => $i->branch,
+            'kind' => $i->kind ?? ($i->automated ? 'agent' : 'human'),
+            'prompt_chars' => $i->prompt_chars,
+            'answer_chars' => $i->answer_chars,
+            'occurred_at' => $i->occurred_at,
+        ]);
     }
 
     /**
@@ -405,8 +259,6 @@ class UsageReport
      *
      * A turn is one thing a person asked for: the message they typed, every
      * request the agent made working on it, and the answer it came back with.
-     * Without this the session is forty rows of which two are the person's —
-     * which is what the owner saw in session 19.
      *
      * The grouping is computed here rather than stored: it is a reading of the
      * sequence, and a stored turn id would be wrong the moment the rule improves.
@@ -414,7 +266,6 @@ class UsageReport
     public function interactionsForSession(AiSession $session, bool $withPreviews = false): array
     {
         $interactions = $session->interactions()
-            ->with('score:id,ai_interaction_id,score')
             ->orderBy('occurred_at')
             ->orderBy('id')
             ->get();
@@ -424,16 +275,13 @@ class UsageReport
             'tool' => $i->tool,
             'model' => $i->model,
             'account' => $i->account,
-            // Rows captured before kinds existed only have the old boolean,
-            // and that boolean was backwards — so the page says so rather
-            // than presenting a guess as fact.
+            // Rows captured before kinds existed only have the old boolean.
             'kind' => $i->kind ?? ($i->automated ? 'agent' : 'human'),
             'legacy_kind' => $i->kind === null,
             'prompt_chars' => $i->prompt_chars,
             'answer_chars' => $i->answer_chars,
             'prompt_tokens' => $i->prompt_tokens,
             'response_tokens' => $i->response_tokens,
-            'score' => $i->score?->score,
             'occurred_at' => $i->occurred_at,
         ])->all();
 
@@ -461,21 +309,21 @@ class UsageReport
             $prompt = $prompts[$index];
             $answer = $bodies->get($i->answer_object);
 
-            $rows[$index]['prompt_preview'] = $row['kind'] === 'human' ? (blank($prompt) ? null : $prompt) : $this->preview($prompt);
-            $rows[$index]['answer_preview'] = $row['final_answer'] ? (blank($answer) ? null : $answer) : $this->preview($answer);
+            $rows[$index]['prompt_preview'] = $row['kind'] === 'human' ? (blank($prompt) ? null : $prompt) : self::preview($prompt);
+            $rows[$index]['answer_preview'] = $row['final_answer'] ? (blank($answer) ? null : $answer) : self::preview($answer);
         }
 
         return $rows;
     }
 
     /** The opening of a body, on one line, for a list that has to stay readable. */
-    private function preview(?string $text, int $limit = 300): ?string
+    public static function preview(?string $text, int $limit = 300): ?string
     {
         if (blank($text)) {
             return null;
         }
 
-        $flat = trim(preg_replace('/\s+/', ' ', $text));
+        $flat = trim(preg_replace('/\s+/u', ' ', $text));
 
         return mb_strlen($flat) > $limit ? mb_substr($flat, 0, $limit).'…' : $flat;
     }
@@ -512,26 +360,5 @@ class UsageReport
         }
 
         return $rows;
-    }
-
-    /** The newest interactions across tasks, for the dashboard's recent list. */
-    public function recent(int $limit = 10): array
-    {
-        return AiInteraction::query()
-            ->with('score:id,ai_interaction_id,score')
-            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
-            ->latest('occurred_at')
-            ->limit($limit)
-            ->get()
-            ->map(fn ($i) => [
-                'id' => $i->id,
-                'tool' => $i->tool,
-                'model' => $i->model,
-                'project' => $i->repo ? basename($i->repo) : null,
-                'branch' => $i->branch,
-                'automated' => (bool) $i->automated,
-                'score' => $i->score?->score,
-                'occurred_at' => $i->occurred_at,
-            ])->all();
     }
 }

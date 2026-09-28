@@ -2,26 +2,23 @@
 
 use App\Http\Controllers\ConsentController;
 use App\Http\Controllers\PairDeviceController;
+use App\Http\Controllers\PeopleController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Middleware\EnsureConsented;
-use Illuminate\Foundation\Application;
+use Illuminate\Http\Request;
 use App\Http\Controllers\UsageDashboardController;
 use App\Http\Middleware\SetTenantFromUser;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
-Route::get('/', function () {
-    return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
-});
+// No landing page: the application IS the report. Managers open on /usage,
+// everyone else on what was captured about them.
+Route::get('/', function (Request $request) {
+    if (! $request->user()) {
+        return redirect()->route('login');
+    }
 
-Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified', EnsureConsented::class])->name('dashboard');
+    return redirect()->route($request->user()->isManager() ? 'usage.index' : 'usage.my-data');
+})->name('home');
 
 // The capture notice, accepted once per version before anything else is usable.
 Route::middleware('auth')->group(function () {
@@ -32,7 +29,6 @@ Route::middleware('auth')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
 require __DIR__.'/auth.php';
@@ -48,13 +44,18 @@ Route::middleware(['auth', 'verified', SetTenantFromUser::class, EnsureConsented
     Route::post('/pair', [PairDeviceController::class, 'store'])->name('pair.store');
 
     // Anyone: what was captured about me.
+    // Admins: the accounts that can sign in (there is no public sign-up).
+    Route::get('/people', [PeopleController::class, 'index'])->name('people.index');
+    Route::post('/people', [PeopleController::class, 'store'])->name('people.store');
+    Route::patch('/people/{person}', [PeopleController::class, 'update'])->name('people.update');
+    Route::post('/people/{person}/password', [PeopleController::class, 'resetPassword'])->name('people.password');
+
     Route::get('/my-data', [UsageDashboardController::class, 'myData'])->name('usage.my-data');
 
     // Managers: the aggregate view and the audit log.
     Route::get('/usage', [UsageDashboardController::class, 'index'])->name('usage.index');
     Route::get('/usage/audit', [UsageDashboardController::class, 'audit'])->name('usage.audit');
     // Two segments, so these never collide with /usage/{interaction} below.
-    Route::get('/usage/task/{task}', [UsageDashboardController::class, 'task'])->name('usage.task');
     Route::get('/usage/session/{session}', [UsageDashboardController::class, 'session'])->name('usage.session');
     Route::get('/usage/project', [UsageDashboardController::class, 'project'])->name('usage.project');
     Route::get('/usage/{interaction}', [UsageDashboardController::class, 'show'])->name('usage.show');

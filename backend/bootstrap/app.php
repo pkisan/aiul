@@ -24,9 +24,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+            // Ends every other session of a person whose password changed, so
+            // an admin's "Reset password" really locks a leaver out.
+            \Illuminate\Session\Middleware\AuthenticateSession::class,
         ]);
 
-        //
+        // Plesk puts nginx in front of Apache on the same host: trust it for
+        // the client IP (audit log) and for "this request was HTTPS".
+        $middleware->trustProxies(at: '127.0.0.1');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

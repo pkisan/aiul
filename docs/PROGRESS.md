@@ -4,6 +4,36 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-28 (ChatGPT widget fix ab0bf12 awaits install; W-d, Ubuntu L4 await owner)
 
+## PLAN: dashboard cleanup for genailog.vardaam.site (Plesk) — started 2026-09-28
+
+Owner asked (2026-09-28): Aayatti logo in the menu; no Dashboard page — sign-in
+lands on /usage; /usage redesigned (person filter, recent prompts, proper
+pagination, no scores, no stat cards); dark + light mode; no dummy accounts —
+one super admin whose password a seeder generates; site URL
+genailog.vardaam.site; code ready to upload to Plesk.
+
+Steps (commit each):
+- [x] U0 commit the earlier uncommitted session-page work (`49f2465`)
+- [x] U1 logo (public/logo.svg + favicon), dark mode (gray scale as CSS
+      variables flipped under `.dark`, toggle in the nav, no flash on load)
+- [x] U2 no Dashboard/Welcome: `/` sends managers to /usage, members to
+      /my-data; public registration removed (it made users with no tenant)
+- [x] U3 /usage redesign: filters (person, tool, project, period), recent
+      prompts feed paginated server-side, people + tools + projects side panels.
+      Owner said "remove the code and ui part of score": ScoreInteraction job,
+      PromptScorer, QualityScore model and Horizon removed (scoring was the only
+      queued job, so Plesk needs no queue worker). The quality_scores TABLE is
+      kept (no data dropped). Task page removed. Audit log now lists all three
+      read kinds (raw, session, list preview), eager-loaded, paginated.
+      NOT visually checked: Chrome extension was not connected.
+- [x] U4 SuperAdminSeeder replaces DevUsersSeeder + test user; People page so
+      the super admin can add accounts (registration is gone). No delete
+      button, and self-delete removed from Profile: deleting a user cascades
+      to consent/audit records. AuthenticateSession added so a password reset
+      signs the person out everywhere.
+- [ ] U5 genailog.vardaam.site: .env.production.example, script/doc examples
+- [ ] U6 Plesk: docs/DEPLOY-PLESK.md, queue via scheduler, cleanup
+
 ## PLAN: cross-OS demo — started 2026-09-24
 
 Goal: a tester on any Mac, Windows PC or Ubuntu desktop installs the backend and

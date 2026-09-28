@@ -15,7 +15,7 @@ class ProvisionDevice extends Command
 {
     protected $signature = 'aiul:provision-device
                             {hostname : the machine this token is for}
-                            {--tenant= : the tenant slug (created if it does not exist)}
+                            {--tenant= : the tenant slug, default AIUL_TENANT (created if it does not exist)}
                             {--user= : the email of the person who uses this machine}
                             {--platform=darwin}';
 
@@ -23,7 +23,7 @@ class ProvisionDevice extends Command
 
     public function handle(): int
     {
-        $slug = $this->option('tenant') ?: 'default';
+        $slug = $this->option('tenant') ?: config('aiul.tenant');
 
         $tenant = Tenant::firstOrCreate(
             ['slug' => $slug],

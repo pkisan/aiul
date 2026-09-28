@@ -1,7 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Panel from '@/Components/Usage/Panel.vue';
-import Score from '@/Components/Usage/Score.vue';
 import Tag from '@/Components/Usage/Tag.vue';
 import { count, when } from '@/Components/Usage/format';
 import Message from '@/Components/Usage/Message.vue';
@@ -9,7 +8,6 @@ import { Head, Link } from '@inertiajs/vue3';
 
 const props = defineProps({
     interaction: Object,
-    score: Object,
     canViewRaw: Boolean,
     person: String,
     // Present only when canViewRaw: the view was audit-logged before they were sent.
@@ -108,22 +106,6 @@ const missing = (state, what) =>
                     </dl>
                 </Panel>
 
-                <Panel v-if="score" title="Prompt quality" :subtitle="`rubric v${score.rubric_version}`">
-                    <template #actions>
-                        <Score :value="score.score" class="text-base" />
-                    </template>
-                    <ul class="divide-y divide-gray-100">
-                        <li v-for="(dimension, name) in score.dimensions" :key="name" class="flex gap-4 px-5 py-3">
-                            <Score :value="dimension.score" class="w-10 shrink-0 text-right" />
-                            <div>
-                                <div class="text-sm font-medium capitalize text-gray-900">
-                                    {{ String(name).replaceAll('_', ' ') }}
-                                </div>
-                                <p class="text-sm text-gray-600">{{ dimension.reason }}</p>
-                            </div>
-                        </li>
-                    </ul>
-                </Panel>
 
             </div>
         </div>
