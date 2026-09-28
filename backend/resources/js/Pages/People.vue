@@ -61,6 +61,16 @@ const issueDevice = (p) =>
         },
     });
 
+// Renaming changes only the label; the device keeps its token.
+const renameDevice = (p, d) => {
+    const hostname = prompt(`New name for ${d.hostname}. Its token stays the same.`, d.hostname)?.trim();
+    if (!hostname || hostname === d.hostname) return;
+    router.patch(route('people.devices.rename', [p.id, d.id]), { hostname }, {
+        preserveScroll: true,
+        onError: (errors) => alert(errors.hostname ?? 'Could not rename the device.'),
+    });
+};
+
 // What the person runs with the token: a fresh install, or re-pointing an
 // agent that is already installed.
 const commands = computed(() => {
@@ -214,12 +224,14 @@ const commands = computed(() => {
                                 </td>
                                 <td class="px-3 py-3 text-right text-gray-600">
                                     <span v-if="!p.devices.length" class="text-gray-400">—</span>
-                                    <span
+                                    <button
                                         v-for="d in p.devices"
-                                        :key="d.hostname"
-                                        class="block whitespace-nowrap text-xs"
-                                        :title="d.last_seen_at ? 'last seen ' + ago(d.last_seen_at) : 'not seen yet'"
-                                    >{{ d.hostname }}</span>
+                                        :key="d.id"
+                                        type="button"
+                                        class="ml-auto block whitespace-nowrap text-xs hover:text-gray-900 hover:underline"
+                                        :title="(d.last_seen_at ? 'last seen ' + ago(d.last_seen_at) : 'not seen yet') + ' · click to rename'"
+                                        @click="renameDevice(p, d)"
+                                    >{{ d.hostname }}</button>
                                 </td>
                                 <td class="px-3 py-3 text-right text-gray-600">{{ p.last_active ? ago(p.last_active) : 'never' }}</td>
                                 <td class="space-x-4 whitespace-nowrap px-5 py-3 text-right">

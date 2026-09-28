@@ -87,6 +87,33 @@ class PeopleTest extends TestCase
         $this->assertSame(1, Device::withoutGlobalScope('tenant')->count());
     }
 
+    public function test_renaming_a_device_keeps_its_token(): void
+    {
+        $admin = $this->user(User::ROLE_ADMIN);
+        $kim = $this->user(User::ROLE_MEMBER);
+        $this->actingAs($admin)->post("/people/{$kim->id}/devices", ['hostname' => 'old-mac', 'platform' => 'darwin']);
+        $token = session('deviceToken')['token'];
+        $this->actingAs($admin)->post("/people/{$kim->id}/devices", ['hostname' => 'taken', 'platform' => 'darwin']);
+        $device = Device::byToken($token);
+
+        $this->actingAs($admin)->patch("/people/{$kim->id}/devices/{$device->id}", ['hostname' => 'kims-macbook'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('kims-macbook', Device::byToken($token)?->hostname, 'same token, new name');
+
+        $this->actingAs($admin)->patch("/people/{$kim->id}/devices/{$device->id}", ['hostname' => 'taken'])
+            ->assertSessionHasErrors('hostname');
+        $this->actingAs($admin)->patch("/people/{$kim->id}/devices/{$device->id}", ['hostname' => 'a b'])
+            ->assertSessionHasErrors('hostname');
+        $this->actingAs($this->user(User::ROLE_MANAGER))
+            ->patch("/people/{$kim->id}/devices/{$device->id}", ['hostname' => 'x'])->assertForbidden();
+        // A device can only be renamed under the person it belongs to.
+        $this->actingAs($admin)->patch("/people/{$admin->id}/devices/{$device->id}", ['hostname' => 'x'])->assertNotFound();
+        $stranger = $this->user(User::ROLE_MEMBER, Tenant::create(['slug' => 'other', 'name' => 'Other']));
+        $this->actingAs($admin)->patch("/people/{$stranger->id}/devices/{$device->id}", ['hostname' => 'x'])->assertNotFound();
+
+        $this->assertSame('kims-macbook', Device::byToken($token)?->hostname);
+    }
+
     public function test_device_tokens_are_admin_only_and_names_are_plain(): void
     {
         $kim = $this->user(User::ROLE_MEMBER);

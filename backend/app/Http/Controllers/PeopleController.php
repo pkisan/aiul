@@ -37,7 +37,7 @@ class PeopleController extends Controller
             ->whereNotNull('user_id')
             ->where('revoked', false)
             ->orderBy('hostname')
-            ->get(['user_id', 'hostname', 'platform', 'last_seen_at'])
+            ->get(['id', 'user_id', 'hostname', 'platform', 'last_seen_at'])
             ->groupBy('user_id');
 
         return Inertia::render('People', [
@@ -47,7 +47,7 @@ class PeopleController extends Controller
                 ->map(fn (User $u) => [
                     ...$u->only(['id', 'name', 'email', 'role', 'can_view_raw_prompts', 'created_at']),
                     'devices' => ($devices[$u->id] ?? collect())
-                        ->map(fn ($d) => $d->only(['hostname', 'platform', 'last_seen_at']))->values(),
+                        ->map(fn ($d) => $d->only(['id', 'hostname', 'platform', 'last_seen_at']))->values(),
                     'last_active' => $lastActive[$u->id] ?? null,
                 ]),
             // A new password or device token is shown once, straight after it is made.
@@ -117,10 +117,9 @@ class PeopleController extends Controller
         $this->authorizeTarget($request, $person);
 
         $data = $request->validate([
-            // Shown on pages and passed to shell commands by people: keep it plain.
-            'hostname' => ['required', 'string', 'max:100', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/'],
+            'hostname' => $this->hostnameRules(),
             'platform' => ['required', Rule::in(Device::PLATFORMS)],
-        ], ['hostname.regex' => 'Use letters, numbers, dots, dashes or underscores only.']);
+        ], $this->hostnameMessages());
 
         [, $token] = Device::provision($person->tenant_id, $data['hostname'], $data['platform'], $person->id);
 
@@ -130,6 +129,44 @@ class PeopleController extends Controller
             'platform' => $data['platform'],
             'token' => $token,
         ]);
+    }
+
+    /**
+     * Give a device a new name. Only the label changes: the agent is found by
+     * its token, so the token and everything already recorded stay as they are.
+     */
+    public function renameDevice(Request $request, User $person, int $device): RedirectResponse
+    {
+        $this->authorizeTarget($request, $person);
+
+        $device = Device::withoutGlobalScope('tenant')
+            ->where('tenant_id', $person->tenant_id)
+            ->where('user_id', $person->id)
+            ->findOrFail($device);
+
+        // Unique per tenant: issuing a token looks a device up by its name, so two
+        // devices with one name would make that ambiguous.
+        $data = $request->validate([
+            'hostname' => [
+                ...$this->hostnameRules(),
+                Rule::unique('devices', 'hostname')->where('tenant_id', $person->tenant_id)->ignore($device->id),
+            ],
+        ], $this->hostnameMessages() + ['hostname.unique' => 'Another device already has that name.']);
+
+        $device->update(['hostname' => $data['hostname']]);
+
+        return back();
+    }
+
+    /** Shown on pages and passed to shell commands by people: keep it plain. */
+    private function hostnameRules(): array
+    {
+        return ['required', 'string', 'max:100', 'regex:/^[A-Za-z0-9][A-Za-z0-9._-]*$/'];
+    }
+
+    private function hostnameMessages(): array
+    {
+        return ['hostname.regex' => 'Use letters, numbers, dots, dashes or underscores only.'];
     }
 
     private function accessRules(): array
