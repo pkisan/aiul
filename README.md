@@ -45,6 +45,13 @@ branch name gives the ticket.
    modified.
 7. **One command undoes everything.** `scripts/killswitch.sh`.
 
+## Test it on your machine
+
+Download `aiul-<version>.zip` from the
+[latest release](https://github.com/pkisan/aiul/releases/latest) and follow the
+`TESTING.md` inside it (also at [docs/TESTERS.md](docs/TESTERS.md)). No Go, no
+Docker, no backend.
+
 ## Try it without changing anything
 
 ```sh

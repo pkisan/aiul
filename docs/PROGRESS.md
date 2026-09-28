@@ -4,6 +4,18 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-28 (ChatGPT widget fix ab0bf12 awaits install; W-d, Ubuntu L4 await owner)
 
+## Tester releases (option 1: monorepo stays, testers download) — 2026-09-28
+
+Owner chose (2026-09-28): no branch split; testers get a GitHub Release zip.
+Testers always use genailog.vardaam.site; only the owner's Mac switches between
+live and local (already possible: `enroll-device.sh --token` vs `--local`).
+- [x] `.github/workflows/release.yml`: on a `v*` tag, macos-latest runs
+      `go test`, build.sh + package.sh, zips scripts/, packaging/scripts/,
+      dist/ (pkg, linux amd64/arm64, exe) + docs/TESTERS.md as TESTING.md, and
+      publishes the release. Dry-run of every step in a scratch clone passed
+      (tests ok, 16-file zip, exec bits kept). NOT yet run on GitHub.
+      NEXT: owner pushes, tags v0.1.0, checks the release page.
+
 ## PLAN: dashboard cleanup for genailog.vardaam.site (Plesk) — started 2026-09-28
 
 Owner asked (2026-09-28): Aayatti logo in the menu; no Dashboard page — sign-in
