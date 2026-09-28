@@ -67,12 +67,15 @@ function onClick(event) {
 
 <style>
 /* Answer typography. A serif body sets the model's words apart from the
-   interface around them, as claude.ai does; code stays monospace. */
+   interface around them, as claude.ai does; code stays monospace.
+   Text, rules and tables use the --gray-* variables so they flip in dark mode.
+   Code (blocks and inline) keeps its own light background on purpose: the
+   highlight.js theme is a light one, so it stays readable in both modes. */
 .md {
     font-family: ui-serif, Georgia, Cambria, 'Times New Roman', serif;
     font-size: 1rem;
     line-height: 1.7;
-    color: rgb(17 24 39);
+    color: rgb(var(--gray-900));
     overflow-wrap: anywhere;
 }
 .md > :first-child { margin-top: 0; }
@@ -89,8 +92,8 @@ function onClick(event) {
 .md li { margin: 0.3em 0; padding-left: 0.2em; }
 .md li > p { margin: 0.3em 0; }
 .md a { color: rgb(37 99 235); text-decoration: underline; text-underline-offset: 2px; }
-.md blockquote { border-left: 3px solid rgb(209 213 219); padding-left: 1em; color: rgb(75 85 99); }
-.md hr { border: 0; border-top: 1px solid rgb(229 231 235); margin: 1.5em 0; }
+.md blockquote { border-left: 3px solid rgb(var(--gray-300)); padding-left: 1em; color: rgb(var(--gray-600)); }
+.md hr { border: 0; border-top: 1px solid rgb(var(--gray-200)); margin: 1.5em 0; }
 .md :not(pre) > code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.85em;
@@ -101,9 +104,10 @@ function onClick(event) {
     padding: 0.1em 0.35em;
 }
 .md table { border-collapse: collapse; font-size: 0.9rem; display: block; overflow-x: auto; }
-.md th, .md td { border: 1px solid rgb(229 231 235); padding: 0.4em 0.75em; text-align: left; }
-.md th { background: rgb(249 250 251); font-weight: 600; }
-.md-code { border: 1px solid rgb(229 231 235); border-radius: 0.6rem; background: rgb(250 250 250); overflow: hidden; }
+.md th, .md td { border: 1px solid rgb(var(--gray-200)); padding: 0.4em 0.75em; text-align: left; }
+.md th { background: rgb(var(--gray-50)); font-weight: 600; }
+.dark .md a { color: rgb(96 165 250); }
+.md-code { border: 1px solid rgb(229 231 235); border-radius: 0.6rem; background: rgb(250 250 250); color: rgb(17 24 39); overflow: hidden; }
 .md-code-bar {
     display: flex; justify-content: space-between; align-items: center;
     padding: 0.4rem 0.9rem;

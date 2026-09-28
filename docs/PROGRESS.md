@@ -4,6 +4,14 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-28 (ChatGPT widget fix ab0bf12 awaits install; W-d, Ubuntu L4 await owner)
 
+## Dark mode: AI answers unreadable — fixed 2026-09-28
+
+Owner screenshot: session page answer text black on the dark background.
+Markdown.vue had hardcoded light colours; text, quotes, rules and tables now
+use --gray-* (link lighter in .dark). Code blocks keep their light background
+with pinned dark text. Checked with headless Chrome on the component CSS +
+dark variables. NEXT: owner uploads a new Plesk zip (package-plesk.sh).
+
 ## Tester releases (option 1: monorepo stays, testers download) — 2026-09-28
 
 Owner chose (2026-09-28): no branch split; testers get a GitHub Release zip.
