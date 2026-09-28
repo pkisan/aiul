@@ -45,6 +45,10 @@ Steps (commit each):
       tool id `cli` (api.anthropic.com) shown as "Claude Code"; tools sharing
       a display name merged into one bar. Visually checked with headless
       Chrome on a throwaway DB copy: light, dark, phone width, People, session.
+- [x] U8 owner said yes (2026-09-28): LOCAL DB only — the 1,162 interactions,
+      24 sessions and 222 read records of dev@example.com moved to Punit
+      (id 2); dev@example.com and manager@example.com deleted. Backup taken
+      first (pg_dump, session scratchpad, not kept in the repo).
       NEXT: owner verifies (see end-of-task commands), then decides whether to
       delete the local dummy users dev@example.com / manager@example.com.
 
