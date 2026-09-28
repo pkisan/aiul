@@ -96,14 +96,21 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # MinIO stopped publishing images in 2026 (quay.io/minio/minio has no
+  # manifest, minio/minio on Docker Hub is denied), so a fresh machine could not
+  # pull it. bitnamilegacy/minio still pulls on amd64 and arm64 and carries mc
+  # and a shell. Frozen at 2025-05, never updated: fine for a demo whose MinIO
+  # has no published port; a real deployment uses a managed S3 bucket.
   minio:
-    image: quay.io/minio/minio:latest
-    command: server /data
+    image: bitnamilegacy/minio:latest
+    # Bypass Bitnami's own start scripts; run the server as the image's user,
+    # in the directory that user owns.
+    entrypoint: ["minio", "server", "/bitnami/minio/data"]
     environment:
       MINIO_ROOT_USER: aiul
       MINIO_ROOT_PASSWORD: aiul_dev_password
     volumes:
-      - minio-data:/data
+      - minio-data:/bitnami/minio/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -113,7 +120,7 @@ services:
 
   # One-shot: the bucket prompt and answer bodies are stored in.
   minio-bucket:
-    image: quay.io/minio/minio:latest
+    image: bitnamilegacy/minio:latest
     depends_on:
       minio: { condition: service_healthy }
     entrypoint: ["sh", "-c", "mc alias set local http://minio:9000 aiul aiul_dev_password && mc mb --ignore-existing local/aiul-bodies"]
