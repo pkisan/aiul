@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -59,5 +60,20 @@ func TestFirstSet(t *testing.T) {
 	}
 	if got := firstSet("", ""); got != "" {
 		t.Errorf("got %q", got)
+	}
+}
+
+// A config file the worker cannot open reads as empty, not as a crash; the
+// reason goes to stderr (the worker's log) instead of being swallowed.
+func TestUnreadableAgentConfigIsEmpty(t *testing.T) {
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+		t.Skip("root and Windows ignore the mode bits")
+	}
+	path := filepath.Join(t.TempDir(), "agent.conf")
+	if err := os.WriteFile(path, []byte("AIUL_ENDPOINT=https://x/api/aiul/events\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if got := readAgentConfig(path); len(got) != 0 {
+		t.Fatalf("got %v, want empty", got)
 	}
 }

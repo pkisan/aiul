@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"strings"
 
@@ -31,12 +32,19 @@ const agentConfigPath = platform.AgentConfigPath
 
 // readAgentConfig returns the settings in the config file, or an empty map when
 // there is none. A missing file is the normal case when running by hand and is
-// never an error.
+// never an error. A file that exists but cannot be read IS one, and it is said
+// out loud: silently reading nothing looks exactly like "no backend configured"
+// (endpoint="" in the log) and hides a wrong owner or mode on the file.
 func readAgentConfig(path string) map[string]string {
 	out := map[string]string{}
 
 	file, err := os.Open(path)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "aiul: cannot read %s (%v); events will not be forwarded.\n"+
+				"      Fix: sudo chown root:%s %s && sudo chmod 640 %s, then restart the agent.\n",
+				path, err, platform.ServiceGroupName, path, path)
+		}
 		return out
 	}
 	defer file.Close()

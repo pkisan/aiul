@@ -76,7 +76,8 @@ const commands = computed(() => {
     const restart = t.platform === 'linux' ? 'sudo systemctl restart aiul' : 'sudo launchctl kickstart -k system/com.aiul.agent';
     return [
         { key: 'new', label: 'New install (Terminal, in the aiul folder)', text: `./scripts/enroll-device.sh --endpoint ${e} --token ${t.token}` },
-        { key: 'old', label: 'Already installed? Point it here instead', text: `printf 'AIUL_ENDPOINT=${e}\\nAIUL_DEVICE_TOKEN=${t.token}\\n' | sudo tee /etc/aiul/agent.conf >/dev/null && ${restart}` },
+        // The agent runs as _aiul, not root: the file must stay readable by it.
+        { key: 'old', label: 'Already installed? Point it here instead', text: `sudo mkdir -p /etc/aiul && printf 'AIUL_ENDPOINT=${e}\\nAIUL_DEVICE_TOKEN=${t.token}\\n' | sudo tee /etc/aiul/agent.conf >/dev/null && sudo chown root:_aiul /etc/aiul/agent.conf && sudo chmod 640 /etc/aiul/agent.conf && ${restart}` },
     ];
 });
 </script>
