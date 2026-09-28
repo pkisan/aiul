@@ -39,6 +39,12 @@ Steps (commit each):
       last commit with vendor/ and public/build/), SecurityHeaders middleware,
       trusted local proxy, https forced when APP_URL is https, local disk
       never served. Demo compose: worker service removed, SuperAdminSeeder.
+- [x] U7 owner (2026-09-28): "Also remove the audit log" — the Audit log PAGE,
+      route and nav link are gone. Recording reads is KEPT: it feeds "Who has
+      read my prompts" on My data, which the consent notice promises. Also:
+      tool id `cli` (api.anthropic.com) shown as "Claude Code"; tools sharing
+      a display name merged into one bar. Visually checked with headless
+      Chrome on a throwaway DB copy: light, dark, phone width, People, session.
       NEXT: owner verifies (see end-of-task commands), then decides whether to
       delete the local dummy users dev@example.com / manager@example.com.
 

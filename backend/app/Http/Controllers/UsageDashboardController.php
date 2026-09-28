@@ -242,30 +242,6 @@ class UsageDashboardController extends Controller
         return ($chars ?? 0) > 0 ? 'purged' : 'empty';
     }
 
-    /** The audit log itself, so "who looked at what" is not a private matter. */
-    public function audit(Request $request): Response
-    {
-        abort_unless($request->user()->isManager(), 403);
-
-        return Inertia::render('Usage/Audit', [
-            'views' => ConsentRecord::whereIn('kind', ConsentRecord::READ_KINDS)
-                ->with(['actor:id,name', 'subject:id,name'])
-                ->latest()
-                ->latest('id')
-                ->paginate(50)
-                ->through(fn ($record) => [
-                    'id' => $record->id,
-                    'at' => $record->created_at,
-                    'kind' => $record->kind,
-                    'actor' => $record->actor?->name ?? 'unknown',
-                    'subject' => $record->subject?->name ?? 'unassigned',
-                    'interaction_id' => $record->ai_interaction_id,
-                    'reason' => $record->reason,
-                    'ip' => $record->ip,
-                ]),
-        ]);
-    }
-
     /**
      * "My data": what has been captured about the person asking.
      *

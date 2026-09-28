@@ -52,9 +52,8 @@ Route::middleware(['auth', 'verified', SetTenantFromUser::class, EnsureConsented
 
     Route::get('/my-data', [UsageDashboardController::class, 'myData'])->name('usage.my-data');
 
-    // Managers: the aggregate view and the audit log.
+    // Managers: the aggregate view.
     Route::get('/usage', [UsageDashboardController::class, 'index'])->name('usage.index');
-    Route::get('/usage/audit', [UsageDashboardController::class, 'audit'])->name('usage.audit');
     // Two segments, so these never collide with /usage/{interaction} below.
     Route::get('/usage/session/{session}', [UsageDashboardController::class, 'session'])->name('usage.session');
     Route::get('/usage/project', [UsageDashboardController::class, 'project'])->name('usage.project');

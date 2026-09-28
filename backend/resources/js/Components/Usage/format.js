@@ -38,7 +38,8 @@ const toolNames = {
     'copilot-web': 'Copilot',
     'copilot-vscode': 'Copilot in VS Code',
     githubcopilotchat: 'Copilot in VS Code',
-    cli: 'Command line',
+    // Claude Code identifies itself to api.anthropic.com as "cli".
+    cli: 'Claude Code',
 };
 export const toolName = (id) => toolNames[id] ?? id ?? 'AI tool';
 

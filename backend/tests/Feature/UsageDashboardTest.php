@@ -459,22 +459,6 @@ class UsageDashboardTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_the_audit_log_lists_who_read_what(): void
-    {
-        $subject = $this->user();
-        $interaction = $this->interaction(['user_id' => $subject->id]);
-        $admin = $this->user(User::ROLE_ADMIN, raw: true);
-
-        $this->actingAs($admin)->get("/usage/{$interaction->id}?reason=checking")->assertOk();
-
-        $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/audit')->assertOk();
-        $views = $response->viewData('page')['props']['views']['data'];
-
-        $this->assertCount(1, $views);
-        $this->assertSame($admin->name, $views[0]['actor']);
-        $this->assertSame('checking', $views[0]['reason']);
-    }
-
     // Old links to the separate text page still land on the interaction.
     public function test_the_old_raw_link_redirects_to_the_interaction(): void
     {

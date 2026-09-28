@@ -19,7 +19,6 @@ const links = computed(() =>
         { label: 'My data', route: 'usage.my-data', active: 'usage.my-data', show: true },
         { label: 'Devices', route: 'pair.show', active: 'pair.*', show: true },
         { label: 'People', route: 'people.index', active: 'people.*', show: user.value?.role === 'admin' },
-        { label: 'Audit log', route: 'usage.audit', active: 'usage.audit', show: isManager.value },
     ].filter((l) => l.show),
 );
 

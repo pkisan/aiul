@@ -40,7 +40,20 @@ function go(changes) {
 const filtered = computed(() => props.filters.person || props.filters.tool || props.filters.project);
 const personName = (id) => props.options.people.find((p) => p.id === id)?.name;
 
-const maxTool = computed(() => Math.max(1, ...props.perTool.map((t) => t.prompts)));
+// Two ids can be one tool to a reader (the Copilot chat extension reports
+// under two names): one bar each, filtering on its busiest id.
+const tools = computed(() => {
+    const byName = new Map();
+    for (const t of props.perTool) {
+        const name = toolName(t.tool);
+        const row = byName.get(name) ?? { name, tool: t.tool, ids: [], prompts: 0 };
+        row.ids.push(t.tool);
+        row.prompts += t.prompts;
+        byName.set(name, row);
+    }
+    return [...byName.values()].sort((a, b) => b.prompts - a.prompts);
+});
+const maxTool = computed(() => Math.max(1, ...tools.value.map((t) => t.prompts)));
 const maxPerson = computed(() => Math.max(1, ...props.perPerson.map((p) => p.prompts)));
 const topProjects = computed(() => props.perProject.slice(0, 8));
 
@@ -218,10 +231,10 @@ const selectClass =
 
                     <Panel title="Tools">
                         <ul class="space-y-3 px-5 py-4">
-                            <li v-for="t in perTool" :key="t.tool ?? 'none'">
-                                <button type="button" class="block w-full text-left" @click="go({ tool: filters.tool === t.tool ? null : t.tool })">
+                            <li v-for="t in tools" :key="t.name">
+                                <button type="button" class="block w-full text-left" @click="go({ tool: (filters.tool && t.ids.includes(filters.tool)) ? null : t.tool })">
                                     <div class="flex justify-between text-sm">
-                                        <span class="text-gray-700" :class="filters.tool === t.tool ? 'font-semibold text-gray-900' : ''">{{ toolName(t.tool) }}</span>
+                                        <span class="text-gray-700" :class="(filters.tool && t.ids.includes(filters.tool)) ? 'font-semibold text-gray-900' : ''">{{ t.name }}</span>
                                         <span class="tabular-nums text-gray-500">{{ count(t.prompts) }}</span>
                                     </div>
                                     <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-100">
@@ -229,7 +242,7 @@ const selectClass =
                                     </div>
                                 </button>
                             </li>
-                            <li v-if="!perTool.length" class="text-center text-sm text-gray-500">No prompts yet.</li>
+                            <li v-if="!tools.length" class="text-center text-sm text-gray-500">No prompts yet.</li>
                         </ul>
                     </Panel>
 
@@ -258,7 +271,7 @@ const selectClass =
 
                     <p class="px-1 text-xs leading-relaxed text-gray-500">
                         <strong class="font-medium text-gray-700">AI time</strong> — {{ aiTimeDefinition }}
-                        <template v-if="canViewRaw"> Prompt previews you see here are recorded in the audit log.</template>
+                        <template v-if="canViewRaw"> Prompt previews you see here are recorded; each person sees who read their prompts under My data.</template>
                     </p>
                 </aside>
             </div>
