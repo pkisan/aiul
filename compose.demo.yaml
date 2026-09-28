@@ -8,10 +8,10 @@
 # `php artisan serve` on the host): its own project name, its own volumes, and no
 # host ports except the dashboard, so both can run side by side.
 #
-# Sign in as admin@example.com. The password is printed once, in the first
-# start's log (`docker compose -f compose.demo.yaml logs app`). Lost it, or the
-# container was recreated? This sets and prints a new one:
-#   docker compose -f compose.demo.yaml exec app php artisan db:seed --class=DevUsersSeeder --force
+# Sign in as the super admin (AIUL_ADMIN_EMAIL, default admin@example.com). The
+# password is printed once, in the first start's log
+# (`docker compose -f compose.demo.yaml logs app`). Lost it? This prints a new one:
+#   docker compose -f compose.demo.yaml exec app php artisan db:seed --class=SuperAdminSeeder --force
 #
 # Remove it, data and all:  docker compose -f compose.demo.yaml down -v
 name: aiul-demo
@@ -20,7 +20,7 @@ x-app: &app
   build: ./backend
   image: aiul-demo-backend
   environment:
-    APP_ENV: local # DevUsersSeeder refuses anything else; this is a demo
+    APP_ENV: production
     APP_DEBUG: "false"
     APP_URL: http://127.0.0.1:${AIUL_PORT:-8088}
     LOG_CHANNEL: stderr
@@ -35,14 +35,15 @@ x-app: &app
     REDIS_PORT: 6379
     SESSION_DRIVER: redis
     CACHE_STORE: redis
-    QUEUE_CONNECTION: redis
+    QUEUE_CONNECTION: sync # nothing is queued any more
     AWS_ACCESS_KEY_ID: aiul
     AWS_SECRET_ACCESS_KEY: aiul_dev_password
     AWS_DEFAULT_REGION: us-east-1
     AWS_BUCKET: aiul-bodies
     AWS_ENDPOINT: http://minio:9000
     AWS_USE_PATH_STYLE_ENDPOINT: "true"
-    AIUL_SEED_PASSWORD: ${AIUL_SEED_PASSWORD:-}
+    AIUL_ADMIN_EMAIL: ${AIUL_ADMIN_EMAIL:-admin@example.com}
+    AIUL_TENANT: ${AIUL_TENANT:-dev} # "dev": what earlier demo installs were seeded with
   volumes:
     - storage:/app/storage
   restart: unless-stopped
@@ -63,12 +64,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
-
-  worker:
-    <<: *app
-    command: worker
-    depends_on:
-      app: { condition: service_healthy }
 
   postgres:
     image: postgres:16-alpine

@@ -4,7 +4,7 @@
 #
 #   ./scripts/enroll-device.sh                                  # backend on this machine
 #   ./scripts/enroll-device.sh --user admin@example.com         # ...linked to that person
-#   ./scripts/enroll-device.sh --endpoint https://aiul.example.com/api/aiul/events \
+#   ./scripts/enroll-device.sh --endpoint https://genailog.vardaam.site/api/aiul/events \
 #                             --token aiul_xxx                  # backend elsewhere
 #   ./scripts/enroll-device.sh --uninstall
 #
@@ -98,7 +98,7 @@ if [ -z "$TOKEN" ]; then
       say "Provisioning this device with the local backend"
       # The backend runs either in Docker (compose.demo.yaml) or on the host
       # (setup-backend.sh). The Docker one needs no PHP on this Mac.
-      PROVISION=(php artisan aiul:provision-device "$(hostname -s)" --tenant=dev --platform="$(echo "$OS" | tr '[:upper:]' '[:lower:]')")
+      PROVISION=(php artisan aiul:provision-device "$(hostname -s)" --platform="$(echo "$OS" | tr '[:upper:]' '[:lower:]')")
       [ -n "$USER_EMAIL" ] && PROVISION+=(--user="$USER_EMAIL")
       if docker compose -f "$REPO/compose.demo.yaml" ps --status running -q app 2>/dev/null | grep -q .; then
         TOKEN="$(docker compose -f "$REPO/compose.demo.yaml" exec -T app "${PROVISION[@]}" 2>/dev/null \

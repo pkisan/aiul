@@ -90,8 +90,8 @@ else
 fi
 
 # ---- 6. people and assets ---------------------------------------------------
-say "Creating the development logins"
-(cd "$BACKEND" && php artisan db:seed --class=DevUsersSeeder --force)
+say "Creating the super admin"
+(cd "$BACKEND" && AIUL_ADMIN_EMAIL="${AIUL_ADMIN_EMAIL:-admin@example.com}" php artisan db:seed --class=SuperAdminSeeder --force)
 
 say "Building the dashboard"
 (cd "$BACKEND" && npm install --silent && npm run build)
@@ -99,13 +99,12 @@ say "Building the dashboard"
 # ---- 7. what to do next -----------------------------------------------------
 say "Backend ready"
 cat <<NEXT
-  Start it (two terminals, both stay open):
+  Start it (the terminal stays open):
 
     cd backend && php artisan serve --host=127.0.0.1 --port=$PORT
-    cd backend && php artisan queue:work          # scores prompts; without it scores stay blank
 
-  Then open  http://127.0.0.1:$PORT/usage  and sign in as admin@example.com
-  with the password printed above.
+  Then open  http://127.0.0.1:$PORT/usage  and sign in as
+  ${AIUL_ADMIN_EMAIL:-admin@example.com} with the password printed above.
 
   The endpoint the agent posts to is:
 

@@ -5,7 +5,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1                            # backend on this PC
 #   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -User admin@example.com    # ...linked to that person
-#   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -Endpoint https://aiul.example.com/api/aiul/events -Token aiul_xxx
+#   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -Endpoint https://genailog.vardaam.site/api/aiul/events -Token aiul_xxx
 #   powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -Uninstall
 #
 # THIS ONE CHANGES THE MACHINE. It installs two Windows services, trusts a
@@ -77,7 +77,7 @@ if (-not $Token) {
         exit 1
     }
     Say 'Provisioning this device with the local backend'
-    $provision = @('php', 'artisan', 'aiul:provision-device', $env:COMPUTERNAME, '--tenant=dev', '--platform=windows')
+    $provision = @('php', 'artisan', 'aiul:provision-device', $env:COMPUTERNAME, '--platform=windows')
     if ($User) { $provision += "--user=$User" }
     # Windows PowerShell 5.1 turns any stderr line of a redirected native command
     # into an error, which 'Stop' would make fatal; docker prints warnings there.

@@ -33,7 +33,9 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Prompt bodies may live here (AIUL_BODY_DISK=local): never serve
+            // this disk over HTTP, not even through signed URLs.
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],

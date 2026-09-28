@@ -31,8 +31,16 @@ Steps (commit each):
       button, and self-delete removed from Profile: deleting a user cascades
       to consent/audit records. AuthenticateSession added so a password reset
       signs the person out everywhere.
-- [ ] U5 genailog.vardaam.site: .env.production.example, script/doc examples
-- [ ] U6 Plesk: docs/DEPLOY-PLESK.md, queue via scheduler, cleanup
+- [x] U5 genailog.vardaam.site: backend/.env.production.example, enrol
+      script + agent help examples; `--tenant=dev` dropped from scripts (the
+      backend's AIUL_TENANT decides; demo compose defaults it to dev, local
+      .env has AIUL_TENANT=dev to match the existing DB)
+- [x] U6 Plesk: docs/DEPLOY-PLESK.md, scripts/package-plesk.sh (zip from the
+      last commit with vendor/ and public/build/), SecurityHeaders middleware,
+      trusted local proxy, https forced when APP_URL is https, local disk
+      never served. Demo compose: worker service removed, SuperAdminSeeder.
+      NEXT: owner verifies (see end-of-task commands), then decides whether to
+      delete the local dummy users dev@example.com / manager@example.com.
 
 ## PLAN: cross-OS demo — started 2026-09-24
 

@@ -269,7 +269,7 @@ func reportForwarding() {
 		fmt.Println("NOTE: no backend is configured, so events will be captured and kept on this")
 		fmt.Printf("      %s rather than sent anywhere. To forward them, write %s:\n", machine, agentConfigPath)
 		fmt.Println()
-		fmt.Println("        AIUL_ENDPOINT=https://your-backend/api/aiul/events")
+		fmt.Println("        AIUL_ENDPOINT=https://genailog.vardaam.site/api/aiul/events")
 		fmt.Println("        AIUL_DEVICE_TOKEN=aiul_...")
 		fmt.Println()
 		fmt.Println("      then: " + restartWorker)

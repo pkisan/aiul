@@ -119,7 +119,7 @@ powershell -ExecutionPolicy Bypass -File scripts\enroll-device.ps1 -Endpoint htt
 The token comes from whoever runs that backend:
 
 ```
-docker compose -f compose.demo.yaml exec app php artisan aiul:provision-device <name> --tenant=dev --user=<email>
+docker compose -f compose.demo.yaml exec app php artisan aiul:provision-device <name> --user=<email>
 ```
 
 The backend must be reachable from the tester's machine. Over any real network,

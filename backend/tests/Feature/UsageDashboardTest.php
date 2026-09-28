@@ -543,6 +543,7 @@ class UsageDashboardTest extends TestCase
     {
         $this->get('/')->assertRedirect('/login');
         $this->get('/register')->assertNotFound(); // accounts are made by the admin
+        $this->get('/login')->assertHeader('X-Frame-Options', 'DENY')->assertHeader('X-Content-Type-Options', 'nosniff');
         $this->actingAs($this->user())->get('/')->assertRedirect('/my-data');
         $this->actingAs($this->user(User::ROLE_MANAGER))->get('/')->assertRedirect('/usage');
     }

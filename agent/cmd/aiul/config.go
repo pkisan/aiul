@@ -19,7 +19,7 @@ import (
 // The format is deliberately dull: KEY=VALUE, one per line, # for comments.
 //
 //	# /etc/aiul/agent.conf
-//	AIUL_ENDPOINT=https://aiul.example.com/api/aiul/events
+//	AIUL_ENDPOINT=https://genailog.vardaam.site/api/aiul/events
 //	AIUL_DEVICE_TOKEN=aiul_...
 //
 // An MDM writes this file when it deploys the package. It holds a credential, so

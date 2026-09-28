@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // Ends every other session of a person whose password changed, so
             // an admin's "Reset password" really locks a leaver out.
             \Illuminate\Session\Middleware\AuthenticateSession::class,
+            \App\Http\Middleware\SecurityHeaders::class,
         ]);
 
         // Plesk puts nginx in front of Apache on the same host: trust it for
