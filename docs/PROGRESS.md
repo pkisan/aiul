@@ -4,6 +4,20 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-29 (manager Overview done; tenant-leak fix d0be254, see top)
 
+## PLAN: Overview v2, a manager's page — started 2026-09-29
+
+Owner (as the boss of 30): the chart, Needs attention and the patterns
+panel are not useful to a manager. Their screenshot: 106 "secrets", 70 of
+them the person's own email that Claude Code puts in every request; 5
+"silent devices" = one Mac registered 5 times in testing.
+- [ ] V1 remove: daily chart (perBucket), sparklines, How the team works
+      panel (patterns()), device items (admin concern, not manager's).
+- [ ] V2 leaks: a red banner only when a CREDENTIAL was masked (key and token
+      rules; not email/phone/aadhaar/pan/credit-card/password-assignment).
+- [ ] V3 Team first: change vs previous period per person, sortable
+      columns, search. Projects: people on it, share of prompts, change.
+- [ ] V4 tests, build, screenshots.
+
 ## Manager Overview page — 2026-09-29
 
 Owner's boss wants a manager screen readable at one glance. Owner decided:
