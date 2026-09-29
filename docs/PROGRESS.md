@@ -51,8 +51,13 @@ not logged, (c) manual zip install not viable for production, (d) restart.
   /etc/aiul/agent.conf now has AIUL_DEBUG=1 and AIUL_RESEARCH_DUMP: owner
   removes both when done (research files hold real conversations).
 NEXT: owner deploys backend and runs `php artisan aiul:reclassify-prompts` on
-Plesk; build + install the agent (proxy-at-start + cowork parser); tag a
-release. Then find where Cowork answers arrive.
+Plesk; tag a release. Then find where Cowork answers arrive.
+- Installed v0.2.1-4-g0a6190a on the owner's Mac (14:31:45, second attempt).
+  Proxy-at-start fix confirmed live: "drifted; re-applying" 1 s after start,
+  not 30 s. FIRST attempt (14:30:41) failed: neither the helper nor the worker
+  wrote a single log line within 30 s, installer rolled back cleanly. No
+  launchd evidence kept. Intermittent; looks like the old bootout/bootstrap
+  race (bug 6), not the new code. Watch for a repeat.
 
 ## Soft delete (Deleted prompts) — 2026-09-29
 
