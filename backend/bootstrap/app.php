@@ -13,13 +13,19 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Prepended, so it runs BEFORE SubstituteBindings resolves a route model.
-        // Otherwise a row belonging to another tenant is loaded and then refused
-        // by the policy, which answers 403 and so admits the row exists. With the
-        // tenant set first, the global scope means it is simply not found.
-        $middleware->web(prepend: [
+        // The tenant comes from the signed-in user, who is read from the session:
+        // so AFTER StartSession (a prepend ran before it, found no user, set no
+        // tenant, and every tenant's rows showed). And BEFORE SubstituteBindings,
+        // or a row belonging to another tenant is loaded and then refused by the
+        // policy, a 403 that admits the row exists; with the tenant set first,
+        // the global scope means it is simply not found.
+        $middleware->web(append: [
             \App\Http\Middleware\SetTenantFromUser::class,
         ]);
+        $middleware->prependToPriorityList(
+            before: \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            prepend: \App\Http\Middleware\SetTenantFromUser::class,
+        );
 
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
