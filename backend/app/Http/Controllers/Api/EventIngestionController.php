@@ -113,6 +113,8 @@ class EventIngestionController extends Controller
         $existing = AiInteraction::withTrashed()->where('event_id', $event['id'])->first();
 
         if ($existing) {
+            $this->fillAnswer($existing, $event);
+
             return $existing->event_id;
         }
 
@@ -183,6 +185,33 @@ class EventIngestionController extends Controller
         $session->forceFill(['ended_at' => $occurredAt])->save();
 
         return $interaction->event_id;
+    }
+
+    /**
+     * A tool can send one turn twice: Claude desktop cloud sessions give the
+     * prompt the moment it is typed and the answer later, from another stream,
+     * under the same event id. The first copy is kept; a later one may only add
+     * the answer the first lacked. A deleted row stays as it is.
+     */
+    private function fillAnswer(AiInteraction $existing, array $event): void
+    {
+        if ($existing->trashed() || $existing->answer_object || blank($event['answer'] ?? null)) {
+            return;
+        }
+
+        $event = $this->maskDeviceTokens($event);
+        $existing->answer_object = $this->bodies->put(
+            $existing->tenant_id, $existing->event_id, 'answer', $event['answer']
+        );
+        $existing->forceFill([
+            'answer_chars' => mb_strlen($event['answer']),
+            'response_tokens' => $event['response_tokens'] ?? $existing->response_tokens,
+            'prompt_tokens' => $existing->prompt_tokens ?: ($event['prompt_tokens'] ?? 0),
+            'model' => $existing->model ?: ($event['model'] ?? null),
+            'streamed' => (bool) ($event['streamed'] ?? $existing->streamed),
+            // What was masked in either copy.
+            'redacted' => array_values(array_unique(array_merge($existing->redacted ?? [], $event['redacted'] ?? []))) ?: null,
+        ])->save();
     }
 
     /**

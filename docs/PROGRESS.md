@@ -107,6 +107,16 @@ PLAN (in progress):
      each finished turn at once. Whole-stream record at close is skipped.
   3. backend: duplicate event_id with an answer fills an empty answer.
   4. fixture from the 15:22 dump (anonymised), tests, install, verify.
+  DONE 1-3 + fixture (testdata/claude-cowork/events-stream.sse, ids, name,
+  device, timezone replaced). Tests: splitter + turn parse + replay id + POST
+  id match; proxy gzip stream recorded while still open and not again at
+  close (fails without the tap); backend fill-in (fails without it). Agent
+  suite -race green, backend 100/100.
+  Ceilings: a turn records when its result arrives; answers of a turn the
+  stream never carried stay empty (row stays prompt-only). Old prompt-only
+  rows (random ids) are not back-filled.
+  NEXT: owner deploys the backend (fill-in needs it; the live one drops the
+  answer copy as a duplicate), installs the agent, sends a Cowork prompt.
 
 ## Soft delete (Deleted prompts) — 2026-09-29
 

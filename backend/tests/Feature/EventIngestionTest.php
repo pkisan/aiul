@@ -241,6 +241,25 @@ class EventIngestionTest extends TestCase
         $this->assertTrue($stored->automated);
     }
 
+    public function test_a_later_copy_of_the_same_event_fills_in_the_answer(): void
+    {
+        [, $token] = $this->newDevice();
+        $prompt = $this->anEvent(['id' => 'cowork-00000000-0000-4000-8000-000000000003', 'prompt' => 'Hey', 'answer' => null, 'response_tokens' => 0]);
+        $turn = array_merge($prompt, ['answer' => 'Hey Sam!', 'response_tokens' => 4, 'prompt' => 'changed later']);
+
+        $this->withToken($token)->postJson('/api/aiul/events', ['events' => [$prompt]])->assertOk();
+        $this->withToken($token)->postJson('/api/aiul/events', ['events' => [$turn]])->assertOk();
+        $this->withToken($token)->postJson('/api/aiul/events', ['events' => [array_merge($turn, ['answer' => 'a replay'])]])->assertOk();
+
+        $this->assertSame(1, AiInteraction::withoutGlobalScope('tenant')->count());
+        $stored = AiInteraction::withoutGlobalScope('tenant')->first();
+        $bodies = app(BodyStore::class);
+        $this->assertSame('Hey', $bodies->get($stored->prompt_object), 'the first copy keeps its prompt');
+        $this->assertSame('Hey Sam!', $bodies->get($stored->answer_object), 'an answer, once there, is not replaced');
+        $this->assertSame(8, $stored->answer_chars);
+        $this->assertSame(4, $stored->response_tokens);
+    }
+
     public function test_a_batch_sent_twice_does_not_create_duplicates(): void
     {
         [, $token] = $this->newDevice();
