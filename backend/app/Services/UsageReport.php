@@ -206,33 +206,6 @@ class UsageReport
         ])->sortByDesc('prompts')->values()->all();
     }
 
-    /**
-     * How the team works with AI, as four ratios: how much of it is project
-     * work, how much the AI does on its own per request, how long a working
-     * stretch runs, and how many days a person uses it.
-     */
-    public function patterns(): array
-    {
-        $row = AiInteraction::query()
-            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
-            ->selectRaw('count(*) filter (where '.self::HUMAN.') as prompts')
-            ->selectRaw('count(*) filter (where '.self::HUMAN.' and repo is not null) as project_prompts')
-            ->selectRaw("count(*) filter (where kind = 'agent') as agent_steps")
-            ->selectRaw('count(distinct ai_session_id) filter (where '.self::HUMAN.') as sessions')
-            ->selectRaw('count(distinct (user_id, occurred_at::date)) as person_days')
-            ->selectRaw('count(distinct user_id) as people')
-            ->first();
-
-        $ratio = fn ($a, $b) => $b > 0 ? round($a / $b, 1) : null;
-
-        return [
-            'project_share' => $row->prompts > 0 ? (int) round($row->project_prompts / $row->prompts * 100) : null,
-            'steps_per_prompt' => $ratio($row->agent_steps, $row->prompts),
-            'prompts_per_session' => $ratio($row->prompts, $row->sessions),
-            'days_per_person' => $ratio($row->person_days, $row->people),
-        ];
-    }
-
     /** Prompts per tool, for the "which tools" bars. */
     public function perTool(): array
     {
@@ -289,53 +262,26 @@ class UsageReport
     }
 
     /**
-     * Prompts over time, one series per value of $column ('tool' or 'repo'),
-     * for the Overview's chart and trend lines. The bucket grows with the
-     * period so a chart always has a readable number of bars.
-     *
-     * ponytail: buckets are cut in the app timezone (UTC); a per-tenant
-     * timezone if a team's "day" must start at their midnight.
-     *
-     * @return array{unit: string, buckets: list<string>, series: array<string, list<int>>}
+     * Who worked on each project: [repo => [[user_id, name, prompts], ...]],
+     * busiest first. Work outside a checkout is keyed ''.
      */
-    public function perBucket(string $column): array
+    public function peoplePerProject(): array
     {
-        abort_unless(in_array($column, ['tool', 'repo'], true), 500);
-
-        $unit = match (true) {
-            $this->days <= 1 => 'hour',
-            $this->days <= 30 => 'day',
-            $this->days <= 90 => 'week',
-            default => 'month',
-        };
-
-        // Every bucket in the period, empty ones included: a gap is information.
-        $buckets = [];
-        $start = $unit === 'week' ? $this->since()->startOfWeek(Carbon::MONDAY) : $this->since()->startOf($unit);
-        for ($at = $start; $at <= $this->until(); $at = $at->copy()->add(1, $unit)) {
-            $buckets[] = $at->format('Y-m-d H:i:s');
-        }
-        $index = array_flip($buckets);
-
-        $rows = AiInteraction::query()
+        return AiInteraction::query()
             ->humanPrompts()
-            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
-            ->groupBy('bucket', $column)
-            ->selectRaw("date_trunc('{$unit}', occurred_at) as bucket, {$column} as key, count(*) as prompts")
-            ->get();
-
-        $series = [];
-        foreach ($rows as $row) {
-            $at = Carbon::parse($row->bucket)->format('Y-m-d H:i:s');
-            if (! isset($index[$at])) {
-                continue;
-            }
-            $key = $row->key ?? '';
-            $series[$key] ??= array_fill(0, count($buckets), 0);
-            $series[$key][$index[$at]] += (int) $row->prompts;
-        }
-
-        return ['unit' => $unit, 'buckets' => $buckets, 'series' => $series];
+            ->leftJoin('users', 'users.id', '=', 'ai_interactions.user_id')
+            ->tap(fn ($q) => $this->inRange($q, 'ai_interactions.occurred_at'))
+            ->groupBy('ai_interactions.repo', 'ai_interactions.user_id')
+            ->select(['ai_interactions.repo', 'ai_interactions.user_id', DB::raw('max(users.name) as name'), DB::raw('count(*) as prompts')])
+            ->orderByDesc('prompts')
+            ->get()
+            ->groupBy(fn ($row) => $row->repo ?? '')
+            ->map(fn ($rows) => $rows->map(fn ($row) => [
+                'user_id' => $row->user_id,
+                'name' => $row->name ?? 'Unassigned device',
+                'prompts' => (int) $row->prompts,
+            ])->values()->all())
+            ->all();
     }
 
     /** One project's interactions, newest first. */

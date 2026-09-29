@@ -129,26 +129,11 @@ class UsageDashboardTest extends TestCase
                 ->where('days', 7)
                 ->where('summary.prompts', 2)
                 ->where('previous.prompts', 1)
-                ->where('insights.0', 'Prompts up 100% on the previous period.'));
-    }
-
-    // Empty days are bars of zero, not missing bars: a gap is information.
-    public function test_the_activity_chart_has_every_bucket_in_the_period(): void
-    {
-        $this->interaction(['kind' => 'human', 'repo' => '/Users/dev/lms', 'occurred_at' => now()->subDays(2)]);
-        $this->interaction(['kind' => 'agent', 'repo' => '/Users/dev/lms', 'occurred_at' => now()->subDays(2)]); // not a prompt
-
-        $activity = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage?days=30')
-            ->viewData('page')['props']['activity'];
-
-        $this->assertSame('day', $activity['unit']);
-        $this->assertCount(31, $activity['buckets']);
-        $this->assertSame(1, array_sum($activity['series']['/Users/dev/lms']));
-        $this->assertCount(31, $activity['series']['/Users/dev/lms']);
+                ->where('insights.0', 'Team prompts up 100% on the period before.'));
     }
 
     // How people work with AI, not which tool they picked.
-    public function test_the_overview_describes_how_the_team_works(): void
+    public function test_each_person_shows_how_they_work(): void
     {
         $alex = $this->user();
         $first = $this->interaction(['user_id' => $alex->id, 'kind' => 'human', 'repo' => '/Users/dev/lms']);
@@ -158,37 +143,53 @@ class UsageDashboardTest extends TestCase
 
         $props = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')->viewData('page')['props'];
 
-        $this->assertSame(50, $props['patterns']['project_share']);
-        $this->assertEquals(1.0, $props['patterns']['steps_per_prompt']);
-        $this->assertEquals(1.0, $props['patterns']['prompts_per_session']);
-        $this->assertEquals(1.0, $props['patterns']['days_per_person']);
-
         $row = collect($props['team'])->firstWhere('user_id', $alex->id);
         $this->assertSame('lms', $row['main_project']);
         $this->assertSame(1, $row['active_days']);
         $this->assertSame(2, $row['agent_steps']);
     }
 
-    public function test_the_overview_flags_secrets_and_quiet_devices(): void
+    // Only a working credential raises the alarm. Claude Code sends the
+    // person's own email with every request, so masked emails are routine.
+    public function test_only_credentials_raise_an_alarm(): void
     {
-        $alex = $this->user();
-        $this->device->forceFill(['user_id' => $alex->id, 'last_seen_at' => now()->subDays(5)])->save();
-        [, $hash] = Device::issueToken();
-        Device::withoutGlobalScope('tenant')->create([
-            'tenant_id' => $this->tenant->id, 'hostname' => 'spare-mac', 'token_hash' => $hash, 'last_seen_at' => now(),
-        ]);
-        $this->interaction(['redacted' => ['aws-access-key']]);
-        $this->interaction(['redacted' => []]); // nothing masked: not a secret
+        $this->interaction(['redacted' => ['email']]);
+        $this->interaction(['redacted' => ['phone', 'password-assignment']]);
+        $this->interaction(['redacted' => []]);
+        $this->interaction(['redacted' => ['email', 'aws-access-key-id']]);
 
         $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')
             ->assertInertia(fn ($page) => $page
-                ->where('attention.secrets_total', 1)
-                ->where('attention.secrets.0.rules', ['aws-access-key'])
-                ->where('attention.silent.0.hostname', 'mac')
-                ->where('attention.unassigned.0.hostname', 'spare-mac')
-                // Alex has a device but did nothing: still a row on the team.
+                ->where('leaks.total', 1)
+                ->where('leaks.items.0.rules', ['aws-access-key-id']));
+    }
+
+    // Who is not using it is the first thing a manager reads.
+    public function test_the_team_includes_enrolled_people_with_no_activity(): void
+    {
+        $alex = $this->user();
+        $this->device->forceFill(['user_id' => $alex->id, 'last_seen_at' => now()->subDays(5)])->save();
+        $this->interaction(['kind' => 'human']);
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')
+            ->assertInertia(fn ($page) => $page
                 ->where('team', fn ($team) => collect($team)->contains(fn ($p) => $p['user_id'] === $alex->id && $p['prompts'] === 0 && $p['enrolled']))
-                ->where('enrolled', 1));
+                ->where('enrolled', 1)
+                ->where('insights.0', "No AI use this period: {$alex->name}."));
+    }
+
+    // A project lists who worked on it and compares with the period before.
+    public function test_a_project_shows_who_worked_on_it(): void
+    {
+        $alex = $this->user();
+        $this->interaction(['user_id' => $alex->id, 'kind' => 'human', 'repo' => '/Users/dev/lms']);
+        $this->interaction(['user_id' => $alex->id, 'kind' => 'human', 'repo' => '/Users/dev/lms', 'occurred_at' => now()->subDays(10)]);
+
+        $lms = collect($this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')
+            ->viewData('page')['props']['perProject'])->firstWhere('repo', '/Users/dev/lms');
+
+        $this->assertSame([['user_id' => $alex->id, 'name' => $alex->name, 'prompts' => 1]], $lms['contributors']);
+        $this->assertSame(1, $lms['prompts_before']);
     }
 
     public function test_the_overview_shows_only_the_managers_tenant(): void
@@ -196,15 +197,14 @@ class UsageDashboardTest extends TestCase
         $other = Tenant::create(['name' => 'Other', 'slug' => 'other']);
         [, $hash] = Device::issueToken();
         $theirs = Device::withoutGlobalScope('tenant')->create(['tenant_id' => $other->id, 'hostname' => 'their-mac', 'token_hash' => $hash]);
-        $this->interaction(['tenant_id' => $other->id, 'device_id' => $theirs->id, 'kind' => 'human', 'redacted' => ['email']]);
+        $this->interaction(['tenant_id' => $other->id, 'device_id' => $theirs->id, 'kind' => 'human', 'redacted' => ['openai-key']]);
         $this->interaction(['kind' => 'human']);
 
         $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')
             ->assertInertia(fn ($page) => $page
                 ->where('summary.prompts', 1)
-                ->where('attention.secrets_total', 0)
-                ->where('attention.unassigned', fn ($d) => collect($d)->pluck('hostname')->all() === ['mac'])
-                ->has('latest', 1));
+                ->where('leaks.total', 0)
+                ->where('perProject', fn ($rows) => collect($rows)->sum('interactions') === 1));
     }
 
     // The tenant comes from the signed-in user, who is read from the session,

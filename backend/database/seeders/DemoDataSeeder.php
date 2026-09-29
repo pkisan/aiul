@@ -60,7 +60,8 @@ class DemoDataSeeder extends Seeder
         'Tara Joshi' => ['chatgpt-web', 'claude-web', [''], 0, 9],                       // enrolled, did nothing
     ];
 
-    private const SECRETS = [['aws-access-key'], ['github-token'], ['email'], ['aiul-device-token'], ['private-key']];
+    // Mostly routine masks (email, phone) that raise no alarm; a few real credentials.
+    private const SECRETS = [['email'], ['email'], ['email'], ['phone'], ['password-assignment'], ['aws-access-key-id'], ['github-token'], ['openai-key']];
 
     private BodyStore $bodies;
 

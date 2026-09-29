@@ -1,7 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Panel from '@/Components/Usage/Panel.vue';
-import Tag from '@/Components/Usage/Tag.vue';
 import { ago, count, duration, initials, toolName, when } from '@/Components/Usage/format';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
@@ -11,12 +10,9 @@ const props = defineProps({
     summary: Object,
     previous: Object,
     enrolled: Number,
-    attention: Object,
-    activity: Object,
-    patterns: Object,
+    leaks: Object,
     perProject: Array,
     team: Array,
-    latest: Array,
     insights: Array,
     aiTimeDefinition: String,
 });
@@ -34,8 +30,6 @@ const setDays = (days) => router.get(route('usage.index'), days === 7 ? {} : { d
 
 // A link to the Activity list, filtered, for the same period.
 const activityLink = (filters = {}) => route('usage.activity', { days: props.days, ...filters });
-
-// ---- The four numbers, each against the period before ----
 
 // Percent change, or null when there is nothing to compare with.
 const change = (now, before) => (before > 0 ? Math.round(((now - before) / before) * 100) : null);
@@ -57,123 +51,68 @@ const kpis = computed(() => [
     { label: 'Active projects', value: count(props.summary.projects), change: change(props.summary.projects, props.previous.projects) },
 ]);
 
-// ---- Activity chart: prompts per bucket, stacked by project ----
+// ---- Team: the heart of the page ----
 
-// The six busiest projects get their own colour; the rest fold into one
-// "Other projects" series, and work outside any checkout is grey. A colour
-// belongs to its project for the whole page (chart, legend, trend lines).
-const NO_PROJECT = 'General chat (no project)';
-const series = computed(() => {
-    const rows = Object.entries(props.activity.series)
-        .map(([repo, counts]) => ({ repo, counts, total: counts.reduce((a, b) => a + b, 0) }))
-        .sort((a, b) => b.total - a.total);
-    const named = rows.filter((r) => r.repo !== '');
-    const out = named.slice(0, 6).map((r, i) => ({ ...r, name: r.repo.split('/').pop(), color: `var(--series-${i + 1})` }));
-    const rest = named.slice(6);
-    if (rest.length) {
-        const counts = rest[0].counts.map((_, i) => rest.reduce((a, r) => a + r.counts[i], 0));
-        out.push({ repo: null, name: `Other projects (${rest.length})`, counts, total: counts.reduce((a, b) => a + b, 0), color: 'var(--series-7)' });
-    }
-    const none = rows.find((r) => r.repo === '');
-    if (none) out.push({ ...none, name: NO_PROJECT, color: 'var(--series-other)' });
-    return out;
-});
-const projectColor = (repo) => series.value.find((s) => s.repo === (repo ?? ''))?.color ?? 'var(--series-7)';
-
-const columns = computed(() =>
-    props.activity.buckets.map((at, i) => {
-        const parts = series.value.map((s) => ({ name: s.name, color: s.color, n: s.counts[i] })).filter((p) => p.n > 0);
-        return { at, parts, total: parts.reduce((a, p) => a + p.n, 0) };
-    }),
-);
-const maxColumn = computed(() => Math.max(1, ...columns.value.map((c) => c.total)));
-
-// Buckets are cut in UTC on the server. Days, weeks and months are labelled in
-// UTC so a bar never claims the neighbouring date; hours show local clock time.
-const bucketLabel = (at, long = false) => {
-    const d = new Date(at.replace(' ', 'T') + 'Z');
-    const unit = props.activity.unit;
-    if (unit === 'hour') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (unit === 'month') return d.toLocaleDateString([], { month: 'short', year: long ? 'numeric' : undefined, timeZone: 'UTC' });
-    const text = d.toLocaleDateString([], { weekday: unit === 'day' ? 'short' : undefined, day: 'numeric', month: 'short', timeZone: 'UTC' });
-    return unit === 'week' && long ? `Week of ${text}` : text;
+const status = (p) => {
+    if (!p.last_seen) return { label: 'No activity', dot: 'bg-gray-300 dark:bg-gray-600', rank: 3 };
+    const minutes = (Date.now() - new Date(p.last_seen).getTime()) / 60000;
+    if (minutes < 15) return { label: 'Active now', dot: 'bg-emerald-500', rank: 0 };
+    if (minutes < 24 * 60) return { label: 'Today', dot: 'bg-sky-500', rank: 1 };
+    return { label: `Idle ${Math.floor(minutes / 1440)}d`, dot: 'bg-gray-400', rank: 2 };
 };
-// About six labels along the axis, whatever the bar count.
-const labelEvery = computed(() => Math.max(1, Math.ceil(columns.value.length / 6)));
-const hovered = ref(null);
+const stepsPerPrompt = (p) => (p.prompts > 0 ? Math.round((p.agent_steps / p.prompts) * 10) / 10 : null);
 
-// ---- How the team works with AI ----
+const columns = [
+    { key: 'name', label: 'Person', value: (p) => p.name.toLowerCase(), align: 'left' },
+    { key: 'status', label: 'Status', value: (p) => -status(p).rank, align: 'left' },
+    { key: 'prompts', label: 'Prompts', value: (p) => p.prompts },
+    { key: 'change', label: 'Change', value: (p) => change(p.prompts, p.prompts_before) ?? -Infinity, hide: 'hidden sm:table-cell', title: 'Prompts compared with the period before' },
+    { key: 'ai_seconds', label: 'AI time', value: (p) => p.ai_seconds, hide: 'hidden md:table-cell' },
+    { key: 'main_project', label: 'Main project', value: (p) => (p.main_project ?? '').toLowerCase(), align: 'left', hide: 'hidden lg:table-cell' },
+    { key: 'active_days', label: 'Active days', value: (p) => p.active_days, hide: 'hidden lg:table-cell', title: 'Days with any AI use in this period' },
+    { key: 'steps', label: 'AI steps / prompt', value: (p) => stepsPerPrompt(p) ?? -1, hide: 'hidden xl:table-cell', title: 'Actions the AI took on its own for each request: higher means more work handed over' },
+    { key: 'last_seen', label: 'Last seen', value: (p) => (p.last_seen ? new Date(p.last_seen).getTime() : 0), hide: 'hidden sm:table-cell' },
+];
 
-const ways = computed(() => [
-    {
-        label: 'Project work',
-        value: props.patterns.project_share === null ? '—' : `${props.patterns.project_share}%`,
-        hint: 'of prompts were made inside a project, the rest is general chat',
-        bar: props.patterns.project_share,
-    },
-    {
-        label: 'AI steps per prompt',
-        value: props.patterns.steps_per_prompt ?? '—',
-        hint: 'actions the AI took on its own for each request: higher means more work handed over',
-    },
-    {
-        label: 'Prompts per session',
-        value: props.patterns.prompts_per_session ?? '—',
-        hint: 'requests in one working stretch: how long people stay with a problem',
-    },
-    {
-        label: 'Active days per person',
-        value: props.patterns.days_per_person ?? '—',
-        hint: `days with any AI use, of the ${props.days === 1 ? 'last day' : `last ${props.days}`}`,
-    },
-]);
+const search = ref('');
+const sortKey = ref('prompts');
+const sortDesc = ref(true);
+const sortBy = (key) => {
+    sortDesc.value = sortKey.value === key ? !sortDesc.value : key !== 'name';
+    sortKey.value = key;
+};
+const people = computed(() => {
+    const q = search.value.trim().toLowerCase();
+    const col = columns.find((c) => c.key === sortKey.value);
+    return props.team
+        .filter((p) => !q || p.name.toLowerCase().includes(q) || (p.main_project ?? '').toLowerCase().includes(q))
+        .sort((a, b) => {
+            const [x, y] = [col.value(a), col.value(b)];
+            return (x < y ? -1 : x > y ? 1 : 0) * (sortDesc.value ? -1 : 1);
+        });
+});
 
-// ---- Projects, with a trend line each ----
+// ---- Projects: what the AI work went into, and who did it ----
 
 const projects = computed(() => {
-    const named = props.perProject.filter((p) => p.repo).sort((a, b) => b.prompts - a.prompts || b.interactions - a.interactions).slice(0, 8);
+    const named = props.perProject.filter((p) => p.repo).sort((a, b) => b.prompts - a.prompts || b.interactions - a.interactions);
     // Work outside a checkout is real work, shown last rather than ranked.
     const outside = props.perProject.find((p) => !p.repo);
     return outside ? [...named, outside] : named;
 });
-
-const sparkline = (repo) => {
-    const counts = props.activity.series[repo ?? ''] ?? [];
-    if (counts.length < 2) return '';
-    const max = Math.max(1, ...counts);
-    return counts.map((n, i) => `${(i / (counts.length - 1)) * 80},${22 - (n / max) * 20}`).join(' ');
-};
-
-// ---- Team ----
-
-const status = (p) => {
-    if (!p.last_seen) return { label: 'No activity', dot: 'bg-gray-300 dark:bg-gray-600' };
-    const minutes = (Date.now() - new Date(p.last_seen).getTime()) / 60000;
-    if (minutes < 15) return { label: 'Active now', dot: 'bg-emerald-500' };
-    if (minutes < 24 * 60) return { label: 'Today', dot: 'bg-sky-500' };
-    return { label: `Idle ${Math.floor(minutes / 1440)}d`, dot: 'bg-gray-400' };
-};
-
-// ---- Needs attention ----
-
-const attentionCount = computed(
-    () => props.attention.secrets_total + props.attention.silent.length + props.attention.unassigned.length,
-);
-const ruleName = (rule) => rule.replace(/[-_]/g, ' ');
-
-const stepsPerPrompt = (p) => (p.prompts > 0 ? Math.round((p.agent_steps / p.prompts) * 10) / 10 : '—');
+const share = (p) => (props.summary.prompts > 0 ? Math.round((p.prompts / props.summary.prompts) * 100) : 0);
 </script>
 
 <template>
-    <Head title="Overview" />
+    <Head title="AI adoption" />
 
     <AuthenticatedLayout>
         <div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
             <!-- Title and period -->
             <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                    <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Overview</h1>
-                    <p class="mt-1 text-sm text-gray-500">AI use across the team, {{ periodName }}, compared with the period before.</p>
+                    <h1 class="text-2xl font-semibold tracking-tight text-gray-900">AI adoption</h1>
+                    <p class="mt-1 text-sm text-gray-500">Who uses AI, on which projects, {{ periodName }}, against the period before.</p>
                 </div>
                 <div class="inline-flex self-start overflow-x-auto rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm" role="group" aria-label="Period">
                     <button
@@ -187,6 +126,23 @@ const stepsPerPrompt = (p) => (p.prompts > 0 ? Math.round((p.agent_steps / p.pro
                     >{{ p.label }}</button>
                 </div>
             </div>
+
+            <!-- The one alarm: only when a working credential reached an AI tool -->
+            <section v-if="leaks.total" class="rounded-xl border border-red-200 bg-red-50 px-5 py-4 dark:border-red-500/30 dark:bg-red-500/10" role="alert">
+                <h2 class="flex items-center gap-2 text-sm font-semibold text-red-800 dark:text-red-300">
+                    <span class="flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[11px] font-bold text-white" aria-hidden="true">!</span>
+                    {{ leaks.total }} credential{{ leaks.total === 1 ? '' : 's' }} pasted into AI tools — rotate {{ leaks.total === 1 ? 'it' : 'them' }}
+                </h2>
+                <p class="mt-1 text-xs text-red-700/80 dark:text-red-300/80">Masked before storage, but the AI provider received the prompt as it was sent.</p>
+                <ul class="mt-2 flex flex-wrap gap-2">
+                    <li v-for="l in leaks.items" :key="l.id">
+                        <Link :href="route('usage.show', l.id)" class="inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1 text-xs text-gray-700 ring-1 ring-red-200 hover:ring-red-400 dark:ring-red-500/30">
+                            <span class="font-medium text-gray-900">{{ l.person }}</span>
+                            {{ l.rules.join(', ').replace(/-/g, ' ') }} · {{ ago(l.occurred_at) }}
+                        </Link>
+                    </li>
+                </ul>
+            </section>
 
             <!-- The four numbers -->
             <div class="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-5">
@@ -208,219 +164,62 @@ const stepsPerPrompt = (p) => (p.prompts > 0 ? Math.round((p.agent_steps / p.pro
             </div>
 
             <!-- Plain-sentence insights -->
-            <ul v-if="insights.length" class="flex flex-col gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-5 py-3.5 text-sm text-gray-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 sm:flex-row sm:flex-wrap sm:gap-x-6">
+            <ul v-if="insights.length" class="flex flex-col gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-5 py-3.5 text-sm text-gray-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 lg:flex-row lg:flex-wrap lg:gap-x-6">
                 <li v-for="(i, n) in insights" :key="n" class="flex gap-2">
                     <span class="text-indigo-500" aria-hidden="true">●</span>{{ i }}
                 </li>
             </ul>
 
-            <div class="grid items-start gap-6 lg:grid-cols-3">
-                <!-- Activity over time -->
-                <Panel title="AI work by project" :subtitle="`Prompts per ${activity.unit}, stacked by project`" class="lg:col-span-2">
-                    <template #actions>
-                        <Link :href="activityLink()" class="text-indigo-600 hover:underline dark:text-indigo-400">View activity →</Link>
-                    </template>
-                    <div class="px-5 pb-4 pt-3">
-                        <!-- Legend, always present: identity is never colour alone -->
-                        <ul v-if="series.length" class="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
-                            <li v-for="s in series" :key="s.name" class="flex items-center gap-1.5">
-                                <span class="h-2.5 w-2.5 rounded-sm" :style="{ background: s.color }" aria-hidden="true" />{{ s.name }}
-                            </li>
-                        </ul>
-
-                        <div v-if="!series.length" class="flex h-72 items-center justify-center text-sm text-gray-500">No prompts in this period.</div>
-                        <div v-else class="relative">
-                            <div class="pointer-events-none absolute inset-x-0 top-0 flex h-72 flex-col justify-between" aria-hidden="true">
-                                <div v-for="g in 3" :key="g" class="border-t border-dashed border-gray-100" />
-                                <div class="border-t border-gray-200" />
-                            </div>
-                            <span class="absolute -top-1 right-0 text-[11px] tabular-nums text-gray-400">{{ count(maxColumn) }}</span>
-
-                            <div class="relative flex h-72 items-end gap-[2px]" @mouseleave="hovered = null">
-                                <div
-                                    v-for="(c, i) in columns"
-                                    :key="c.at"
-                                    class="group relative flex h-full min-w-0 flex-1 flex-col justify-end"
-                                    :aria-label="`${bucketLabel(c.at, true)}: ${c.total} prompts`"
-                                    role="img"
-                                    @mouseenter="hovered = i"
-                                >
-                                    <!-- Stack, biggest tool at the bottom, 2px surface gap between parts -->
-                                    <div
-                                        class="flex flex-col-reverse gap-[2px] overflow-hidden rounded-t transition-opacity"
-                                        :class="hovered !== null && hovered !== i ? 'opacity-60' : ''"
-                                        :style="{ height: (c.total / maxColumn) * 100 + '%' }"
-                                    >
-                                        <div v-for="p in c.parts" :key="p.name" :style="{ background: p.color, flexGrow: p.n }" class="min-h-[2px]" />
-                                    </div>
-
-                                    <!-- Tooltip -->
-                                    <div
-                                        v-if="hovered === i"
-                                        class="pointer-events-none absolute bottom-full z-10 mb-2 w-44 rounded-lg border border-gray-200 bg-white p-2.5 text-xs shadow-lg"
-                                        :class="i > columns.length / 2 ? 'right-0' : 'left-0'"
-                                    >
-                                        <div class="font-medium text-gray-900">{{ bucketLabel(c.at, true) }}</div>
-                                        <div class="mb-1 text-gray-500">{{ count(c.total) }} prompts</div>
-                                        <div v-for="p in [...c.parts].reverse()" :key="p.name" class="flex items-center gap-1.5 text-gray-700">
-                                            <span class="h-2 w-2 rounded-sm" :style="{ background: p.color }" />
-                                            <span class="flex-1 truncate">{{ p.name }}</span>
-                                            <span class="tabular-nums">{{ p.n }}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="mt-1.5 flex gap-[2px] text-[11px] text-gray-400">
-                                <div v-for="(c, i) in columns" :key="c.at" class="min-w-0 flex-1 overflow-visible whitespace-nowrap">
-                                    <span v-if="i % labelEvery === 0">{{ bucketLabel(c.at) }}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </Panel>
-
-                <!-- What to act on -->
-                <Panel title="Needs attention" :subtitle="attentionCount ? `${attentionCount} item${attentionCount === 1 ? '' : 's'}` : 'All clear'">
-                    <div v-if="!attentionCount" class="flex flex-col items-center gap-2 px-5 py-10 text-center">
-                        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" aria-hidden="true">✓</span>
-                        <p class="text-sm text-gray-600">No secrets caught, every device reporting.</p>
-                    </div>
-
-                    <div v-else class="divide-y divide-gray-100">
-                        <section v-if="attention.secrets_total" class="px-5 py-3.5">
-                            <h4 class="flex items-center gap-2 text-sm font-medium text-gray-900">
-                                <span class="flex h-5 w-5 items-center justify-center rounded-full bg-red-100 text-[11px] font-bold text-red-700 dark:bg-red-500/20 dark:text-red-300" aria-hidden="true">!</span>
-                                {{ attention.secrets_total }} secret{{ attention.secrets_total === 1 ? '' : 's' }} caught in prompts
-                            </h4>
-                            <p class="mt-0.5 text-xs text-gray-500">Masked before storage. The key may still need rotating.</p>
-                            <ul class="mt-2 space-y-1">
-                                <li v-for="s in attention.secrets" :key="s.id">
-                                    <Link :href="route('usage.show', s.id)" class="flex items-baseline justify-between gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-gray-50">
-                                        <span class="min-w-0 truncate text-gray-700">
-                                            {{ s.person }} <span class="text-gray-400">· {{ (s.rules ?? []).map(ruleName).join(', ') }}</span>
-                                        </span>
-                                        <span class="shrink-0 text-xs text-gray-400" :title="when(s.occurred_at)">{{ ago(s.occurred_at) }}</span>
-                                    </Link>
-                                </li>
-                            </ul>
-                        </section>
-
-                        <section v-if="attention.silent.length" class="px-5 py-3.5">
-                            <h4 class="flex items-center gap-2 text-sm font-medium text-gray-900">
-                                <span class="flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-[11px] font-bold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300" aria-hidden="true">!</span>
-                                {{ attention.silent.length }} device{{ attention.silent.length === 1 ? '' : 's' }} silent for 3+ days
-                            </h4>
-                            <p class="mt-0.5 text-xs text-gray-500">Nothing captured: the agent may be off, or no AI was used.</p>
-                            <ul class="mt-2 space-y-1 text-sm">
-                                <li v-for="d in attention.silent.slice(0, 5)" :key="d.id" class="flex items-baseline justify-between gap-2 px-1.5">
-                                    <span class="min-w-0 truncate text-gray-700">{{ d.person ?? 'No one' }} <span class="text-gray-400">· {{ d.hostname }}</span></span>
-                                    <span class="shrink-0 text-xs text-gray-400">{{ d.last_seen_at ? ago(d.last_seen_at) : 'never' }}</span>
-                                </li>
-                            </ul>
-                        </section>
-
-                        <section v-if="attention.unassigned.length" class="px-5 py-3.5">
-                            <h4 class="flex items-center gap-2 text-sm font-medium text-gray-900">
-                                <span class="flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-[11px] font-bold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300" aria-hidden="true">!</span>
-                                {{ attention.unassigned.length }} device{{ attention.unassigned.length === 1 ? '' : 's' }} not linked to a person
-                            </h4>
-                            <p class="mt-0.5 text-xs text-gray-500">Its work shows as "Unassigned device". Link it on the People page.</p>
-                            <ul class="mt-2 space-y-1 text-sm">
-                                <li v-for="d in attention.unassigned.slice(0, 5)" :key="d.id" class="px-1.5 text-gray-700">{{ d.hostname }}</li>
-                            </ul>
-                        </section>
-                    </div>
-                </Panel>
-            </div>
-
-            <div class="grid items-start gap-6 lg:grid-cols-3">
-                <!-- Projects -->
-                <Panel title="Projects" subtitle="The repository the work happened in" class="lg:col-span-2">
-                    <div v-if="!projects.length" class="px-5 py-10 text-center text-sm text-gray-500">No project work in this period.</div>
-                    <table v-else class="w-full text-sm">
-                        <thead>
-                            <tr class="border-b border-gray-100 text-left text-xs font-medium text-gray-500">
-                                <th class="px-5 py-2.5 font-medium">Project</th>
-                                <th class="hidden px-3 py-2.5 text-right font-medium sm:table-cell">People</th>
-                                <th class="px-3 py-2.5 text-right font-medium">Prompts</th>
-                                <th class="hidden px-3 py-2.5 text-right font-medium md:table-cell">AI time</th>
-                                <th class="hidden px-3 py-2.5 font-medium sm:table-cell">Trend</th>
-                                <th class="px-5 py-2.5 text-right font-medium">Last active</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            <tr
-                                v-for="p in projects"
-                                :key="p.repo ?? '-'"
-                                class="cursor-pointer transition hover:bg-gray-50"
-                                @click="router.visit(activityLink({ project: p.repo ?? '-' }))"
-                            >
-                                <td class="max-w-[9rem] px-5 py-2.5 sm:max-w-[16rem]">
-                                    <Link
-                                        :href="activityLink({ project: p.repo ?? '-' })"
-                                        class="block truncate"
-                                        :class="p.repo ? 'font-medium text-gray-900' : 'italic text-gray-500'"
-                                        :title="p.repo ?? 'Browser chats and tools run outside a repository'"
-                                        @click.stop
-                                    >{{ p.name ?? 'General chat (no project)' }}</Link>
-                                </td>
-                                <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 sm:table-cell">{{ p.people }}</td>
-                                <td class="px-3 py-2.5 text-right tabular-nums text-gray-900">{{ count(p.prompts) }}</td>
-                                <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 md:table-cell">{{ duration(p.ai_seconds) }}</td>
-                                <td class="hidden px-3 py-2.5 sm:table-cell">
-                                    <svg v-if="sparkline(p.repo)" viewBox="0 0 80 24" class="h-6 w-20" aria-hidden="true">
-                                        <polyline :points="sparkline(p.repo)" fill="none" :stroke="projectColor(p.repo)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
-                                    </svg>
-                                </td>
-                                <td class="whitespace-nowrap px-5 py-2.5 text-right text-xs text-gray-500" :title="when(p.last_seen)">{{ ago(p.last_seen) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </Panel>
-
-                <!-- How people use it -->
-                <Panel title="How the team works with AI" :subtitle="periodName">
-                    <dl class="divide-y divide-gray-100">
-                        <div v-for="w in ways" :key="w.label" class="px-5 py-3.5">
-                            <div class="flex items-baseline justify-between gap-3">
-                                <dt class="text-sm text-gray-700">{{ w.label }}</dt>
-                                <dd class="text-lg font-semibold tabular-nums text-gray-900">{{ w.value }}</dd>
-                            </div>
-                            <div v-if="w.bar != null" class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100">
-                                <div class="h-full rounded-full" :style="{ width: w.bar + '%', background: 'var(--series-1)' }" />
-                            </div>
-                            <p class="mt-1 text-xs text-gray-500">{{ w.hint }}</p>
-                        </div>
-                    </dl>
-                </Panel>
-            </div>
-
             <!-- Team -->
-            <Panel title="Team" :subtitle="`${summary.people} of ${enrolled || team.length} active in this period`">
+            <Panel title="Team" :subtitle="`${summary.people} of ${enrolled || team.length} people used AI in this period`">
+                <template #actions>
+                    <div class="flex items-center gap-3">
+                        <input
+                            v-model="search"
+                            type="search"
+                            placeholder="Find a person or project"
+                            aria-label="Find a person or project"
+                            class="hidden w-56 rounded-lg px-3 py-1.5 text-sm sm:block"
+                        />
+                        <Link :href="activityLink()" class="whitespace-nowrap text-indigo-600 hover:underline dark:text-indigo-400">All activity →</Link>
+                    </div>
+                </template>
+                <input
+                    v-model="search"
+                    type="search"
+                    placeholder="Find a person or project"
+                    aria-label="Find a person or project"
+                    class="mx-5 mt-3 block w-[calc(100%-2.5rem)] rounded-lg px-3 py-1.5 text-sm sm:hidden"
+                />
+
                 <div v-if="!team.length" class="px-5 py-10 text-center text-sm text-gray-500">No one yet. Add people and pair their devices.</div>
                 <table v-else class="w-full text-sm">
                     <thead>
-                        <tr class="border-b border-gray-100 text-left text-xs text-gray-500">
-                            <th class="px-5 py-2.5 font-medium">Person</th>
-                            <th class="px-3 py-2.5 font-medium">Status</th>
-                            <th class="px-3 py-2.5 text-right font-medium">Prompts</th>
-                            <th class="hidden px-3 py-2.5 text-right font-medium sm:table-cell">AI time</th>
-                            <th class="hidden px-3 py-2.5 font-medium md:table-cell">Main project</th>
-                            <th class="hidden px-3 py-2.5 text-right font-medium lg:table-cell" title="Days with any AI use in this period">Active days</th>
-                            <th class="hidden px-3 py-2.5 text-right font-medium lg:table-cell" title="Actions the AI took on its own per request">AI steps / prompt</th>
-                            <th class="hidden px-5 py-2.5 text-right font-medium sm:table-cell">Last seen</th>
+                        <tr class="border-b border-gray-100 text-xs text-gray-500">
+                            <th
+                                v-for="c in columns"
+                                :key="c.key"
+                                class="px-3 py-2.5 font-medium first:pl-5 last:pr-5"
+                                :class="[c.hide, c.align === 'left' ? 'text-left' : 'text-right']"
+                                :title="c.title"
+                                :aria-sort="sortKey === c.key ? (sortDesc ? 'descending' : 'ascending') : 'none'"
+                            >
+                                <button type="button" class="inline-flex items-center gap-1 hover:text-gray-900" @click="sortBy(c.key)">
+                                    {{ c.label }}
+                                    <span class="w-2 text-[10px]" aria-hidden="true">{{ sortKey === c.key ? (sortDesc ? '▼' : '▲') : '' }}</span>
+                                </button>
+                            </th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
                         <tr
-                            v-for="p in team"
+                            v-for="p in people"
                             :key="p.user_id ?? 'none'"
                             class="transition"
                             :class="p.user_id ? 'cursor-pointer hover:bg-gray-50' : ''"
                             @click="p.user_id && router.visit(activityLink({ person: p.user_id }))"
                         >
-                            <td class="max-w-[9rem] px-5 py-2.5 sm:max-w-[16rem]">
+                            <td class="max-w-[10rem] py-2.5 pl-5 pr-3 sm:max-w-[16rem]">
                                 <div class="flex items-center gap-2.5">
                                     <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300" aria-hidden="true">{{ initials(p.name) }}</span>
                                     <Link v-if="p.user_id" :href="activityLink({ person: p.user_id })" class="truncate font-medium text-gray-900" @click.stop>{{ p.name }}</Link>
@@ -432,41 +231,75 @@ const stepsPerPrompt = (p) => (p.prompts > 0 ? Math.round((p.agent_steps / p.pro
                                     <span class="h-2 w-2 rounded-full" :class="status(p).dot" aria-hidden="true" />{{ status(p).label }}
                                 </span>
                             </td>
-                            <td class="px-3 py-2.5 text-right tabular-nums text-gray-900">{{ count(p.prompts) }}</td>
-                            <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 sm:table-cell">{{ duration(p.ai_seconds) }}</td>
-                            <td class="hidden max-w-0 px-3 py-2.5 md:table-cell">
+                            <td class="px-3 py-2.5 text-right font-medium tabular-nums text-gray-900">{{ count(p.prompts) }}</td>
+                            <td class="hidden whitespace-nowrap px-3 py-2.5 text-right tabular-nums sm:table-cell">
+                                <span v-if="change(p.prompts, p.prompts_before) === null" class="text-xs text-gray-400">{{ p.prompts ? 'new' : '—' }}</span>
+                                <span v-else-if="change(p.prompts, p.prompts_before) === 0" class="text-xs text-gray-400">same</span>
+                                <span v-else class="text-xs font-medium" :class="change(p.prompts, p.prompts_before) > 0 ? 'text-gray-700' : 'text-amber-700 dark:text-amber-400'">
+                                    {{ change(p.prompts, p.prompts_before) > 0 ? '▲' : '▼' }} {{ Math.abs(change(p.prompts, p.prompts_before)) }}%
+                                </span>
+                            </td>
+                            <td class="hidden whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-gray-600 md:table-cell">{{ duration(p.ai_seconds) }}</td>
+                            <td class="hidden max-w-[12rem] px-3 py-2.5 lg:table-cell">
                                 <span class="block truncate" :class="p.main_project ? 'text-gray-700' : 'text-gray-400'" :title="p.main_tool ? `Mostly ${toolName(p.main_tool)}` : null">{{ p.main_project ?? (p.prompts ? 'General chat' : '—') }}</span>
                             </td>
                             <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 lg:table-cell">{{ p.active_days || '—' }}</td>
-                            <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 lg:table-cell">{{ stepsPerPrompt(p) }}</td>
-                            <td class="hidden whitespace-nowrap px-5 py-2.5 text-right text-xs text-gray-500 sm:table-cell" :title="when(p.last_seen)">{{ ago(p.last_seen) }}</td>
+                            <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 xl:table-cell">{{ stepsPerPrompt(p) ?? '—' }}</td>
+                            <td class="hidden whitespace-nowrap py-2.5 pl-3 pr-5 text-right text-xs text-gray-500 sm:table-cell" :title="when(p.last_seen)">{{ p.last_seen ? ago(p.last_seen) : '—' }}</td>
+                        </tr>
+                        <tr v-if="!people.length">
+                            <td :colspan="columns.length" class="px-5 py-8 text-center text-sm text-gray-500">No one matches “{{ search }}”.</td>
                         </tr>
                     </tbody>
                 </table>
             </Panel>
 
-            <!-- Latest prompts -->
-            <Panel title="Latest prompts">
-                <template #actions>
-                    <Link :href="activityLink()" class="text-indigo-600 hover:underline dark:text-indigo-400">View all activity →</Link>
-                </template>
-                <ul class="divide-y divide-gray-100">
-                    <li v-for="p in latest" :key="p.id">
-                        <Link :href="route('usage.session', p.session_id) + '#i-' + p.id" class="flex gap-3 px-5 py-3 transition hover:bg-gray-50">
-                            <div class="min-w-0 flex-1">
-                                <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                                    <span class="font-medium text-gray-900">{{ p.person ?? 'Unassigned device' }}</span>
-                                    <Tag :label="toolName(p.tool)" tone="blue" />
-                                    <span v-if="p.project" class="truncate text-gray-500">{{ p.project }}</span>
-                                    <span class="ml-auto shrink-0 text-xs text-gray-400" :title="when(p.occurred_at)">{{ ago(p.occurred_at) }}</span>
+            <!-- Projects -->
+            <Panel title="Projects" subtitle="What the AI work went into, and who did it">
+                <div v-if="!projects.length" class="px-5 py-10 text-center text-sm text-gray-500">No AI work in this period.</div>
+                <ul v-else class="divide-y divide-gray-100">
+                    <li v-for="p in projects" :key="p.repo ?? '-'">
+                        <Link
+                            :href="activityLink({ project: p.repo ?? '-' })"
+                            class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-5 py-3 transition hover:bg-gray-50 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_9rem_5rem]"
+                            :title="p.repo ?? 'Browser chats and tools run outside a repository'"
+                        >
+                            <span class="truncate text-sm" :class="p.repo ? 'font-medium text-gray-900' : 'italic text-gray-500'">{{ p.name ?? 'General chat (no project)' }}</span>
+
+                            <!-- Share of the team's prompts -->
+                            <div class="order-last col-span-2 flex items-center gap-2 sm:order-none sm:col-span-1">
+                                <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                                    <div class="h-full rounded-full bg-indigo-500" :style="{ width: share(p) + '%' }" />
                                 </div>
-                                <p v-if="p.preview" class="mt-1 line-clamp-1 text-sm text-gray-600">{{ p.preview }}</p>
+                                <span class="w-9 text-right text-xs tabular-nums text-gray-500">{{ share(p) }}%</span>
+                            </div>
+
+                            <!-- Who worked on it -->
+                            <div class="flex items-center justify-end gap-1" :title="p.contributors.map((c) => `${c.name} (${c.prompts})`).join(', ')">
+                                <span
+                                    v-for="c in p.contributors.slice(0, 4)"
+                                    :key="c.user_id ?? 'none'"
+                                    class="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300"
+                                >{{ initials(c.name) }}</span>
+                                <span v-if="p.contributors.length > 4" class="flex h-6 items-center rounded-full bg-gray-100 px-1.5 text-[10px] font-medium text-gray-600">+{{ p.contributors.length - 4 }}</span>
+                            </div>
+
+                            <div class="hidden text-right sm:block">
+                                <div class="text-sm tabular-nums text-gray-900">{{ count(p.prompts) }}</div>
+                                <div class="text-[11px] text-gray-500">
+                                    <template v-if="change(p.prompts, p.prompts_before) === null">new</template>
+                                    <template v-else>{{ change(p.prompts, p.prompts_before) >= 0 ? '▲' : '▼' }} {{ Math.abs(change(p.prompts, p.prompts_before)) }}%</template>
+                                </div>
                             </div>
                         </Link>
                     </li>
-                    <li v-if="!latest.length" class="px-5 py-8 text-center text-sm text-gray-500">No prompts in this period.</li>
                 </ul>
             </Panel>
+
+            <p class="px-1 text-xs leading-relaxed text-gray-500">
+                These numbers show how much AI is used, not how well anyone works: more prompts is not better work.
+                <strong class="font-medium text-gray-700">AI time</strong> — {{ aiTimeDefinition }}
+            </p>
         </div>
     </AuthenticatedLayout>
 </template>

@@ -35,12 +35,19 @@ class UsageDashboardController extends Controller
         $days = in_array($days, self::PERIODS, true) ? $days : 7;
         $now = new UsageReport(days: $days);
         $before = new UsageReport(days: $days, offsetDays: $days);
-        $canViewRaw = $request->user()->canViewRawPrompts();
-
         $summary = $now->summary();
         $previous = $before->summary();
-        $perProject = $now->perProject();
-        $team = $this->team($now->perPerson());
+        // Each row carries the period before, so a manager sees who changed.
+        $projectsBefore = collect($before->perProject())->keyBy(fn ($p) => $p['repo'] ?? '');
+        $people = $now->peoplePerProject();
+        $perProject = collect($now->perProject())->map(fn ($p) => $p + [
+            'prompts_before' => $projectsBefore[$p['repo'] ?? '']['prompts'] ?? 0,
+            'contributors' => $people[$p['repo'] ?? ''] ?? [],
+        ])->all();
+        $personBefore = collect($before->perPerson())->pluck('prompts', 'user_id');
+        $team = collect($this->team($now->perPerson()))
+            ->map(fn ($p) => $p + ['prompts_before' => (int) ($personBefore[$p['user_id']] ?? 0)])
+            ->all();
         $enrolled = collect($team)->whereNotNull('user_id')->where('enrolled', true)->count();
 
         return Inertia::render('Usage/Overview', [
@@ -48,14 +55,10 @@ class UsageDashboardController extends Controller
             'summary' => $summary,
             'previous' => $previous,
             'enrolled' => $enrolled,
-            'attention' => $this->attention($days),
-            // The chart stacks by project: what the AI work went into.
-            'activity' => $now->perBucket('repo'),
-            'patterns' => $now->patterns(),
+            'leaks' => $this->leaks($days),
             'perProject' => $perProject,
             'team' => $team,
-            'latest' => $this->withPreviews($now->prompts(5), $canViewRaw)->items(),
-            'insights' => $this->insights($summary, $previous, $perProject, $before->perProject(), $team),
+            'insights' => $this->insights($summary, $previous, $perProject, $team),
             'aiTimeDefinition' => $this->aiTimeDefinition(),
         ]);
     }
@@ -85,42 +88,38 @@ class UsageDashboardController extends Controller
             ->sortByDesc('prompts')->values()->all();
     }
 
-    /** Things a manager should act on. Empty lists mean all clear. */
-    private function attention(int $days): array
+    /**
+     * Redaction rules that mean a working credential was pasted into an AI
+     * tool: a key or token someone should rotate. Personal data (email,
+     * phone, ID and card numbers) and `password = ...` lines in code are
+     * masked too, but are routine — Claude Code sends the person's own email
+     * with every request — so they never raise an alarm.
+     */
+    public const CREDENTIAL_RULES = [
+        'anthropic-key', 'openai-key', 'google-api-key', 'aws-access-key-id', 'aws-secret-key',
+        'github-token', 'slack-token', 'stripe-key', 'bearer-token', 'jwt',
+        'private-key-block', 'connection-string-password', 'aiul-device-token',
+    ];
+
+    /** Credentials caught in prompts this period: the one alert a manager gets. */
+    private function leaks(int $days): array
     {
-        // Prompts where redaction masked something: a person pasted a secret
-        // or personal data into an AI tool. The mask names the rule, never the value.
-        $secrets = AiInteraction::query()
+        $rules = "array['".implode("','", self::CREDENTIAL_RULES)."']";
+        $query = AiInteraction::query()
             ->where('occurred_at', '>=', now()->subDays($days))
             ->whereNotNull('redacted')
-            ->whereRaw("redacted <> '[]'::jsonb")
+            ->whereRaw("jsonb_exists_any(redacted, {$rules})")
             ->with('user:id,name')
             ->latest('occurred_at');
 
-        // ponytail: the agent sends no heartbeat, so "silent" means nothing was
-        // captured — the agent is off OR the person used no AI. Add a heartbeat
-        // event to tell the two apart.
-        $silentAfter = now()->subDays(3);
-        $devices = Device::where('revoked', false)->with('user:id,name')->get();
-
         return [
-            'secrets_total' => (clone $secrets)->count(),
-            'secrets' => $secrets->limit(5)->get()->map(fn ($i) => [
+            'total' => (clone $query)->count(),
+            'items' => $query->limit(5)->get()->map(fn ($i) => [
                 'id' => $i->id,
                 'person' => $i->user?->name ?? 'Unassigned device',
-                'tool' => $i->tool,
-                'rules' => $i->redacted,
+                'rules' => array_values(array_intersect($i->redacted, self::CREDENTIAL_RULES)),
                 'occurred_at' => $i->occurred_at,
             ]),
-            'silent' => $devices
-                ->filter(fn ($d) => $d->last_seen_at === null || $d->last_seen_at < $silentAfter)
-                ->map(fn ($d) => [
-                    'id' => $d->id, 'hostname' => $d->hostname,
-                    'person' => $d->user?->name, 'last_seen_at' => $d->last_seen_at,
-                ])->values(),
-            'unassigned' => $devices->whereNull('user_id')
-                ->map(fn ($d) => ['id' => $d->id, 'hostname' => $d->hostname, 'last_seen_at' => $d->last_seen_at])
-                ->values(),
         ];
     }
 
@@ -128,37 +127,35 @@ class UsageDashboardController extends Controller
      * Two or three plain sentences a manager would otherwise have to work out
      * from the numbers. Rules, not a model: no prompt data leaves the server.
      */
-    private function insights(array $now, array $before, array $projects, array $projectsBefore, array $team): array
+    private function insights(array $now, array $before, array $projects, array $team): array
     {
         $out = [];
+        $people = collect($team)->whereNotNull('user_id');
 
-        if ($before['prompts'] > 0 && $now['prompts'] !== $before['prompts']) {
-            $change = (int) round(($now['prompts'] - $before['prompts']) / $before['prompts'] * 100);
-            $out[] = 'Prompts '.($change > 0 ? 'up' : 'down').' '.abs($change).'% on the previous period.';
+        // Who is not using it: the first thing a manager acts on.
+        $idle = $people->where('enrolled', true)->where('prompts', 0);
+        if ($idle->isNotEmpty()) {
+            $names = $idle->pluck('name')->take(3)->join(', ').($idle->count() > 3 ? ' and '.($idle->count() - 3).' more' : '');
+            $out[] = "No AI use this period: {$names}.";
+        }
+
+        // The biggest change in one person, from a base big enough to mean something.
+        $mover = $people->filter(fn ($p) => $p['prompts_before'] >= 10)
+            ->map(fn ($p) => $p + ['change' => (int) round(($p['prompts'] - $p['prompts_before']) / $p['prompts_before'] * 100)])
+            ->sortByDesc(fn ($p) => abs($p['change']))->first();
+        if ($mover && abs($mover['change']) >= 30) {
+            $out[] = "{$mover['name']} used AI ".abs($mover['change']).'% '.($mover['change'] > 0 ? 'more' : 'less').' than the period before.';
         }
 
         $top = collect($projects)->whereNotNull('repo')->sortByDesc('prompts')->first();
         if ($top && $now['prompts'] > 0 && $top['prompts'] > 0) {
-            $out[] = "Most work was in {$top['name']}: ".round($top['prompts'] / $now['prompts'] * 100).'% of prompts.';
+            $out[] = "Most AI work went into {$top['name']}: ".round($top['prompts'] / $now['prompts'] * 100).'% of prompts, '
+                .count($top['contributors']).' '.(count($top['contributors']) === 1 ? 'person' : 'people').'.';
         }
 
-        $was = collect($projectsBefore)->whereNotNull('repo')->pluck('prompts', 'repo');
-        $growth = collect($projects)->whereNotNull('repo')
-            ->map(fn ($p) => $p + ['growth' => $p['prompts'] - ($was[$p['repo']] ?? 0)])
-            ->sortByDesc('growth')->first();
-        if ($growth && $growth['growth'] > 0 && $growth['repo'] !== ($top['repo'] ?? null)) {
-            $out[] = "{$growth['name']} picked up the most: {$growth['growth']} more prompts than the period before.";
-        }
-
-        $lead = collect($team)->whereNotNull('user_id')->sortByDesc('prompts')->first();
-        if ($lead && $lead['prompts'] > 0 && count($out) < 3) {
-            $out[] = "{$lead['name']} used AI the most, on {$lead['active_days']} of the days"
-                .($lead['main_project'] ? ", mostly in {$lead['main_project']}." : '.');
-        }
-
-        $idle = collect($team)->where('enrolled', true)->where('prompts', 0)->count();
-        if ($idle > 0) {
-            $out[] = $idle.' of '.collect($team)->where('enrolled', true)->count().' enrolled people used no AI tool in this period.';
+        if ($before['prompts'] > 0 && $now['prompts'] !== $before['prompts']) {
+            $change = (int) round(($now['prompts'] - $before['prompts']) / $before['prompts'] * 100);
+            $out[] = 'Team prompts '.($change > 0 ? 'up' : 'down').' '.abs($change).'% on the period before.';
         }
 
         return array_slice($out, 0, 3);

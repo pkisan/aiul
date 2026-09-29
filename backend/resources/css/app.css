@@ -18,17 +18,6 @@
     --gray-800: 31 41 55;
     --gray-900: 17 24 39;
     --gray-950: 3 7 18;
-    /* Chart series, fixed order (validated for colour-blind separation on
-       adjacent pairs). Assigned in this order, never cycled. */
-    --series-1: #2a78d6;
-    --series-2: #eb6834;
-    --series-3: #1baf7a;
-    --series-4: #eda100;
-    --series-5: #e87ba4;
-    --series-6: #008300;
-    --series-7: #4a3aa7;
-    --series-8: #e34948;
-    --series-other: #9ca3af;
     color-scheme: light;
 }
 
@@ -45,15 +34,6 @@
     --gray-800: 222 226 233;
     --gray-900: 237 240 244;
     --gray-950: 248 249 251;
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --series-4: #c98500;
-    --series-5: #d55181;
-    --series-6: #008300;
-    --series-7: #9085e9;
-    --series-8: #e66767;
-    --series-other: #6b7280;
     /* native controls (select menus, scrollbars, date pickers) follow */
     color-scheme: dark;
 }
