@@ -1,7 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Pagination from '@/Components/Usage/Pagination.vue';
-import Panel from '@/Components/Usage/Panel.vue';
 import Tag from '@/Components/Usage/Tag.vue';
 import SearchSelect from '@/Components/SearchSelect.vue';
 import { ago, count, duration, initials, toolName, when } from '@/Components/Usage/format';
@@ -12,9 +11,6 @@ const props = defineProps({
     filters: Object,
     summary: Object,
     list: Object,
-    perPerson: Array,
-    perTool: Array,
-    perProject: Array,
     options: Object,
     aiTimeDefinition: String,
     canViewRaw: Boolean,
@@ -35,39 +31,23 @@ function go(changes) {
     const query = Object.fromEntries(
         Object.entries(next).filter(([k, v]) => v !== null && v !== '' && !(k === 'days' && v === 30) && !(k === 'view' && v === 'prompts')),
     );
-    router.get(route('usage.index'), query, { preserveScroll: true, preserveState: true });
+    router.get(route('usage.activity'), query, { preserveScroll: true, preserveState: true });
 }
 
 const filtered = computed(() => props.filters.person || props.filters.tool || props.filters.project);
 const personName = (id) => props.options.people.find((p) => p.id === id)?.name;
 
-// Two ids can be one tool to a reader (the Copilot chat extension reports
-// under two names): one bar each, filtering on its busiest id.
-const tools = computed(() => {
-    const byName = new Map();
-    for (const t of props.perTool) {
-        const name = toolName(t.tool);
-        const row = byName.get(name) ?? { name, tool: t.tool, ids: [], prompts: 0 };
-        row.ids.push(t.tool);
-        row.prompts += t.prompts;
-        byName.set(name, row);
-    }
-    return [...byName.values()].sort((a, b) => b.prompts - a.prompts);
-});
-const maxTool = computed(() => Math.max(1, ...tools.value.map((t) => t.prompts)));
-const maxPerson = computed(() => Math.max(1, ...props.perPerson.map((p) => p.prompts)));
-const topProjects = computed(() => props.perProject.slice(0, 8));
 </script>
 
 <template>
-    <Head title="AI usage" />
+    <Head title="Activity" />
 
     <AuthenticatedLayout>
         <div class="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
             <!-- Title and the period in one line of plain numbers -->
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                    <h1 class="text-2xl font-semibold tracking-tight text-gray-900">AI usage</h1>
+                    <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Activity</h1>
                     <p class="mt-1 text-sm text-gray-500">
                         <span class="font-medium text-gray-900">{{ count(summary.prompts) }}</span> prompts
                         from <span class="font-medium text-gray-900">{{ count(summary.people) }}</span>
@@ -124,10 +104,14 @@ const topProjects = computed(() => props.perProject.slice(0, 8));
                     class="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900"
                     @click="go({ person: null, tool: null, project: null })"
                 >Clear filters</button>
+                <Link
+                    v-if="filters.project && filters.project !== '-'"
+                    :href="route('usage.project', { repo: filters.project, days: filters.days })"
+                    class="px-3 py-1.5 text-sm text-indigo-600 hover:underline dark:text-indigo-400"
+                >Every interaction in this project →</Link>
             </div>
 
-            <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
-                <!-- The list: what people asked, or the sessions it happened in -->
+                            <!-- The list: what people asked, or the sessions it happened in -->
                 <section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
                     <div class="flex items-center justify-between gap-4 border-b border-gray-100 px-5">
                         <nav class="-mb-px flex gap-5" aria-label="List">
@@ -211,79 +195,9 @@ const topProjects = computed(() => props.perProject.slice(0, 8));
                     <Pagination :page="list" :noun="filters.view" />
                 </section>
 
-                <!-- The overview, each row a filter -->
-                <aside class="space-y-5">
-                    <Panel title="People">
-                        <ul class="divide-y divide-gray-100">
-                            <li v-for="p in perPerson" :key="p.user_id ?? 'none'">
-                                <component
-                                    :is="p.user_id ? 'button' : 'div'"
-                                    type="button"
-                                    class="block w-full px-5 py-2.5 text-left transition"
-                                    :class="[p.user_id ? 'hover:bg-gray-50' : '', filters.person === p.user_id ? 'bg-indigo-50 dark:bg-indigo-500/10' : '']"
-                                    @click="p.user_id && go({ person: filters.person === p.user_id ? null : p.user_id })"
-                                >
-                                    <div class="flex items-baseline justify-between gap-3 text-sm">
-                                        <span class="truncate font-medium text-gray-900">{{ p.name }}</span>
-                                        <span class="shrink-0 tabular-nums text-gray-600">{{ count(p.prompts) }}</span>
-                                    </div>
-                                    <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100">
-                                        <div class="h-full rounded-full bg-indigo-500" :style="{ width: (p.prompts / maxPerson) * 100 + '%' }" />
-                                    </div>
-                                    <div class="mt-1 text-xs text-gray-400">
-                                        {{ duration(p.ai_seconds) }} AI time · last {{ ago(p.last_seen) }}
-                                    </div>
-                                </component>
-                            </li>
-                            <li v-if="!perPerson.length" class="px-5 py-6 text-center text-sm text-gray-500">No one yet.</li>
-                        </ul>
-                    </Panel>
-
-                    <Panel title="Tools">
-                        <ul class="space-y-3 px-5 py-4">
-                            <li v-for="t in tools" :key="t.name">
-                                <button type="button" class="block w-full text-left" @click="go({ tool: (filters.tool && t.ids.includes(filters.tool)) ? null : t.tool })">
-                                    <div class="flex justify-between text-sm">
-                                        <span class="text-gray-700" :class="(filters.tool && t.ids.includes(filters.tool)) ? 'font-semibold text-gray-900' : ''">{{ t.name }}</span>
-                                        <span class="tabular-nums text-gray-500">{{ count(t.prompts) }}</span>
-                                    </div>
-                                    <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-100">
-                                        <div class="h-full rounded-full bg-sky-500" :style="{ width: (t.prompts / maxTool) * 100 + '%' }" />
-                                    </div>
-                                </button>
-                            </li>
-                            <li v-if="!tools.length" class="text-center text-sm text-gray-500">No prompts yet.</li>
-                        </ul>
-                    </Panel>
-
-                    <Panel title="Projects" subtitle="The repository the work happened in">
-                        <ul class="divide-y divide-gray-100">
-                            <li v-for="p in topProjects" :key="p.repo ?? '-'">
-                                <button
-                                    type="button"
-                                    class="flex w-full items-center justify-between gap-3 px-5 py-2.5 text-left text-sm transition hover:bg-gray-50"
-                                    :class="filters.project === (p.repo ?? '-') ? 'bg-indigo-50 dark:bg-indigo-500/10' : ''"
-                                    :title="p.repo ?? 'Browser chats and tools run outside a repository'"
-                                    @click="go({ project: filters.project === (p.repo ?? '-') ? null : (p.repo ?? '-') })"
-                                >
-                                    <span class="truncate" :class="p.repo ? 'text-gray-900' : 'italic text-gray-500'">{{ p.name ?? 'Outside a project' }}</span>
-                                    <span class="shrink-0 tabular-nums text-gray-500">{{ count(p.prompts) }}</span>
-                                </button>
-                            </li>
-                            <li v-if="!perProject.length" class="px-5 py-6 text-center text-sm text-gray-500">No projects yet.</li>
-                        </ul>
-                        <Link
-                            v-if="filters.project && filters.project !== '-'"
-                            :href="route('usage.project', { repo: filters.project, days: filters.days })"
-                            class="block border-t border-gray-100 px-5 py-2.5 text-sm text-indigo-600 hover:underline dark:text-indigo-400"
-                        >Every interaction in this project →</Link>
-                    </Panel>
-
-                    <p class="px-1 text-xs leading-relaxed text-gray-500">
-                        <strong class="font-medium text-gray-700">AI time</strong> — {{ aiTimeDefinition }}
-                    </p>
-                </aside>
-            </div>
+                <p class="px-1 text-xs leading-relaxed text-gray-500">
+                    <strong class="font-medium text-gray-700">AI time</strong> — {{ aiTimeDefinition }}
+                </p>
         </div>
     </AuthenticatedLayout>
 </template>

@@ -43,7 +43,7 @@ const missing = (state, what) =>
     <AuthenticatedLayout>
         <template #header>
             <div class="flex items-center gap-3">
-                <Link :href="route('usage.index')" class="text-sm text-gray-500 hover:text-gray-900">← AI usage</Link>
+                <Link :href="route('usage.activity')" class="text-sm text-gray-500 hover:text-gray-900">← Activity</Link>
                 <h2 class="text-xl font-semibold leading-tight text-gray-800">Interaction</h2>
                 <Tag :label="promptLabel" :tone="kind === 'human' ? 'green' : 'gray'" />
                 <Link

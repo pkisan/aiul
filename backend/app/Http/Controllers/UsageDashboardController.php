@@ -23,10 +23,148 @@ class UsageDashboardController extends Controller
     public function __construct(private readonly BodyStore $bodies) {}
 
     /**
-     * The manager's page: who is using which AI tool on what, newest first.
-     * Every filter is in the URL, so a filtered view can be bookmarked or shared.
+     * The manager's Overview: the period at one glance. Every number compares
+     * with the period before it, and every row links to the Activity list
+     * filtered to it.
      */
     public function index(Request $request): Response
+    {
+        abort_unless($request->user()->isManager(), 403);
+
+        $days = $request->integer('days', 7);
+        $days = in_array($days, self::PERIODS, true) ? $days : 7;
+        $now = new UsageReport(days: $days);
+        $before = new UsageReport(days: $days, offsetDays: $days);
+        $canViewRaw = $request->user()->canViewRawPrompts();
+
+        $summary = $now->summary();
+        $previous = $before->summary();
+        $perProject = $now->perProject();
+        $perTool = $now->perTool();
+        $team = $this->team($now->perPerson());
+        $enrolled = collect($team)->whereNotNull('user_id')->where('enrolled', true)->count();
+
+        return Inertia::render('Usage/Overview', [
+            'days' => $days,
+            'summary' => $summary,
+            'previous' => $previous,
+            'enrolled' => $enrolled,
+            'attention' => $this->attention($days),
+            'activity' => $now->perBucket('tool'),
+            'trends' => $now->perBucket('repo')['series'],
+            'perTool' => $perTool,
+            'perProject' => $perProject,
+            'team' => $team,
+            'latest' => $this->withPreviews($now->prompts(5), $canViewRaw)->items(),
+            'insights' => $this->insights($summary, $previous, $perTool, $before->perTool(), $perProject, $team),
+            'aiTimeDefinition' => $this->aiTimeDefinition(),
+        ]);
+    }
+
+    /**
+     * People with their period's numbers, plus everyone who has a device but
+     * did nothing this period: on a team view, silence is a row, not a gap.
+     */
+    private function team(array $perPerson): array
+    {
+        $rows = collect($perPerson)->keyBy(fn ($row) => $row['user_id'] ?? 'none');
+        $withDevice = Device::where('revoked', false)->whereNotNull('user_id')
+            ->with('user:id,name')
+            ->get()
+            ->groupBy('user_id');
+
+        foreach ($withDevice as $userId => $devices) {
+            $rows[$userId] = ($rows[$userId] ?? [
+                'user_id' => $userId,
+                'name' => $devices->first()->user?->name ?? 'Unknown',
+                'prompts' => 0, 'interactions' => 0, 'ai_seconds' => 0,
+                'main_tool' => null, 'last_seen' => null,
+            ]) + ['enrolled' => true];
+        }
+
+        return $rows->map(fn ($row) => $row + ['enrolled' => false])
+            ->sortByDesc('prompts')->values()->all();
+    }
+
+    /** Things a manager should act on. Empty lists mean all clear. */
+    private function attention(int $days): array
+    {
+        // Prompts where redaction masked something: a person pasted a secret
+        // or personal data into an AI tool. The mask names the rule, never the value.
+        $secrets = AiInteraction::query()
+            ->where('occurred_at', '>=', now()->subDays($days))
+            ->whereNotNull('redacted')
+            ->whereRaw("redacted <> '[]'::jsonb")
+            ->with('user:id,name')
+            ->latest('occurred_at');
+
+        // ponytail: the agent sends no heartbeat, so "silent" means nothing was
+        // captured — the agent is off OR the person used no AI. Add a heartbeat
+        // event to tell the two apart.
+        $silentAfter = now()->subDays(3);
+        $devices = Device::where('revoked', false)->with('user:id,name')->get();
+
+        return [
+            'secrets_total' => (clone $secrets)->count(),
+            'secrets' => $secrets->limit(5)->get()->map(fn ($i) => [
+                'id' => $i->id,
+                'person' => $i->user?->name ?? 'Unassigned device',
+                'tool' => $i->tool,
+                'rules' => $i->redacted,
+                'occurred_at' => $i->occurred_at,
+            ]),
+            'silent' => $devices
+                ->filter(fn ($d) => $d->last_seen_at === null || $d->last_seen_at < $silentAfter)
+                ->map(fn ($d) => [
+                    'id' => $d->id, 'hostname' => $d->hostname,
+                    'person' => $d->user?->name, 'last_seen_at' => $d->last_seen_at,
+                ])->values(),
+            'unassigned' => $devices->whereNull('user_id')
+                ->map(fn ($d) => ['id' => $d->id, 'hostname' => $d->hostname, 'last_seen_at' => $d->last_seen_at])
+                ->values(),
+        ];
+    }
+
+    /**
+     * Two or three plain sentences a manager would otherwise have to work out
+     * from the numbers. Rules, not a model: no prompt data leaves the server.
+     */
+    private function insights(array $now, array $before, array $tools, array $toolsBefore, array $projects, array $team): array
+    {
+        $out = [];
+
+        if ($before['prompts'] > 0 && $now['prompts'] !== $before['prompts']) {
+            $change = (int) round(($now['prompts'] - $before['prompts']) / $before['prompts'] * 100);
+            $out[] = 'Prompts '.($change > 0 ? 'up' : 'down').' '.abs($change).'% on the previous period.';
+        }
+
+        $top = collect($projects)->whereNotNull('repo')->sortByDesc('prompts')->first();
+        if ($top && $now['prompts'] > 0 && $top['prompts'] > 0) {
+            $out[] = "Most work was in {$top['name']}: ".round($top['prompts'] / $now['prompts'] * 100).'% of prompts.';
+        }
+
+        $was = collect($toolsBefore)->pluck('prompts', 'tool');
+        $growth = collect($tools)->map(fn ($t) => $t + ['growth' => $t['prompts'] - ($was[$t['tool']] ?? 0)])
+            ->sortByDesc('growth')->first();
+        if ($growth && $growth['growth'] > 0) {
+            // The page turns the tool id into its display name.
+            $out[] = ['tool' => $growth['tool'], 'growth' => $growth['growth']];
+        }
+
+        $idle = collect($team)->where('enrolled', true)->where('prompts', 0)->count();
+        if ($idle > 0) {
+            $out[] = $idle.' of '.collect($team)->where('enrolled', true)->count().' enrolled people used no AI tool in this period.';
+        }
+
+        return array_slice($out, 0, 3);
+    }
+
+    /**
+     * Every prompt or session, newest first, filterable by person, tool and
+     * project. Every filter is in the URL, so a filtered view can be bookmarked
+     * or shared.
+     */
+    public function activity(Request $request): Response
     {
         abort_unless($request->user()->isManager(), 403);
 
@@ -48,15 +186,12 @@ class UsageDashboardController extends Controller
         );
         $canViewRaw = $request->user()->canViewRawPrompts();
 
-        return Inertia::render('Usage/Index', [
+        return Inertia::render('Usage/Activity', [
             'filters' => $filters,
             'summary' => $report->summary(),
             'list' => $filters['view'] === 'sessions'
                 ? $report->sessions()
                 : $this->withPreviews($report->prompts(), $canViewRaw),
-            'perPerson' => $report->perPerson(),
-            'perTool' => $report->perTool(),
-            'perProject' => $report->perProject(),
             // The filters' choices ignore the filters, or picking one person
             // would leave only that person to pick.
             'options' => [

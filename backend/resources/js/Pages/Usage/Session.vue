@@ -71,7 +71,7 @@ const folded = (t) => t.asked.prompt_preview.length > PROMPT_FOLD && !openPrompt
         <div class="flex h-[calc(100vh-4rem)] bg-white">
             <aside class="hidden w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50 md:flex">
                 <div class="px-4 pb-2 pt-4">
-                    <Link :href="route('usage.index')" class="text-sm text-gray-500 hover:text-gray-900">← AI usage</Link>
+                    <Link :href="route('usage.activity')" class="text-sm text-gray-500 hover:text-gray-900">← Activity</Link>
                     <p class="mt-4 text-xs font-medium uppercase tracking-wide text-gray-400">
                         Sessions<template v-if="session.person"> · {{ session.person }}</template>
                     </p>
@@ -98,7 +98,7 @@ const folded = (t) => t.asked.prompt_preview.length > PROMPT_FOLD && !openPrompt
             <main class="flex-1 overflow-y-auto">
                 <header class="sticky top-0 z-10 border-b border-gray-100 bg-white/90 px-6 py-3 backdrop-blur">
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <Link :href="route('usage.index')" class="text-sm text-gray-500 hover:text-gray-900 md:hidden">←</Link>
+                        <Link :href="route('usage.activity')" class="text-sm text-gray-500 hover:text-gray-900 md:hidden">←</Link>
                         <h1 class="truncate text-base font-semibold text-gray-900">{{ title(session) }}</h1>
                         <Tag v-if="session.tool" :label="toolName(session.tool)" tone="blue" />
                         <Tag v-if="session.branch" :label="session.branch" />

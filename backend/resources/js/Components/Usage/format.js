@@ -44,6 +44,14 @@ const toolNames = {
 };
 export const toolName = (id) => toolNames[id] ?? id ?? 'AI tool';
 
+// One colour per tool, the same on every chart and every period: colour follows
+// the tool, never its rank. Keyed by display name so the two Copilot ids share one.
+const toolSlots = ['Claude Code', 'ChatGPT', 'Claude', 'Cursor', 'Copilot in VS Code', 'Codex', 'Claude Cowork', 'Copilot'];
+export const toolColor = (id) => {
+    const slot = toolSlots.indexOf(toolName(id));
+    return slot === -1 ? 'var(--series-other)' : `var(--series-${slot + 1})`;
+};
+
 // "Punit Kisan" -> "PK", for avatars.
 export const initials = (name) =>
     (name ?? '?')

@@ -21,17 +21,25 @@ class UsageReport
      * @param  ?int  $userId  only this person's work
      * @param  ?string  $tool  only this tool
      * @param  ?string  $repo  only this project; '' means "outside any checkout"
+     * @param  int  $offsetDays  shift the period back, e.g. $days for "the period
+     *                           before this one", which the Overview compares against
      */
     public function __construct(
         private readonly int $days = 30,
         private readonly ?int $userId = null,
         private readonly ?string $tool = null,
         private readonly ?string $repo = null,
+        private readonly int $offsetDays = 0,
     ) {}
 
     private function since(): Carbon
     {
-        return now()->subDays($this->days);
+        return now()->subDays($this->days + $this->offsetDays);
+    }
+
+    private function until(): Carbon
+    {
+        return now()->subDays($this->offsetDays);
     }
 
     /**
@@ -44,6 +52,7 @@ class UsageReport
         $table = str_contains($column, '.') ? strstr($column, '.', true).'.' : '';
 
         return $query->where($column, '>=', $this->since())
+            ->when($this->offsetDays > 0, fn ($q) => $q->where($column, '<', $this->until()))
             ->when($this->userId, fn ($q) => $q->where($table.'user_id', $this->userId))
             ->when($this->tool, fn ($q) => $q->where($table.'tool', $this->tool))
             ->when($this->repo !== null, fn ($q) => $this->repo === ''
@@ -62,7 +71,7 @@ class UsageReport
     {
         $interactions = AiInteraction::query()
             ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
-            ->selectRaw('count(*) as interactions, count(distinct user_id) as people')
+            ->selectRaw('count(*) as interactions, count(distinct user_id) as people, count(distinct repo) as projects')
             ->first();
 
         $sessions = AiSession::query()
@@ -76,6 +85,7 @@ class UsageReport
             'prompts' => AiInteraction::query()->humanPrompts()->tap(fn ($q) => $this->inRange($q, 'occurred_at'))->count(),
             'interactions' => (int) $interactions->interactions,
             'people' => (int) $interactions->people,
+            'projects' => (int) $interactions->projects,
             'sessions' => (int) $sessions->sessions,
             'ai_seconds' => (int) $sessions->seconds,
         ];
@@ -167,6 +177,8 @@ class UsageReport
                 DB::raw('count(*) filter (where '.self::HUMAN.') as prompts'),
                 DB::raw('count(*) as interactions'),
                 DB::raw('max(ai_interactions.occurred_at) as last_seen'),
+                // The tool this person used most (Postgres' most-frequent value).
+                DB::raw('mode() within group (order by ai_interactions.tool) as main_tool'),
             ])
             ->get();
 
@@ -183,6 +195,7 @@ class UsageReport
             'prompts' => (int) $row->prompts,
             'interactions' => (int) $row->interactions,
             'ai_seconds' => (int) ($time[$row->user_id] ?? 0),
+            'main_tool' => $row->main_tool,
             'last_seen' => $row->last_seen,
         ])->sortByDesc('prompts')->values()->all();
     }
@@ -207,16 +220,26 @@ class UsageReport
      */
     public function perProject(): array
     {
-        return AiInteraction::query()
+        $rows = AiInteraction::query()
             ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
             ->groupBy('repo')
             ->select([
                 'repo',
                 DB::raw('count(*) filter (where '.self::HUMAN.') as prompts'),
                 DB::raw('count(*) as interactions'),
+                DB::raw('count(distinct user_id) as people'),
                 DB::raw('max(occurred_at) as last_seen'),
             ])
-            ->get()
+            ->get();
+
+        $time = AiSession::query()
+            ->tap(fn ($q) => $this->inRange($q, 'started_at'))
+            ->whereNotNull('ended_at')
+            ->groupBy('repo')
+            ->selectRaw('repo, '.self::SESSION_SECONDS.' as seconds')
+            ->pluck('seconds', 'repo');
+
+        return $rows
             ->map(fn ($row) => [
                 'repo' => $row->repo,
                 // The last path segment is what a person calls the project; the
@@ -224,9 +247,62 @@ class UsageReport
                 'name' => $row->repo ? basename($row->repo) : null,
                 'prompts' => (int) $row->prompts,
                 'interactions' => (int) $row->interactions,
+                'people' => (int) $row->people,
+                // pluck() keys a null repo as '', the same bucket.
+                'ai_seconds' => (int) ($time[$row->repo ?? ''] ?? 0),
                 'last_seen' => $row->last_seen,
             ])
             ->sortByDesc('interactions')->values()->all();
+    }
+
+    /**
+     * Prompts over time, one series per value of $column ('tool' or 'repo'),
+     * for the Overview's chart and trend lines. The bucket grows with the
+     * period so a chart always has a readable number of bars.
+     *
+     * ponytail: buckets are cut in the app timezone (UTC); a per-tenant
+     * timezone if a team's "day" must start at their midnight.
+     *
+     * @return array{unit: string, buckets: list<string>, series: array<string, list<int>>}
+     */
+    public function perBucket(string $column): array
+    {
+        abort_unless(in_array($column, ['tool', 'repo'], true), 500);
+
+        $unit = match (true) {
+            $this->days <= 1 => 'hour',
+            $this->days <= 30 => 'day',
+            $this->days <= 90 => 'week',
+            default => 'month',
+        };
+
+        // Every bucket in the period, empty ones included: a gap is information.
+        $buckets = [];
+        $start = $unit === 'week' ? $this->since()->startOfWeek(Carbon::MONDAY) : $this->since()->startOf($unit);
+        for ($at = $start; $at <= $this->until(); $at = $at->copy()->add(1, $unit)) {
+            $buckets[] = $at->format('Y-m-d H:i:s');
+        }
+        $index = array_flip($buckets);
+
+        $rows = AiInteraction::query()
+            ->humanPrompts()
+            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
+            ->groupBy('bucket', $column)
+            ->selectRaw("date_trunc('{$unit}', occurred_at) as bucket, {$column} as key, count(*) as prompts")
+            ->get();
+
+        $series = [];
+        foreach ($rows as $row) {
+            $at = Carbon::parse($row->bucket)->format('Y-m-d H:i:s');
+            if (! isset($index[$at])) {
+                continue;
+            }
+            $key = $row->key ?? '';
+            $series[$key] ??= array_fill(0, count($buckets), 0);
+            $series[$key][$index[$at]] += (int) $row->prompts;
+        }
+
+        return ['unit' => $unit, 'buckets' => $buckets, 'series' => $series];
     }
 
     /** One project's interactions, newest first. */

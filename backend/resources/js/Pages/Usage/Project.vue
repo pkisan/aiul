@@ -16,7 +16,7 @@ const kinds = { human: 'Prompt', agent: 'Agent step', utility: "Tool's own call"
     <AuthenticatedLayout>
         <div class="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
             <div>
-                <Link :href="route('usage.index')" class="text-sm text-gray-500 hover:text-gray-900">← AI usage</Link>
+                <Link :href="route('usage.activity')" class="text-sm text-gray-500 hover:text-gray-900">← Activity</Link>
                 <h1 class="mt-1 text-2xl font-semibold tracking-tight text-gray-900">{{ name ?? 'Outside a project' }}</h1>
                 <p v-if="repo" class="mt-0.5 truncate font-mono text-xs text-gray-400">{{ repo }}</p>
             </div>

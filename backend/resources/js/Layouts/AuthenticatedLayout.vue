@@ -15,13 +15,18 @@ const isManager = computed(() => ['manager', 'admin'].includes(user.value?.role)
 // server enforces the same rules; hiding a link is only tidiness.
 const links = computed(() =>
     [
-        { label: 'AI usage', route: 'usage.index', active: 'usage.index', show: isManager.value },
-        { label: 'My data', route: 'usage.my-data', active: 'usage.my-data', show: true },
-        { label: 'Devices', route: 'pair.show', active: 'pair.*', show: true },
-        { label: 'People', route: 'people.index', active: 'people.*', show: user.value?.role === 'admin' },
-        { label: 'Deleted', route: 'usage.deleted', active: 'usage.deleted', show: user.value?.role === 'admin' },
+        { label: 'Overview', route: 'usage.index', active: ['usage.index'], show: isManager.value },
+        // The list and everything opened from it.
+        { label: 'Activity', route: 'usage.activity', active: ['usage.activity', 'usage.session', 'usage.project', 'usage.show'], show: isManager.value },
+        { label: 'People', route: 'people.index', active: ['people.*'], show: user.value?.role === 'admin' },
+        { label: 'Devices', route: 'pair.show', active: ['pair.*'], show: true },
+        { label: 'My data', route: 'usage.my-data', active: ['usage.my-data'], show: true },
     ].filter((l) => l.show),
 );
+const isActive = (l) => l.active.some((name) => route().current(name));
+
+// Housekeeping, in the user menu rather than next to the pages people read.
+const isAdmin = computed(() => user.value?.role === 'admin');
 
 </script>
 
@@ -41,11 +46,11 @@ const links = computed(() =>
                         :href="route(l.route)"
                         class="rounded-lg px-3 py-2 text-sm font-medium transition"
                         :class="
-                            route().current(l.active)
+                            isActive(l)
                                 ? 'bg-gray-100 text-gray-900'
                                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
                         "
-                        :aria-current="route().current(l.active) ? 'page' : undefined"
+                        :aria-current="isActive(l) ? 'page' : undefined"
                     >
                         {{ l.label }}
                     </Link>
@@ -73,6 +78,7 @@ const links = computed(() =>
                                 <div class="truncate text-xs text-gray-500">{{ user.email }}</div>
                             </div>
                             <DropdownLink :href="route('profile.edit')">Profile</DropdownLink>
+                            <DropdownLink v-if="isAdmin" :href="route('usage.deleted')">Deleted prompts</DropdownLink>
                             <DropdownLink :href="route('logout')" method="post" as="button">Log out</DropdownLink>
                         </template>
                     </Dropdown>
@@ -98,7 +104,7 @@ const links = computed(() =>
                     :key="l.route"
                     :href="route(l.route)"
                     class="block rounded-lg px-3 py-2 text-sm font-medium"
-                    :class="route().current(l.active) ? 'bg-gray-100 text-gray-900' : 'text-gray-600'"
+                    :class="isActive(l) ? 'bg-gray-100 text-gray-900' : 'text-gray-600'"
                 >
                     {{ l.label }}
                 </Link>
@@ -106,6 +112,7 @@ const links = computed(() =>
                     <div class="px-3 text-sm font-medium text-gray-900">{{ user.name }}</div>
                     <div class="px-3 text-xs text-gray-500">{{ user.email }}</div>
                     <Link :href="route('profile.edit')" class="mt-2 block rounded-lg px-3 py-2 text-sm text-gray-600">Profile</Link>
+                    <Link v-if="isAdmin" :href="route('usage.deleted')" class="block rounded-lg px-3 py-2 text-sm text-gray-600">Deleted prompts</Link>
                     <Link :href="route('logout')" method="post" as="button" class="block w-full rounded-lg px-3 py-2 text-left text-sm text-gray-600">Log out</Link>
                 </div>
             </div>

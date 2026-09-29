@@ -114,6 +114,66 @@ class UsageDashboardTest extends TestCase
         $this->assertTrue($perProject->contains(fn ($row) => $row['repo'] === '/Users/dev/other'));
     }
 
+    // Every Overview number is read against the period before it.
+    public function test_the_overview_compares_with_the_previous_period(): void
+    {
+        $this->interaction(['kind' => 'human', 'occurred_at' => now()->subDays(2)]);
+        $this->interaction(['kind' => 'human', 'occurred_at' => now()->subDays(3)]);
+        $this->interaction(['kind' => 'human', 'occurred_at' => now()->subDays(10)]); // previous 7 days
+        $this->interaction(['kind' => 'human', 'occurred_at' => now()->subDays(20)]); // older: in neither
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Usage/Overview')
+                ->where('days', 7)
+                ->where('summary.prompts', 2)
+                ->where('previous.prompts', 1)
+                ->where('insights.0', 'Prompts up 100% on the previous period.'));
+    }
+
+    // Empty days are bars of zero, not missing bars: a gap is information.
+    public function test_the_activity_chart_has_every_bucket_in_the_period(): void
+    {
+        $this->interaction(['kind' => 'human', 'tool' => 'cursor', 'occurred_at' => now()->subDays(2)]);
+        $this->interaction(['kind' => 'agent', 'tool' => 'cursor', 'occurred_at' => now()->subDays(2)]); // not a prompt
+
+        $activity = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage?days=30')
+            ->viewData('page')['props']['activity'];
+
+        $this->assertSame('day', $activity['unit']);
+        $this->assertCount(31, $activity['buckets']);
+        $this->assertSame(1, array_sum($activity['series']['cursor']));
+        $this->assertCount(31, $activity['series']['cursor']);
+    }
+
+    public function test_the_overview_flags_secrets_and_quiet_devices(): void
+    {
+        $alex = $this->user();
+        $this->device->forceFill(['user_id' => $alex->id, 'last_seen_at' => now()->subDays(5)])->save();
+        [, $hash] = Device::issueToken();
+        Device::withoutGlobalScope('tenant')->create([
+            'tenant_id' => $this->tenant->id, 'hostname' => 'spare-mac', 'token_hash' => $hash, 'last_seen_at' => now(),
+        ]);
+        $this->interaction(['redacted' => ['aws-access-key']]);
+        $this->interaction(['redacted' => []]); // nothing masked: not a secret
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')
+            ->assertInertia(fn ($page) => $page
+                ->where('attention.secrets_total', 1)
+                ->where('attention.secrets.0.rules', ['aws-access-key'])
+                ->where('attention.silent.0.hostname', 'mac')
+                ->where('attention.unassigned.0.hostname', 'spare-mac')
+                // Alex has a device but did nothing: still a row on the team.
+                ->where('team', fn ($team) => collect($team)->contains(fn ($p) => $p['user_id'] === $alex->id && $p['prompts'] === 0 && $p['enrolled']))
+                ->where('enrolled', 1));
+    }
+
+    public function test_a_member_cannot_open_the_activity_list(): void
+    {
+        $this->actingAs($this->user())->get('/usage/activity')->assertForbidden();
+    }
+
     public function test_work_outside_a_checkout_gets_its_own_row_rather_than_disappearing(): void
     {
         $this->interaction(['repo' => null]);
@@ -220,7 +280,7 @@ class UsageDashboardTest extends TestCase
         }
         $this->interaction(['kind' => 'agent']); // not a prompt: never listed
 
-        $page1 = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage?tool=claude-code')->assertOk();
+        $page1 = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/activity?tool=claude-code')->assertOk();
         $pager = $page1->viewData('page')['props']['list'];
 
         $this->assertSame(30, $pager['total']);
@@ -228,7 +288,7 @@ class UsageDashboardTest extends TestCase
         // The filters ride along on every page link.
         $this->assertStringContainsString('tool=claude-code', $pager['next_page_url']);
 
-        $page2 = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage?page=2')->assertOk();
+        $page2 = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/activity?page=2')->assertOk();
         $pager2 = $page2->viewData('page')['props']['list'];
 
         $this->assertSame(2, $pager2['current_page']);
@@ -239,7 +299,7 @@ class UsageDashboardTest extends TestCase
     {
         $interaction = $this->interaction(['task_id' => 'ABC-123']);
 
-        $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')->assertOk();
+        $response = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage/activity')->assertOk();
         $row = $response->viewData('page')['props']['list']['data'][0];
 
         $this->assertSame($interaction->id, $row['id']);
@@ -294,7 +354,7 @@ class UsageDashboardTest extends TestCase
         $this->interaction(['ai_session_id' => $first->ai_session_id, 'automated' => true]);
 
         $this->actingAs($this->user(User::ROLE_MANAGER))
-            ->get('/usage')
+            ->get('/usage/activity')
             ->assertOk()
             ->assertInertia(fn ($page) => $page->has('list.data'));
 
@@ -321,7 +381,7 @@ class UsageDashboardTest extends TestCase
         ]);
 
         $this->actingAs($this->user(User::ROLE_MANAGER))
-            ->get('/usage?view=sessions')
+            ->get('/usage/activity?view=sessions')
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('list.data.0.id', $old->ai_session_id));
@@ -431,23 +491,23 @@ class UsageDashboardTest extends TestCase
         $this->interaction(['tool' => 'claude-code']);
 
         $this->actingAs($this->user(User::ROLE_MANAGER))
-            ->get("/usage?person={$alex->id}")
+            ->get("/usage/activity?person={$alex->id}")
             ->assertInertia(fn ($page) => $page
                 ->where('summary.interactions', 1)
                 ->where('filters.person', $alex->id)
                 ->has('options.people'));
 
         $this->actingAs($this->user(User::ROLE_MANAGER))
-            ->get('/usage?tool=claude-code')
+            ->get('/usage/activity?tool=claude-code')
             ->assertInertia(fn ($page) => $page->where('summary.interactions', 1));
 
         // "-" is work outside any checkout; a path is one project.
         $this->interaction(['repo' => '/Users/dev/plrb-lms']);
         $this->actingAs($this->user(User::ROLE_MANAGER))
-            ->get('/usage?project='.urlencode('/Users/dev/plrb-lms'))
+            ->get('/usage/activity?project='.urlencode('/Users/dev/plrb-lms'))
             ->assertInertia(fn ($page) => $page->where('summary.interactions', 1));
         $this->actingAs($this->user(User::ROLE_MANAGER))
-            ->get('/usage?project=-')
+            ->get('/usage/activity?project=-')
             ->assertInertia(fn ($page) => $page->where('summary.interactions', 2));
     }
 
@@ -459,7 +519,7 @@ class UsageDashboardTest extends TestCase
         $this->interaction(['user_id' => $alex->id, 'kind' => 'human']);
 
         $this->actingAs($this->user(User::ROLE_ADMIN, raw: true))
-            ->get('/usage')
+            ->get('/usage/activity')
             ->assertInertia(fn ($page) => $page->where('list.data.1.preview', 'Fix the SSO tests.'));
     }
 
