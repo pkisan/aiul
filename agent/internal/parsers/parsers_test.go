@@ -1114,6 +1114,14 @@ func TestClaudeCoworkPromptFromSessionEvents(t *testing.T) {
 	// Control requests alone (a model switch) and reading events back are not prompts.
 	onlyControl, _ := p.Parse(Exchange{Method: "POST", ReqBody: []byte(`{"events":[{"payload":{"type":"control_request","request":{"subtype":"set_model","model":"x"}}}]}`)})
 	readBack, _ := p.Parse(Exchange{Method: "GET"})
+
+	// The app's own context rides along as user messages with shouldQuery false.
+	withContext, _ := p.Parse(Exchange{Method: "POST", ReqBody: []byte(`{"events":[` +
+		`{"payload":{"type":"user","message":{"role":"user","content":"Hey"}}},` +
+		`{"payload":{"type":"user","shouldQuery":false,"message":{"role":"user","content":"<system-reminder>The user's timezone is Asia/Calcutta.</system-reminder>"}}}]}`)})
+	if withContext.Prompt != "Hey" {
+		t.Errorf("prompt = %q, want the person's message, not the app's context", withContext.Prompt)
+	}
 	if !onlyControl.Skip || !readBack.Skip {
 		t.Errorf("control-only skip=%v, GET skip=%v, want both skipped", onlyControl.Skip, readBack.Skip)
 	}

@@ -67,6 +67,12 @@ Plesk; tag a release. Then find where Cowork answers arrive.
   "client:"/"server:" prefixed) written when it closes. Test fails without it.
   NEXT: install, one Cowork prompt, QUIT Claude (closes the socket so the dump
   is written), copy *claude.ai* dumps to the scratchpad.
+- 14:45 capture: no claude.ai WebSocket. GET .../events returns only setup
+  events (control_request, env_manager_log) + resume_cursor, no answer. One
+  WebSocket in the log: api.anthropic.com /api/frame/sync (14:43:36,
+  unparsed); its dump not copied yet. Prompt POST also carried 3 app-written
+  <system-reminder> user messages with shouldQuery:false: parser now skips
+  those (test fails without it). NEXT: owner copies *api.anthropic.com* dumps.
 
 ## Soft delete (Deleted prompts) — 2026-09-29
 

@@ -45,8 +45,12 @@ func (ClaudeCowork) Parse(ex Exchange) (Result, error) {
 	var req struct {
 		Events []struct {
 			Payload struct {
-				Type    string `json:"type"`
-				Request struct {
+				Type string `json:"type"`
+				// false on context the app adds for the model (timezone, which
+				// device folders it can reach), sent as user messages in the same
+				// POST as the person's own.
+				ShouldQuery *bool `json:"shouldQuery"`
+				Request     struct {
 					Subtype string `json:"subtype"`
 					Model   string `json:"model"`
 				} `json:"request"`
@@ -64,7 +68,7 @@ func (ClaudeCowork) Parse(ex Exchange) (Result, error) {
 		switch {
 		case ev.Payload.Type == "control_request" && ev.Payload.Request.Subtype == "set_model":
 			res.Model = ev.Payload.Request.Model
-		case ev.Payload.Type == "user":
+		case ev.Payload.Type == "user" && (ev.Payload.ShouldQuery == nil || *ev.Payload.ShouldQuery):
 			if text := textFromContent(ev.Payload.Message.Content); text != "" {
 				res.Prompt = text
 			}
