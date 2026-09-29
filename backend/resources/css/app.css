@@ -19,7 +19,7 @@
     --gray-900: 17 24 39;
     --gray-950: 3 7 18;
     /* Chart series, fixed order (validated for colour-blind separation on
-       adjacent pairs). A tool keeps its slot on every chart: see toolColor(). */
+       adjacent pairs). Assigned in this order, never cycled. */
     --series-1: #2a78d6;
     --series-2: #eb6834;
     --series-3: #1baf7a;

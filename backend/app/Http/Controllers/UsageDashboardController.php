@@ -40,7 +40,6 @@ class UsageDashboardController extends Controller
         $summary = $now->summary();
         $previous = $before->summary();
         $perProject = $now->perProject();
-        $perTool = $now->perTool();
         $team = $this->team($now->perPerson());
         $enrolled = collect($team)->whereNotNull('user_id')->where('enrolled', true)->count();
 
@@ -50,13 +49,13 @@ class UsageDashboardController extends Controller
             'previous' => $previous,
             'enrolled' => $enrolled,
             'attention' => $this->attention($days),
-            'activity' => $now->perBucket('tool'),
-            'trends' => $now->perBucket('repo')['series'],
-            'perTool' => $perTool,
+            // The chart stacks by project: what the AI work went into.
+            'activity' => $now->perBucket('repo'),
+            'patterns' => $now->patterns(),
             'perProject' => $perProject,
             'team' => $team,
             'latest' => $this->withPreviews($now->prompts(5), $canViewRaw)->items(),
-            'insights' => $this->insights($summary, $previous, $perTool, $before->perTool(), $perProject, $team),
+            'insights' => $this->insights($summary, $previous, $perProject, $before->perProject(), $team),
             'aiTimeDefinition' => $this->aiTimeDefinition(),
         ]);
     }
@@ -78,7 +77,7 @@ class UsageDashboardController extends Controller
                 'user_id' => $userId,
                 'name' => $devices->first()->user?->name ?? 'Unknown',
                 'prompts' => 0, 'interactions' => 0, 'ai_seconds' => 0,
-                'main_tool' => null, 'last_seen' => null,
+                'main_tool' => null, 'main_project' => null, 'active_days' => 0, 'agent_steps' => 0, 'last_seen' => null,
             ]) + ['enrolled' => true];
         }
 
@@ -129,7 +128,7 @@ class UsageDashboardController extends Controller
      * Two or three plain sentences a manager would otherwise have to work out
      * from the numbers. Rules, not a model: no prompt data leaves the server.
      */
-    private function insights(array $now, array $before, array $tools, array $toolsBefore, array $projects, array $team): array
+    private function insights(array $now, array $before, array $projects, array $projectsBefore, array $team): array
     {
         $out = [];
 
@@ -143,12 +142,18 @@ class UsageDashboardController extends Controller
             $out[] = "Most work was in {$top['name']}: ".round($top['prompts'] / $now['prompts'] * 100).'% of prompts.';
         }
 
-        $was = collect($toolsBefore)->pluck('prompts', 'tool');
-        $growth = collect($tools)->map(fn ($t) => $t + ['growth' => $t['prompts'] - ($was[$t['tool']] ?? 0)])
+        $was = collect($projectsBefore)->whereNotNull('repo')->pluck('prompts', 'repo');
+        $growth = collect($projects)->whereNotNull('repo')
+            ->map(fn ($p) => $p + ['growth' => $p['prompts'] - ($was[$p['repo']] ?? 0)])
             ->sortByDesc('growth')->first();
-        if ($growth && $growth['growth'] > 0) {
-            // The page turns the tool id into its display name.
-            $out[] = ['tool' => $growth['tool'], 'growth' => $growth['growth']];
+        if ($growth && $growth['growth'] > 0 && $growth['repo'] !== ($top['repo'] ?? null)) {
+            $out[] = "{$growth['name']} picked up the most: {$growth['growth']} more prompts than the period before.";
+        }
+
+        $lead = collect($team)->whereNotNull('user_id')->sortByDesc('prompts')->first();
+        if ($lead && $lead['prompts'] > 0 && count($out) < 3) {
+            $out[] = "{$lead['name']} used AI the most, on {$lead['active_days']} of the days"
+                .($lead['main_project'] ? ", mostly in {$lead['main_project']}." : '.');
         }
 
         $idle = collect($team)->where('enrolled', true)->where('prompts', 0)->count();

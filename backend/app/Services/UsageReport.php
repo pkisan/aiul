@@ -177,8 +177,11 @@ class UsageReport
                 DB::raw('count(*) filter (where '.self::HUMAN.') as prompts'),
                 DB::raw('count(*) as interactions'),
                 DB::raw('max(ai_interactions.occurred_at) as last_seen'),
-                // The tool this person used most (Postgres' most-frequent value).
+                // Most-frequent values (Postgres mode(); nulls are ignored).
                 DB::raw('mode() within group (order by ai_interactions.tool) as main_tool'),
+                DB::raw('mode() within group (order by ai_interactions.repo) as main_repo'),
+                DB::raw('count(distinct ai_interactions.occurred_at::date) as active_days'),
+                DB::raw("count(*) filter (where ai_interactions.kind = 'agent') as agent_steps"),
             ])
             ->get();
 
@@ -196,8 +199,38 @@ class UsageReport
             'interactions' => (int) $row->interactions,
             'ai_seconds' => (int) ($time[$row->user_id] ?? 0),
             'main_tool' => $row->main_tool,
+            'main_project' => $row->main_repo ? basename($row->main_repo) : null,
+            'active_days' => (int) $row->active_days,
+            'agent_steps' => (int) $row->agent_steps,
             'last_seen' => $row->last_seen,
         ])->sortByDesc('prompts')->values()->all();
+    }
+
+    /**
+     * How the team works with AI, as four ratios: how much of it is project
+     * work, how much the AI does on its own per request, how long a working
+     * stretch runs, and how many days a person uses it.
+     */
+    public function patterns(): array
+    {
+        $row = AiInteraction::query()
+            ->tap(fn ($q) => $this->inRange($q, 'occurred_at'))
+            ->selectRaw('count(*) filter (where '.self::HUMAN.') as prompts')
+            ->selectRaw('count(*) filter (where '.self::HUMAN.' and repo is not null) as project_prompts')
+            ->selectRaw("count(*) filter (where kind = 'agent') as agent_steps")
+            ->selectRaw('count(distinct ai_session_id) filter (where '.self::HUMAN.') as sessions')
+            ->selectRaw('count(distinct (user_id, occurred_at::date)) as person_days')
+            ->selectRaw('count(distinct user_id) as people')
+            ->first();
+
+        $ratio = fn ($a, $b) => $b > 0 ? round($a / $b, 1) : null;
+
+        return [
+            'project_share' => $row->prompts > 0 ? (int) round($row->project_prompts / $row->prompts * 100) : null,
+            'steps_per_prompt' => $ratio($row->agent_steps, $row->prompts),
+            'prompts_per_session' => $ratio($row->prompts, $row->sessions),
+            'days_per_person' => $ratio($row->person_days, $row->people),
+        ];
     }
 
     /** Prompts per tool, for the "which tools" bars. */

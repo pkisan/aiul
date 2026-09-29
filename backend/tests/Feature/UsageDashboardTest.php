@@ -135,16 +135,38 @@ class UsageDashboardTest extends TestCase
     // Empty days are bars of zero, not missing bars: a gap is information.
     public function test_the_activity_chart_has_every_bucket_in_the_period(): void
     {
-        $this->interaction(['kind' => 'human', 'tool' => 'cursor', 'occurred_at' => now()->subDays(2)]);
-        $this->interaction(['kind' => 'agent', 'tool' => 'cursor', 'occurred_at' => now()->subDays(2)]); // not a prompt
+        $this->interaction(['kind' => 'human', 'repo' => '/Users/dev/lms', 'occurred_at' => now()->subDays(2)]);
+        $this->interaction(['kind' => 'agent', 'repo' => '/Users/dev/lms', 'occurred_at' => now()->subDays(2)]); // not a prompt
 
         $activity = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage?days=30')
             ->viewData('page')['props']['activity'];
 
         $this->assertSame('day', $activity['unit']);
         $this->assertCount(31, $activity['buckets']);
-        $this->assertSame(1, array_sum($activity['series']['cursor']));
-        $this->assertCount(31, $activity['series']['cursor']);
+        $this->assertSame(1, array_sum($activity['series']['/Users/dev/lms']));
+        $this->assertCount(31, $activity['series']['/Users/dev/lms']);
+    }
+
+    // How people work with AI, not which tool they picked.
+    public function test_the_overview_describes_how_the_team_works(): void
+    {
+        $alex = $this->user();
+        $first = $this->interaction(['user_id' => $alex->id, 'kind' => 'human', 'repo' => '/Users/dev/lms']);
+        $this->interaction(['user_id' => $alex->id, 'kind' => 'agent', 'repo' => '/Users/dev/lms', 'ai_session_id' => $first->ai_session_id]);
+        $this->interaction(['user_id' => $alex->id, 'kind' => 'agent', 'repo' => '/Users/dev/lms', 'ai_session_id' => $first->ai_session_id]);
+        $this->interaction(['user_id' => $alex->id, 'kind' => 'human', 'repo' => null]);
+
+        $props = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')->viewData('page')['props'];
+
+        $this->assertSame(50, $props['patterns']['project_share']);
+        $this->assertEquals(1.0, $props['patterns']['steps_per_prompt']);
+        $this->assertEquals(1.0, $props['patterns']['prompts_per_session']);
+        $this->assertEquals(1.0, $props['patterns']['days_per_person']);
+
+        $row = collect($props['team'])->firstWhere('user_id', $alex->id);
+        $this->assertSame('lms', $row['main_project']);
+        $this->assertSame(1, $row['active_days']);
+        $this->assertSame(2, $row['agent_steps']);
     }
 
     public function test_the_overview_flags_secrets_and_quiet_devices(): void
@@ -167,6 +189,40 @@ class UsageDashboardTest extends TestCase
                 // Alex has a device but did nothing: still a row on the team.
                 ->where('team', fn ($team) => collect($team)->contains(fn ($p) => $p['user_id'] === $alex->id && $p['prompts'] === 0 && $p['enrolled']))
                 ->where('enrolled', 1));
+    }
+
+    public function test_the_overview_shows_only_the_managers_tenant(): void
+    {
+        $other = Tenant::create(['name' => 'Other', 'slug' => 'other']);
+        [, $hash] = Device::issueToken();
+        $theirs = Device::withoutGlobalScope('tenant')->create(['tenant_id' => $other->id, 'hostname' => 'their-mac', 'token_hash' => $hash]);
+        $this->interaction(['tenant_id' => $other->id, 'device_id' => $theirs->id, 'kind' => 'human', 'redacted' => ['email']]);
+        $this->interaction(['kind' => 'human']);
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')
+            ->assertInertia(fn ($page) => $page
+                ->where('summary.prompts', 1)
+                ->where('attention.secrets_total', 0)
+                ->where('attention.unassigned', fn ($d) => collect($d)->pluck('hostname')->all() === ['mac'])
+                ->has('latest', 1));
+    }
+
+    // The tenant comes from the signed-in user, who is read from the session,
+    // so the middleware must run after StartSession. Run earlier, the user is
+    // unknown, no tenant is set, and every tenant's rows show. It must still
+    // run before SubstituteBindings, or another tenant's row is found and then
+    // refused (a 403 that admits it exists) instead of not found.
+    // An HTTP test cannot catch this: actingAs() and the in-memory test session
+    // know the user before the session starts.
+    public function test_the_tenant_is_set_after_the_session_and_before_route_binding(): void
+    {
+        $router = app('router');
+        $route = $router->getRoutes()->match(\Illuminate\Http\Request::create('/usage'));
+        $order = $router->resolveMiddleware($router->gatherRouteMiddleware($route));
+        $at = fn ($class) => array_search($class, $order, true);
+
+        $this->assertGreaterThan($at(\Illuminate\Session\Middleware\StartSession::class), $at(\App\Http\Middleware\SetTenantFromUser::class));
+        $this->assertLessThan($at(\Illuminate\Routing\Middleware\SubstituteBindings::class), $at(\App\Http\Middleware\SetTenantFromUser::class));
     }
 
     public function test_a_member_cannot_open_the_activity_list(): void

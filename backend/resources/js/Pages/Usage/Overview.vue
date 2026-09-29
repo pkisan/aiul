@@ -2,7 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Panel from '@/Components/Usage/Panel.vue';
 import Tag from '@/Components/Usage/Tag.vue';
-import { ago, count, duration, initials, toolColor, toolName, when } from '@/Components/Usage/format';
+import { ago, count, duration, initials, toolName, when } from '@/Components/Usage/format';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
@@ -13,8 +13,7 @@ const props = defineProps({
     enrolled: Number,
     attention: Object,
     activity: Object,
-    trends: Object,
-    perTool: Array,
+    patterns: Object,
     perProject: Array,
     team: Array,
     latest: Array,
@@ -34,7 +33,7 @@ const periodName = computed(() => (props.days === 1 ? 'last 24 hours' : `last ${
 const setDays = (days) => router.get(route('usage.index'), days === 7 ? {} : { days }, { preserveScroll: true });
 
 // A link to the Activity list, filtered, for the same period.
-const activity = (filters = {}) => route('usage.activity', { days: props.days, ...filters });
+const activityLink = (filters = {}) => route('usage.activity', { days: props.days, ...filters });
 
 // ---- The four numbers, each against the period before ----
 
@@ -58,25 +57,32 @@ const kpis = computed(() => [
     { label: 'Active projects', value: count(props.summary.projects), change: change(props.summary.projects, props.previous.projects) },
 ]);
 
-// ---- Activity chart: prompts per bucket, stacked by tool ----
+// ---- Activity chart: prompts per bucket, stacked by project ----
 
-// Two ids can be one tool to a reader (the Copilot chat extension reports under
-// two names), so series merge by display name.
+// The six busiest projects get their own colour; the rest fold into one
+// "Other projects" series, and work outside any checkout is grey. A colour
+// belongs to its project for the whole page (chart, legend, trend lines).
+const NO_PROJECT = 'General chat (no project)';
 const series = computed(() => {
-    const byName = new Map();
-    for (const [tool, counts] of Object.entries(props.activity.series)) {
-        const name = toolName(tool || null);
-        const row = byName.get(name) ?? { name, tool, counts: counts.map(() => 0) };
-        counts.forEach((n, i) => (row.counts[i] += n));
-        byName.set(name, row);
+    const rows = Object.entries(props.activity.series)
+        .map(([repo, counts]) => ({ repo, counts, total: counts.reduce((a, b) => a + b, 0) }))
+        .sort((a, b) => b.total - a.total);
+    const named = rows.filter((r) => r.repo !== '');
+    const out = named.slice(0, 6).map((r, i) => ({ ...r, name: r.repo.split('/').pop(), color: `var(--series-${i + 1})` }));
+    const rest = named.slice(6);
+    if (rest.length) {
+        const counts = rest[0].counts.map((_, i) => rest.reduce((a, r) => a + r.counts[i], 0));
+        out.push({ repo: null, name: `Other projects (${rest.length})`, counts, total: counts.reduce((a, b) => a + b, 0), color: 'var(--series-7)' });
     }
-    const rows = [...byName.values()].map((r) => ({ ...r, total: r.counts.reduce((a, b) => a + b, 0) }));
-    return rows.sort((a, b) => b.total - a.total);
+    const none = rows.find((r) => r.repo === '');
+    if (none) out.push({ ...none, name: NO_PROJECT, color: 'var(--series-other)' });
+    return out;
 });
+const projectColor = (repo) => series.value.find((s) => s.repo === (repo ?? ''))?.color ?? 'var(--series-7)';
 
 const columns = computed(() =>
     props.activity.buckets.map((at, i) => {
-        const parts = series.value.map((s) => ({ name: s.name, color: toolColor(s.tool), n: s.counts[i] })).filter((p) => p.n > 0);
+        const parts = series.value.map((s) => ({ name: s.name, color: s.color, n: s.counts[i] })).filter((p) => p.n > 0);
         return { at, parts, total: parts.reduce((a, p) => a + p.n, 0) };
     }),
 );
@@ -96,12 +102,31 @@ const bucketLabel = (at, long = false) => {
 const labelEvery = computed(() => Math.max(1, Math.ceil(columns.value.length / 6)));
 const hovered = ref(null);
 
-// ---- Tools share ----
+// ---- How the team works with AI ----
 
-const toolShare = computed(() => {
-    const total = series.value.reduce((a, s) => a + s.total, 0) || 1;
-    return series.value.map((s) => ({ ...s, share: Math.round((s.total / total) * 100) }));
-});
+const ways = computed(() => [
+    {
+        label: 'Project work',
+        value: props.patterns.project_share === null ? '—' : `${props.patterns.project_share}%`,
+        hint: 'of prompts were made inside a project, the rest is general chat',
+        bar: props.patterns.project_share,
+    },
+    {
+        label: 'AI steps per prompt',
+        value: props.patterns.steps_per_prompt ?? '—',
+        hint: 'actions the AI took on its own for each request: higher means more work handed over',
+    },
+    {
+        label: 'Prompts per session',
+        value: props.patterns.prompts_per_session ?? '—',
+        hint: 'requests in one working stretch: how long people stay with a problem',
+    },
+    {
+        label: 'Active days per person',
+        value: props.patterns.days_per_person ?? '—',
+        hint: `days with any AI use, of the ${props.days === 1 ? 'last day' : `last ${props.days}`}`,
+    },
+]);
 
 // ---- Projects, with a trend line each ----
 
@@ -113,7 +138,7 @@ const projects = computed(() => {
 });
 
 const sparkline = (repo) => {
-    const counts = props.trends[repo ?? ''] ?? [];
+    const counts = props.activity.series[repo ?? ''] ?? [];
     if (counts.length < 2) return '';
     const max = Math.max(1, ...counts);
     return counts.map((n, i) => `${(i / (counts.length - 1)) * 80},${22 - (n / max) * 20}`).join(' ');
@@ -136,7 +161,7 @@ const attentionCount = computed(
 );
 const ruleName = (rule) => rule.replace(/[-_]/g, ' ');
 
-const insightText = (i) => (typeof i === 'string' ? i : `${toolName(i.tool)} grew the most: ${count(i.growth)} more prompts than the previous period.`);
+const stepsPerPrompt = (p) => (p.prompts > 0 ? Math.round((p.agent_steps / p.prompts) * 10) / 10 : '—');
 </script>
 
 <template>
@@ -185,33 +210,33 @@ const insightText = (i) => (typeof i === 'string' ? i : `${toolName(i.tool)} gre
             <!-- Plain-sentence insights -->
             <ul v-if="insights.length" class="flex flex-col gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-5 py-3.5 text-sm text-gray-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 sm:flex-row sm:flex-wrap sm:gap-x-6">
                 <li v-for="(i, n) in insights" :key="n" class="flex gap-2">
-                    <span class="text-indigo-500" aria-hidden="true">●</span>{{ insightText(i) }}
+                    <span class="text-indigo-500" aria-hidden="true">●</span>{{ i }}
                 </li>
             </ul>
 
-            <div class="grid gap-6 lg:grid-cols-3">
+            <div class="grid items-start gap-6 lg:grid-cols-3">
                 <!-- Activity over time -->
-                <Panel title="Prompts over time" :subtitle="`Per ${activity.unit}, by tool`" class="lg:col-span-2">
+                <Panel title="AI work by project" :subtitle="`Prompts per ${activity.unit}, stacked by project`" class="lg:col-span-2">
                     <template #actions>
-                        <Link :href="activity()" class="text-indigo-600 hover:underline dark:text-indigo-400">View activity →</Link>
+                        <Link :href="activityLink()" class="text-indigo-600 hover:underline dark:text-indigo-400">View activity →</Link>
                     </template>
                     <div class="px-5 pb-4 pt-3">
                         <!-- Legend, always present: identity is never colour alone -->
                         <ul v-if="series.length" class="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
                             <li v-for="s in series" :key="s.name" class="flex items-center gap-1.5">
-                                <span class="h-2.5 w-2.5 rounded-sm" :style="{ background: toolColor(s.tool) }" aria-hidden="true" />{{ s.name }}
+                                <span class="h-2.5 w-2.5 rounded-sm" :style="{ background: s.color }" aria-hidden="true" />{{ s.name }}
                             </li>
                         </ul>
 
-                        <div v-if="!series.length" class="flex h-48 items-center justify-center text-sm text-gray-500">No prompts in this period.</div>
+                        <div v-if="!series.length" class="flex h-72 items-center justify-center text-sm text-gray-500">No prompts in this period.</div>
                         <div v-else class="relative">
-                            <div class="pointer-events-none absolute inset-x-0 top-0 flex h-48 flex-col justify-between" aria-hidden="true">
+                            <div class="pointer-events-none absolute inset-x-0 top-0 flex h-72 flex-col justify-between" aria-hidden="true">
                                 <div v-for="g in 3" :key="g" class="border-t border-dashed border-gray-100" />
                                 <div class="border-t border-gray-200" />
                             </div>
                             <span class="absolute -top-1 right-0 text-[11px] tabular-nums text-gray-400">{{ count(maxColumn) }}</span>
 
-                            <div class="relative flex h-48 items-end gap-[2px]" @mouseleave="hovered = null">
+                            <div class="relative flex h-72 items-end gap-[2px]" @mouseleave="hovered = null">
                                 <div
                                     v-for="(c, i) in columns"
                                     :key="c.at"
@@ -309,7 +334,7 @@ const insightText = (i) => (typeof i === 'string' ? i : `${toolName(i.tool)} gre
                 </Panel>
             </div>
 
-            <div class="grid gap-6 lg:grid-cols-3">
+            <div class="grid items-start gap-6 lg:grid-cols-3">
                 <!-- Projects -->
                 <Panel title="Projects" subtitle="The repository the work happened in" class="lg:col-span-2">
                     <div v-if="!projects.length" class="px-5 py-10 text-center text-sm text-gray-500">No project work in this period.</div>
@@ -329,23 +354,23 @@ const insightText = (i) => (typeof i === 'string' ? i : `${toolName(i.tool)} gre
                                 v-for="p in projects"
                                 :key="p.repo ?? '-'"
                                 class="cursor-pointer transition hover:bg-gray-50"
-                                @click="router.visit(activity({ project: p.repo ?? '-' }))"
+                                @click="router.visit(activityLink({ project: p.repo ?? '-' }))"
                             >
-                                <td class="max-w-0 px-5 py-2.5">
+                                <td class="max-w-[9rem] px-5 py-2.5 sm:max-w-[16rem]">
                                     <Link
-                                        :href="activity({ project: p.repo ?? '-' })"
+                                        :href="activityLink({ project: p.repo ?? '-' })"
                                         class="block truncate"
                                         :class="p.repo ? 'font-medium text-gray-900' : 'italic text-gray-500'"
                                         :title="p.repo ?? 'Browser chats and tools run outside a repository'"
                                         @click.stop
-                                    >{{ p.name ?? 'Outside a project' }}</Link>
+                                    >{{ p.name ?? 'General chat (no project)' }}</Link>
                                 </td>
                                 <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 sm:table-cell">{{ p.people }}</td>
                                 <td class="px-3 py-2.5 text-right tabular-nums text-gray-900">{{ count(p.prompts) }}</td>
                                 <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 md:table-cell">{{ duration(p.ai_seconds) }}</td>
                                 <td class="hidden px-3 py-2.5 sm:table-cell">
                                     <svg v-if="sparkline(p.repo)" viewBox="0 0 80 24" class="h-6 w-20" aria-hidden="true">
-                                        <polyline :points="sparkline(p.repo)" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+                                        <polyline :points="sparkline(p.repo)" fill="none" :stroke="projectColor(p.repo)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
                                     </svg>
                                 </td>
                                 <td class="whitespace-nowrap px-5 py-2.5 text-right text-xs text-gray-500" :title="when(p.last_seen)">{{ ago(p.last_seen) }}</td>
@@ -354,22 +379,20 @@ const insightText = (i) => (typeof i === 'string' ? i : `${toolName(i.tool)} gre
                     </table>
                 </Panel>
 
-                <!-- Tools share -->
-                <Panel title="Tools" subtitle="Share of prompts">
-                    <ul v-if="toolShare.length" class="space-y-3 px-5 py-4">
-                        <li v-for="t in toolShare" :key="t.name">
-                            <Link :href="activity({ tool: t.tool })" class="block rounded-md hover:bg-gray-50">
-                                <div class="flex justify-between text-sm">
-                                    <span class="text-gray-700">{{ t.name }}</span>
-                                    <span class="tabular-nums text-gray-500">{{ t.share }}% · {{ count(t.total) }}</span>
-                                </div>
-                                <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-100">
-                                    <div class="h-full rounded-full" :style="{ width: t.share + '%', background: toolColor(t.tool) }" />
-                                </div>
-                            </Link>
-                        </li>
-                    </ul>
-                    <p v-else class="px-5 py-10 text-center text-sm text-gray-500">No prompts yet.</p>
+                <!-- How people use it -->
+                <Panel title="How the team works with AI" :subtitle="periodName">
+                    <dl class="divide-y divide-gray-100">
+                        <div v-for="w in ways" :key="w.label" class="px-5 py-3.5">
+                            <div class="flex items-baseline justify-between gap-3">
+                                <dt class="text-sm text-gray-700">{{ w.label }}</dt>
+                                <dd class="text-lg font-semibold tabular-nums text-gray-900">{{ w.value }}</dd>
+                            </div>
+                            <div v-if="w.bar != null" class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                                <div class="h-full rounded-full" :style="{ width: w.bar + '%', background: 'var(--series-1)' }" />
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500">{{ w.hint }}</p>
+                        </div>
+                    </dl>
                 </Panel>
             </div>
 
@@ -383,7 +406,9 @@ const insightText = (i) => (typeof i === 'string' ? i : `${toolName(i.tool)} gre
                             <th class="px-3 py-2.5 font-medium">Status</th>
                             <th class="px-3 py-2.5 text-right font-medium">Prompts</th>
                             <th class="hidden px-3 py-2.5 text-right font-medium sm:table-cell">AI time</th>
-                            <th class="hidden px-3 py-2.5 font-medium md:table-cell">Main tool</th>
+                            <th class="hidden px-3 py-2.5 font-medium md:table-cell">Main project</th>
+                            <th class="hidden px-3 py-2.5 text-right font-medium lg:table-cell" title="Days with any AI use in this period">Active days</th>
+                            <th class="hidden px-3 py-2.5 text-right font-medium lg:table-cell" title="Actions the AI took on its own per request">AI steps / prompt</th>
                             <th class="hidden px-5 py-2.5 text-right font-medium sm:table-cell">Last seen</th>
                         </tr>
                     </thead>
@@ -393,12 +418,12 @@ const insightText = (i) => (typeof i === 'string' ? i : `${toolName(i.tool)} gre
                             :key="p.user_id ?? 'none'"
                             class="transition"
                             :class="p.user_id ? 'cursor-pointer hover:bg-gray-50' : ''"
-                            @click="p.user_id && router.visit(activity({ person: p.user_id }))"
+                            @click="p.user_id && router.visit(activityLink({ person: p.user_id }))"
                         >
-                            <td class="max-w-0 px-5 py-2.5">
+                            <td class="max-w-[9rem] px-5 py-2.5 sm:max-w-[16rem]">
                                 <div class="flex items-center gap-2.5">
                                     <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300" aria-hidden="true">{{ initials(p.name) }}</span>
-                                    <Link v-if="p.user_id" :href="activity({ person: p.user_id })" class="truncate font-medium text-gray-900" @click.stop>{{ p.name }}</Link>
+                                    <Link v-if="p.user_id" :href="activityLink({ person: p.user_id })" class="truncate font-medium text-gray-900" @click.stop>{{ p.name }}</Link>
                                     <span v-else class="truncate italic text-gray-500">{{ p.name }}</span>
                                 </div>
                             </td>
@@ -409,12 +434,11 @@ const insightText = (i) => (typeof i === 'string' ? i : `${toolName(i.tool)} gre
                             </td>
                             <td class="px-3 py-2.5 text-right tabular-nums text-gray-900">{{ count(p.prompts) }}</td>
                             <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 sm:table-cell">{{ duration(p.ai_seconds) }}</td>
-                            <td class="hidden px-3 py-2.5 md:table-cell">
-                                <span v-if="p.main_tool" class="inline-flex items-center gap-1.5 text-gray-700">
-                                    <span class="h-2 w-2 rounded-sm" :style="{ background: toolColor(p.main_tool) }" aria-hidden="true" />{{ toolName(p.main_tool) }}
-                                </span>
-                                <span v-else class="text-gray-400">—</span>
+                            <td class="hidden max-w-0 px-3 py-2.5 md:table-cell">
+                                <span class="block truncate" :class="p.main_project ? 'text-gray-700' : 'text-gray-400'" :title="p.main_tool ? `Mostly ${toolName(p.main_tool)}` : null">{{ p.main_project ?? (p.prompts ? 'General chat' : '—') }}</span>
                             </td>
+                            <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 lg:table-cell">{{ p.active_days || '—' }}</td>
+                            <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 lg:table-cell">{{ stepsPerPrompt(p) }}</td>
                             <td class="hidden whitespace-nowrap px-5 py-2.5 text-right text-xs text-gray-500 sm:table-cell" :title="when(p.last_seen)">{{ ago(p.last_seen) }}</td>
                         </tr>
                     </tbody>
@@ -424,7 +448,7 @@ const insightText = (i) => (typeof i === 'string' ? i : `${toolName(i.tool)} gre
             <!-- Latest prompts -->
             <Panel title="Latest prompts">
                 <template #actions>
-                    <Link :href="activity()" class="text-indigo-600 hover:underline dark:text-indigo-400">View all activity →</Link>
+                    <Link :href="activityLink()" class="text-indigo-600 hover:underline dark:text-indigo-400">View all activity →</Link>
                 </template>
                 <ul class="divide-y divide-gray-100">
                     <li v-for="p in latest" :key="p.id">
