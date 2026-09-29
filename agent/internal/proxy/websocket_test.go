@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -269,4 +270,66 @@ func testCodexWebSocket(t *testing.T, compress bool) {
 	if e.Kind != "human" {
 		t.Errorf("kind=%q, want human", e.Kind)
 	}
+}
+
+// A WebSocket no parser claims is invisible unless research mode writes it down.
+func TestResearchModeDumpsAnUnparsedWebSocket(t *testing.T) {
+	root := newTestRoot(t)
+	origin := newOriginServer(t, "claude.ai", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, rw, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.Close()
+		fmt.Fprintf(rw, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: test\r\n\r\n")
+		rw.Flush()
+		if _, _, err := readMessage(rw.Reader); err != nil {
+			t.Errorf("origin: %v", err)
+			return
+		}
+		writeFrame(rw, true, false, wsText, []byte(`{"type":"assistant","text":"Hi there"}`), nil)
+		rw.Flush()
+	}))
+	defer origin.close()
+
+	dir := t.TempDir()
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Sink: &collector{}, UpstreamRootCAs: origin.rootPool, ResearchDir: dir}, origin.addr)
+
+	raw, err := net.Dial("tcp", proxyAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	raw.SetDeadline(time.Now().Add(10 * time.Second))
+	fmt.Fprintf(raw, "CONNECT claude.ai:443 HTTP/1.1\r\nHost: claude.ai:443\r\n\r\n")
+	if resp, err := http.ReadResponse(bufio.NewReader(raw), nil); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("CONNECT: %v %v", resp, err)
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(root.Cert)
+	conn := tls.Client(raw, &tls.Config{ServerName: "claude.ai", RootCAs: pool, NextProtos: []string{"http/1.1"}})
+	fmt.Fprintf(conn, "GET /v1/sessions/ws/subscribe HTTP/1.1\r\nHost: claude.ai\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
+	cr := bufio.NewReader(conn)
+	if resp, err := http.ReadResponse(cr, nil); err != nil || resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("upgrade: %v %v", resp, err)
+	}
+	writeFrame(conn, true, false, wsText, []byte(`{"type":"user","text":"Hello"}`), []byte{1, 2, 3, 4})
+	if _, _, err := readMessage(cr); err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		files, _ := filepath.Glob(filepath.Join(dir, "*claude.ai-v1-sessions-ws-subscribe.json"))
+		if len(files) == 0 {
+			continue
+		}
+		body, _ := os.ReadFile(files[0])
+		if !strings.Contains(string(body), `client: {\"type\":\"user\"`) || !strings.Contains(string(body), `server: {\"type\":\"assistant\"`) {
+			t.Fatalf("dump lacks both sides: %s", body)
+		}
+		return
+	}
+	t.Fatal("no research dump written for the WebSocket")
 }

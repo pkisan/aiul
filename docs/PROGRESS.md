@@ -58,6 +58,15 @@ Plesk; tag a release. Then find where Cowork answers arrive.
   wrote a single log line within 30 s, installer rolled back cleanly. No
   launchd evidence kept. Intermittent; looks like the old bootout/bootstrap
   race (bug 6), not the new code. Watch for a repeat.
+- Prompt confirmed on genailog as claude-cowork (14:36, "Hello"); no answer.
+  Debug log after the POST: no GET .../events, no bridge traffic, no other
+  HTTP exchange carrying it. Theory: answers stream over a WebSocket opened
+  earlier; the proxy relayed unparsed WebSockets silently (no log, no dump).
+  Added: DEBUG "websocket opened" (host, path, parsed) and, in research mode
+  only, a redacted dump of an unparsed socket's messages (first 2000,
+  "client:"/"server:" prefixed) written when it closes. Test fails without it.
+  NEXT: install, one Cowork prompt, QUIT Claude (closes the socket so the dump
+  is written), copy *claude.ai* dumps to the scratchpad.
 
 ## Soft delete (Deleted prompts) — 2026-09-29
 

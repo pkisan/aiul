@@ -58,6 +58,16 @@ func (p *Proxy) relayWebSocket(req *http.Request, resp *http.Response,
 			reqHead: req.Header, status: resp.StatusCode, task: taskCtx}
 	}
 
+	p.log.Debug("websocket opened", "host", host, "path", req.URL.Path, "parsed", turns != nil)
+
+	// Research mode: a WebSocket no parser claims is otherwise invisible, which is
+	// how the Claude desktop app's cloud-session answers went unexplained. Its
+	// messages are kept (redacted, capped) and written when the socket closes.
+	var research *wsResearch
+	if turns == nil && p.research != nil {
+		research = &wsResearch{started: time.Now()}
+	}
+
 	// What the server agreed to, not what the client offered.
 	ext := strings.ToLower(resp.Header.Get("Sec-WebSocket-Extensions"))
 	deflate := strings.Contains(ext, "permessage-deflate")
@@ -69,6 +79,9 @@ func (p *Proxy) relayWebSocket(req *http.Request, resp *http.Response,
 		_ = r.pump(src, dst, func(msg []byte) {
 			if turns != nil {
 				turns.message(fromClient, msg)
+			}
+			if research != nil {
+				research.add(fromClient, msg)
 			}
 		})
 		// One side is gone; closing both unblocks the other pump.
@@ -83,6 +96,62 @@ func (p *Proxy) relayWebSocket(req *http.Request, resp *http.Response,
 
 	if turns != nil {
 		turns.finish() // a turn cut off by the connection closing is still a turn
+	}
+	if research != nil {
+		p.dumpWebSocket(req, resp, host, research)
+	}
+}
+
+// wsResearch holds an unparsed WebSocket's messages for a research dump.
+type wsResearch struct {
+	mu       sync.Mutex
+	started  time.Time
+	messages []string
+}
+
+// ponytail: first 2000 messages only; a long-lived socket keeps the start, which
+// is enough to see a message's shape.
+const maxResearchMessages = 2000
+
+func (r *wsResearch) add(fromClient bool, msg []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.messages) >= maxResearchMessages {
+		return
+	}
+	side := "server: "
+	if fromClient {
+		side = "client: "
+	}
+	r.messages = append(r.messages, side+string(msg))
+}
+
+// dumpWebSocket writes the socket's messages, redacted, one per SSE entry.
+func (p *Proxy) dumpWebSocket(req *http.Request, resp *http.Response, host string, r *wsResearch) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.messages) == 0 {
+		return
+	}
+
+	events := make([]string, 0, len(r.messages))
+	for _, m := range r.messages {
+		one, _ := p.redactor.Strings(m)
+		events = append(events, dumpable(one[0]))
+	}
+
+	err := p.research.write(dumpedExchange{
+		Time:     r.started,
+		Host:     host,
+		Method:   "WEBSOCKET",
+		Path:     req.URL.Path,
+		Status:   resp.StatusCode,
+		ReqHead:  headerMap(req.Header),
+		RespHead: headerMap(resp.Header),
+		SSE:      events,
+	})
+	if err != nil {
+		p.log.Warn("could not write the research dump", "err", err)
 	}
 }
 
