@@ -31,6 +31,7 @@ export const ago = (value) => {
 const toolNames = {
     'chatgpt-web': 'ChatGPT',
     'claude-web': 'Claude',
+    'claude-cowork': 'Claude Cowork',
     'claude-code': 'Claude Code',
     codex: 'Codex',
     cursor: 'Cursor',

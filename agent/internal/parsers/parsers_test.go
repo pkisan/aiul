@@ -1083,3 +1083,38 @@ func TestCodexWhoStartedTheTurn(t *testing.T) {
 		t.Error("prewarm must not be recorded")
 	}
 }
+
+// A Cowork remote session runs in Anthropic's cloud; the device only posts the
+// person's message to the session, so that POST is the prompt.
+func TestClaudeCoworkPromptFromSessionEvents(t *testing.T) {
+	p := ClaudeCowork{}
+	if !p.Handles("claude.ai", "/v1/code/sessions/cse_000000000000000000000000/events") {
+		t.Fatal("the session events endpoint must be handled")
+	}
+	for _, path := range []string{"/v1/code/sessions", "/v1/code/sessions/cse_0/ping", "/v1/code/sessions/cse_0/client/presence"} {
+		if p.Handles("claude.ai", path) {
+			t.Errorf("%s is housekeeping, not a prompt", path)
+		}
+	}
+
+	res, err := p.Parse(Exchange{
+		Host:     "claude.ai",
+		Method:   "POST",
+		Path:     "/v1/code/sessions/cse_000000000000000000000000/events",
+		ReqBody:  fixture(t, "claude-cowork/events.request.json"),
+		RespBody: fixture(t, "claude-cowork/events.response.json"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Skip || res.Prompt != "How are you?" || res.Model != "claude-sonnet-5-5" || res.Kind != KindHuman || res.Automated {
+		t.Errorf("got skip=%v prompt=%q model=%q kind=%q automated=%v", res.Skip, res.Prompt, res.Model, res.Kind, res.Automated)
+	}
+
+	// Control requests alone (a model switch) and reading events back are not prompts.
+	onlyControl, _ := p.Parse(Exchange{Method: "POST", ReqBody: []byte(`{"events":[{"payload":{"type":"control_request","request":{"subtype":"set_model","model":"x"}}}]}`)})
+	readBack, _ := p.Parse(Exchange{Method: "GET"})
+	if !onlyControl.Skip || !readBack.Skip {
+		t.Errorf("control-only skip=%v, GET skip=%v, want both skipped", onlyControl.Skip, readBack.Skip)
+	}
+}

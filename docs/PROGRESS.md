@@ -36,8 +36,23 @@ not logged, (c) manual zip install not viable for production, (d) restart.
   those connections. Same window after every boot/upgrade. FIXED in run.go:
   listen first, then healthCheck once at start. Not installed yet.
   Workaround now: quit + reopen Claude after the agent has been up 30 s.
+- (b) with AIUL_DEBUG: the desktop prompt went to POST
+  claude.ai/v1/code/sessions/<cse_id>/events, "no parser". It is a Cowork
+  remote session (environment_kind anthropic_cloud): the model runs in the
+  cloud, the device only posts the person's message. Research dump captured
+  two turns; new parser ClaudeCowork (tool id claude-cowork, dashboard name
+  "Claude Cowork") reads the prompt and set_model; control-only POSTs and
+  GET read-backs are skipped. Fixture: testdata/claude-cowork/ (ids and
+  attestation signatures replaced). ANSWER NOT CAPTURED: it does not come back
+  on this POST; no GET .../events landed in the dump. Where it arrives is
+  unknown (possibly bridge.claudeusercontent.com, not allow-listed).
+  Separately the app main process (Go-like hello) still rejects our cert on
+  api.anthropic.com and is tunnelled; its traffic is small.
+  /etc/aiul/agent.conf now has AIUL_DEBUG=1 and AIUL_RESEARCH_DUMP: owner
+  removes both when done (research files hold real conversations).
 NEXT: owner deploys backend and runs `php artisan aiul:reclassify-prompts` on
-Plesk; build + install the agent (proxy-at-start fix); tag a release.
+Plesk; build + install the agent (proxy-at-start + cowork parser); tag a
+release. Then find where Cowork answers arrive.
 
 ## Soft delete (Deleted prompts) — 2026-09-29
 
