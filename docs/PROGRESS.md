@@ -90,7 +90,23 @@ Plesk; tag a release. Then find where Cowork answers arrive.
   cloud session <-> device link. Owner said YES (2026-09-29): allow-list v4
   adds exactly bridge.claudeusercontent.com (not the domain: user content).
   Matcher tests: captured; claudeusercontent.com, files., look-alikes pass.
-  NEXT: install, Cowork prompt, quit Claude, copy *bridge* dumps.
+  Result: bridge = device tool dispatch (MCP over WS: tools/list,
+  get_device_info, heartbeats) + /chrome extension bridge. NOT the answer.
+- FOUND the answer: GET claude.ai/v1/code/sessions/<id>/events/stream (gzip
+  SSE, long-lived, replays session history on connect). data: {event_type,
+  source, payload}. Turn = user (source client; shouldQuery:false ones are
+  app context) ... assistant (payload.message: model, content[text], usage)
+  ... result. First result (num_turns 0) can come BEFORE the assistant.
+  stream_event = text_delta pieces (ignore, assistant carries the whole text).
+PLAN (in progress):
+  1. parsers: CoworkTurns splitter (feed event data, returns finished turns);
+     ClaudeCowork parses a turn (prompt, answer, model, tokens); Result gets
+     EventID; POST and turn both use id "cowork-<user uuid>".
+  2. proxy: for claude.ai .../events/stream, decode gzip on the side
+     (buffered channel, never blocks the client, rule 6), split SSE, record
+     each finished turn at once. Whole-stream record at close is skipped.
+  3. backend: duplicate event_id with an answer fills an empty answer.
+  4. fixture from the 15:22 dump (anonymised), tests, install, verify.
 
 ## Soft delete (Deleted prompts) — 2026-09-29
 
