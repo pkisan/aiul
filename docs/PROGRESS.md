@@ -115,8 +115,12 @@ PLAN (in progress):
   Ceilings: a turn records when its result arrives; answers of a turn the
   stream never carried stay empty (row stays prompt-only). Old prompt-only
   rows (random ids) are not back-filled.
-  NEXT: owner deploys the backend (fill-in needs it; the live one drops the
-  answer copy as a duplicate), installs the agent, sends a Cowork prompt.
+  VERIFIED by owner 2026-09-29: new Cowork conversation logs prompt + answer.
+  Known limit: after an agent restart, a session already open on screen does
+  not reopen its events/stream (15:32 test), so that turn stays prompt-only
+  until the session is reopened.
+  NEXT: owner pushes main, deploys Plesk, tags v0.3.0; testers update by
+  installing the new pkg over the old one (config and token are kept).
 
 ## Soft delete (Deleted prompts) — 2026-09-29
 
