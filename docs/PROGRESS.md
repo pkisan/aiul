@@ -2,7 +2,33 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-28 (ChatGPT widget fix ab0bf12 awaits install; W-d, Ubuntu L4 await owner)
+Last updated: 2026-09-29 (count_tokens "foo" fix 3f35d6f; Claude desktop tunnelled, see top)
+
+## "foo" prompts + Claude desktop not logging — 2026-09-29
+
+Owner reported (a) many "foo" prompts on one device, (b) Claude desktop chats
+not logged, (c) manual zip install not viable for production, (d) restart.
+- [x] (a) `3f35d6f`: "foo" rows are POST /v1/messages/count_tokens. Claude
+  Code sizes its context with one call per tool, prompt "foo", tools
+  attached, so kindOf() said human. Now utility in the anthropic parser AND at
+  backend ingestion (older agents covered without reinstall).
+  aiul:reclassify-prompts also fixes stored rows (local dry-run: 83). More
+  tools/MCP servers on a device = more "foo" rows, so it looks device-specific
+  but is not. Go + backend tests fail without the fix; backend 99/99.
+- (b) DIAGNOSED, not fixed: 12:29 today /Applications/Claude.app main process
+  sent a real TLS alert ("bad certificate") on api.anthropic.com, so rule 4
+  tunnelled it (in memory, until agent restart). It handshook fine 09-21..23.
+  downloads.claude.ai activity at 10:32 today suggests an app auto-update.
+  Last desktop-helper claude.ai handshake in the log: 09-23 (DEBUG off since
+  09-25, so absence is not proof). Next: quit+relaunch Claude.app, restart
+  the agent with AIUL_DEBUG=1, one message, read the hello= line; mitmweb if
+  it still refuses.
+- (c) No update mechanism exists. Recommended: signed pkg/msi pushed by MDM
+  (Jamf/Intune), token in a managed config profile; Phase 8 work.
+- (d) Autostart already on: macOS LaunchDaemon RunAtLoad+KeepAlive, Linux
+  systemd WantedBy=multi-user.target Restart=always, Windows StartAutomatic.
+NEXT: owner deploys backend and runs `php artisan aiul:reclassify-prompts` on
+Plesk; tags a release for the agent change.
 
 ## Soft delete (Deleted prompts) — 2026-09-29
 
