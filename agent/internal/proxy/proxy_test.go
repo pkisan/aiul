@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -1091,5 +1092,67 @@ func TestTaskFromWorkspaceInBody(t *testing.T) {
 	}
 	if e.Process != "Cursor Helper (Plugin)" {
 		t.Errorf("process = %q, want it kept from the connection", e.Process)
+	}
+}
+
+// A Claude desktop cloud session's event stream stays open for hours, gzipped.
+// Each turn must be recorded as soon as it finishes, and the whole stream must
+// not be recorded again when it closes.
+func TestCoworkStreamIsRecordedTurnByTurn(t *testing.T) {
+	root := newTestRoot(t)
+	sse, err := os.ReadFile(filepath.Join("..", "..", "testdata", "claude-cowork", "events-stream.sse"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sink := &collector{}
+	release := make(chan struct{})
+	origin := newOriginServer(t, "claude.ai", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Encoding", "gzip")
+		fl := w.(http.Flusher)
+		zw := gzip.NewWriter(w)
+		for _, block := range strings.SplitAfter(string(sse), "\n\n") {
+			zw.Write([]byte(block))
+			zw.Flush()
+			fl.Flush()
+		}
+		<-release // the stream stays open, as the real one does
+		zw.Close()
+	}))
+	defer origin.close()
+	defer close(release)
+
+	proxyAddr, _ := startProxy(t, Config{Issuer: root, Sink: sink, UpstreamRootCAs: origin.rootPool}, origin.addr)
+	ourPool := x509.NewCertPool()
+	ourPool.AddCert(root.Cert)
+
+	resp, err := clientThrough(proxyAddr, ourPool).Get("https://claude.ai/v1/code/sessions/cse_000000000000000000000000/events/stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// Recorded while the stream is still open.
+	if !eventually(3*time.Second, func() bool { return len(sink.all()) == 1 }) {
+		t.Fatalf("got %d events while the stream is open, want 1", len(sink.all()))
+	}
+	e := sink.all()[0]
+	if e.Parser != "claude-cowork" || e.Prompt != "Hey" || e.Answer != "Hey Sam! What can I help you with today?" {
+		t.Errorf("parser=%q prompt=%q answer=%q", e.Parser, e.Prompt, e.Answer)
+	}
+	if !strings.HasPrefix(e.ID, "cowork-") {
+		t.Errorf("id = %q, want the message's own id", e.ID)
+	}
+
+	// The client still gets the stream byte for byte.
+	release <- struct{}{}
+	got, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(got), "What can I help you with today?") {
+		t.Error("the client did not receive the stream")
+	}
+	time.Sleep(200 * time.Millisecond)
+	if n := len(sink.all()); n != 1 {
+		t.Errorf("got %d events after the stream closed, want still 1", n)
 	}
 }

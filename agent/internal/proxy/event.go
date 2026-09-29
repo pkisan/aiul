@@ -196,6 +196,9 @@ func (p *Proxy) record(in interaction) {
 			return
 		}
 		ev.Tool = res.Tool
+		if res.EventID != "" {
+			ev.ID = res.EventID
+		}
 		// What the traffic says first; the account the machine knows locally
 		// (Claude Code's ~/.claude.json) second.
 		ev.Account = parsers.Account(ex)

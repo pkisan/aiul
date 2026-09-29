@@ -1126,3 +1126,55 @@ func TestClaudeCoworkPromptFromSessionEvents(t *testing.T) {
 		t.Errorf("control-only skip=%v, GET skip=%v, want both skipped", onlyControl.Skip, readBack.Skip)
 	}
 }
+
+// The answer to a Cowork message arrives on the session's event stream. The
+// splitter must cut exactly one turn out of it, ending at the result that follows
+// the answer (not the no-op result before it), and a replay must give the same id.
+func TestCoworkStreamTurnHasPromptAndAnswer(t *testing.T) {
+	var events []string
+	for _, block := range strings.Split(string(fixture(t, "claude-cowork/events-stream.sse")), "\n\n") {
+		if data := strings.TrimPrefix(block, "data: "); data != "" && data != block {
+			events = append(events, data)
+		}
+	}
+
+	var turns [][]string
+	var split CoworkTurns
+	for range 2 { // the stream replays history on reconnect
+		for _, e := range events {
+			if turn := split.Add(e); turn != nil {
+				turns = append(turns, turn)
+			}
+		}
+	}
+	if len(turns) != 2 {
+		t.Fatalf("got %d turns from two passes, want 2", len(turns))
+	}
+
+	res, err := ClaudeCowork{}.Parse(Exchange{Host: "claude.ai", Method: TurnMethod,
+		Path: "/v1/code/sessions/cse_000000000000000000000000/events/stream", SSE: turns[0]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Skip || res.Prompt != "Hey" || res.Answer != "Hey Sam! What can I help you with today?" ||
+		res.Model != "claude-opus-5-5" || res.Kind != KindHuman || res.ResponseTokens != 4 {
+		t.Errorf("got skip=%v prompt=%q answer=%q model=%q kind=%q out=%d",
+			res.Skip, res.Prompt, res.Answer, res.Model, res.Kind, res.ResponseTokens)
+	}
+	if !strings.HasPrefix(res.EventID, "cowork-") {
+		t.Errorf("event id = %q, want one derived from the message uuid", res.EventID)
+	}
+	again, _ := ClaudeCowork{}.Parse(Exchange{Method: TurnMethod, SSE: turns[1]})
+	if again.EventID != res.EventID {
+		t.Errorf("a replayed turn got id %q, first time %q", again.EventID, res.EventID)
+	}
+
+	// The POST of the same message must land on the same id, so the backend
+	// joins the prompt it saw first to the answer that comes later.
+	post, _ := ClaudeCowork{}.Parse(Exchange{Method: "POST", ReqBody: []byte(
+		`{"events":[{"payload":{"type":"user","uuid":"` + strings.TrimPrefix(res.EventID, "cowork-") +
+			`","message":{"role":"user","content":"Hey"}}}]}`)})
+	if post.EventID != res.EventID {
+		t.Errorf("POST id %q, stream id %q", post.EventID, res.EventID)
+	}
+}

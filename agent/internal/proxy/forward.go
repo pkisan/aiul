@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"net/http/httputil"
 
-	"github.com/pkisan/aiul/internal/tasks"
 	"time"
+
+	"github.com/pkisan/aiul/internal/parsers"
+	"github.com/pkisan/aiul/internal/tasks"
 )
 
 // How much of each body we keep for logging. Our copy lives in memory, and the
@@ -77,8 +79,17 @@ func (p *Proxy) forward(req *http.Request, clientIn *bufio.Reader, client *tls.C
 		return io.EOF
 	}
 
+	// A Claude desktop cloud session's event stream is recorded turn by turn as
+	// it flows; see cowork_stream.go.
+	var tap func([]byte)
+	if parsers.IsCoworkStream(host, req.URL.Path) {
+		turns := p.startStreamTurns(req, resp, host, taskCtx)
+		defer turns.close()
+		tap = turns.feed
+	}
+
 	var respCopy bytes.Buffer
-	written, err := streamBody(client, resp, &respCopy)
+	written, err := streamBody(client, resp, &respCopy, tap)
 
 	ev := interaction{
 		Host:                    host,
@@ -109,7 +120,9 @@ func (p *Proxy) forward(req *http.Request, clientIn *bufio.Reader, client *tls.C
 
 // streamBody copies the response to the client chunk by chunk, flushing after
 // each one, while taking a bounded copy for logging.
-func streamBody(client io.Writer, resp *http.Response, copyTo io.Writer) (int64, error) {
+//
+// tap, when set, also gets every chunk after the client has it. It must not block.
+func streamBody(client io.Writer, resp *http.Response, copyTo io.Writer, tap func([]byte)) (int64, error) {
 	// A chunked response must stay chunked on the wire, or the client cannot tell
 	// where the body ends.
 	var out io.Writer = client
@@ -132,6 +145,9 @@ func streamBody(client io.Writer, resp *http.Response, copyTo io.Writer) (int64,
 			}
 			flush(client) // rule 6: the user sees this chunk now, not at the end
 			_, _ = limitedWriter{w: copyTo, max: maxResponseCopyBytes}.Write(chunk)
+			if tap != nil {
+				tap(chunk)
+			}
 			total += int64(n)
 		}
 		if readErr != nil {

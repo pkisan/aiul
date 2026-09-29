@@ -79,6 +79,12 @@ type Result struct {
 	// KindAgent ones as the agent works through its tools, and a scattering of
 	// KindUtility calls the tool makes for itself.
 	Kind string
+
+	// EventID, when set, is used instead of a random event id. A tool that sends
+	// the same turn twice (a prompt first, its answer later, or a stream that
+	// replays its history) gets one row, not several: the backend keeps the first
+	// and fills in an answer the first lacked.
+	EventID string
 }
 
 // What caused a request. Stored on the event, so the dashboard can show a
