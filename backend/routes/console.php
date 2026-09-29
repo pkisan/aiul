@@ -13,3 +13,6 @@ Artisan::command('inspire', function () {
  * does not live forever, and a promise nobody schedules is not a promise.
  */
 Schedule::command('aiul:purge-bodies')->dailyAt('03:30')->onOneServer();
+
+// Deleted prompts are restorable for AIUL_TRASH_DAYS, then gone for good.
+Schedule::command('aiul:purge-deleted')->dailyAt('03:45')->onOneServer();

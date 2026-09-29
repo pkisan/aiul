@@ -51,7 +51,8 @@ class PurgeBodies extends Command
             // withoutGlobalScope: this command runs with no current tenant, and it
             // deliberately walks every tenant one at a time with an explicit
             // where. Being explicit here means the query says what it does.
-            $query = AiInteraction::withoutGlobalScope('tenant')
+            // withTrashed: text in Deleted prompts obeys retention too.
+            $query = AiInteraction::withoutGlobalScope('tenant')->withTrashed()
                 ->where('tenant_id', $tenant->id)
                 ->where('occurred_at', '<', $cutoff)
                 ->where(function ($query) {

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ConsentController;
+use App\Http\Controllers\DeletedPromptsController;
 use App\Http\Controllers\PairDeviceController;
 use App\Http\Controllers\PeopleController;
 use App\Http\Controllers\ProfileController;
@@ -60,6 +61,10 @@ Route::middleware(['auth', 'verified', SetTenantFromUser::class, EnsureConsented
     // Two segments, so these never collide with /usage/{interaction} below.
     Route::get('/usage/session/{session}', [UsageDashboardController::class, 'session'])->name('usage.session');
     Route::get('/usage/project', [UsageDashboardController::class, 'project'])->name('usage.project');
+    // Admins: what was deleted from the dashboard, restorable until purged.
+    Route::get('/usage/deleted', [DeletedPromptsController::class, 'index'])->name('usage.deleted');
+    Route::post('/usage/deleted/{deletion}/restore', [DeletedPromptsController::class, 'restore'])->whereUuid('deletion')->name('usage.deleted.restore');
+    Route::delete('/usage/deleted/{deletion}', [DeletedPromptsController::class, 'destroy'])->whereUuid('deletion')->name('usage.deleted.destroy');
     Route::get('/usage/{interaction}', [UsageDashboardController::class, 'show'])->name('usage.show');
     Route::delete('/usage/{interaction}', [UsageDashboardController::class, 'destroy'])->name('usage.destroy');
 

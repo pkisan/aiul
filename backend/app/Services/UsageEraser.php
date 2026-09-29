@@ -6,10 +6,16 @@ use App\Models\AiInteraction;
 use App\Models\AiSession;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 /**
- * Deletes captured usage. Shared by `aiul:delete-user-data` and the admin's
- * Delete button on a prompt.
+ * Deletes captured usage. Shared by `aiul:delete-user-data`, the admin's Delete
+ * buttons and `aiul:purge-deleted`.
+ *
+ * Two kinds of delete:
+ *   trash()  soft: rows are hidden everywhere, text kept, restorable until
+ *            aiul:purge-deleted removes them after config('aiul.trash_days');
+ *   delete() permanent: text and rows gone now (a leaked secret, the CLI).
  *
  * A "turn" is what the person typed plus everything that answered it: the
  * agent's steps working on it and the answer. Deleting only the typed line
@@ -66,10 +72,46 @@ class UsageEraser
         return $prompt ? $this->turn($prompt) : collect([$row->id]);
     }
 
-    /** Delete these rows and their stored text; fix up the sessions they were in. */
+    /**
+     * Soft delete: hide these rows as one deletion, restorable as one.
+     * Returns the deletion id.
+     */
+    public function trash(int $tenantId, Collection $ids, ?int $byUserId): string
+    {
+        $deletionId = (string) Str::uuid();
+        $rows = AiInteraction::withoutGlobalScope('tenant')->where('tenant_id', $tenantId)->whereIn('id', $ids);
+        $sessions = (clone $rows)->pluck('ai_session_id')->filter()->unique();
+
+        $rows->update(['deleted_at' => now(), 'deleted_by' => $byUserId, 'deletion_id' => $deletionId]);
+        $this->tidySessions($tenantId, $sessions);
+
+        return $deletionId;
+    }
+
+    /** Bring a deletion back, and the sessions it had emptied. */
+    public function restore(int $tenantId, string $deletionId): int
+    {
+        $rows = $this->deletion($tenantId, $deletionId);
+        $sessions = (clone $rows)->pluck('ai_session_id')->filter()->unique();
+
+        $count = $rows->update(['deleted_at' => null, 'deleted_by' => null, 'deletion_id' => null]);
+        $this->tidySessions($tenantId, $sessions);
+
+        return $count;
+    }
+
+    /** Rows of one deletion (they are all trashed). */
+    public function deletion(int $tenantId, string $deletionId): Builder
+    {
+        return AiInteraction::withoutGlobalScope('tenant')->onlyTrashed()
+            ->where('tenant_id', $tenantId)
+            ->where('deletion_id', $deletionId);
+    }
+
+    /** Permanently delete these rows (trashed or not) and their stored text. */
     public function delete(int $tenantId, Collection $ids): int
     {
-        $rows = fn () => AiInteraction::withoutGlobalScope('tenant')->where('tenant_id', $tenantId);
+        $rows = fn () => AiInteraction::withoutGlobalScope('tenant')->withTrashed()->where('tenant_id', $tenantId);
         $sessions = collect();
 
         foreach ($ids->chunk(200) as $chunk) {
@@ -80,10 +122,10 @@ class UsageEraser
             }
             $sessions = $sessions->merge($found->pluck('ai_session_id')->filter());
             // Scores go with the row (cascade).
-            $rows()->whereIn('id', $chunk)->delete();
+            $rows()->whereIn('id', $chunk)->forceDelete();
         }
 
-        $this->tidySessions($tenantId, $sessions->unique());
+        $this->tidySessions($tenantId, $sessions->unique(), permanent: true);
 
         return $ids->count();
     }
@@ -95,26 +137,34 @@ class UsageEraser
             ->where('ai_session_id', $row->ai_session_id);
     }
 
-    /** Sessions that lost rows: drop the empty ones, re-measure the rest. */
-    private function tidySessions(int $tenantId, Collection $sessionIds): void
+    /**
+     * Sessions whose rows changed: re-measure from the rows still visible. A
+     * session with none left is hidden (soft deleted) so a restore can bring it
+     * back; once nothing at all is left, not even deleted rows, it goes for good.
+     */
+    private function tidySessions(int $tenantId, Collection $sessionIds, bool $permanent = false): void
     {
         foreach ($sessionIds as $id) {
-            $left = AiInteraction::withoutGlobalScope('tenant')->where('ai_session_id', $id);
-            $count = (clone $left)->count();
-            $session = AiSession::withoutGlobalScope('tenant')->where('tenant_id', $tenantId)->find($id);
-
+            $session = AiSession::withoutGlobalScope('tenant')->withTrashed()->where('tenant_id', $tenantId)->find($id);
             if (! $session) {
                 continue;
             }
+
+            $visible = AiInteraction::withoutGlobalScope('tenant')->where('ai_session_id', $id);
+            $count = (clone $visible)->count();
+
             if ($count === 0) {
-                $session->delete();
+                $anyLeft = AiInteraction::withoutGlobalScope('tenant')->withTrashed()->where('ai_session_id', $id)->exists();
+                $permanent && ! $anyLeft ? $session->forceDelete() : $session->delete();
 
                 continue;
             }
+
             $session->forceFill([
+                'deleted_at' => null,
                 'interaction_count' => $count,
-                'started_at' => (clone $left)->min('occurred_at'),
-                'ended_at' => (clone $left)->max('occurred_at'),
+                'started_at' => (clone $visible)->min('occurred_at'),
+                'ended_at' => (clone $visible)->max('occurred_at'),
             ])->save();
         }
     }

@@ -91,7 +91,8 @@ class DeleteUserData extends Command
     /** This person's rows, across the tenant scope (a command has no current tenant). */
     private function rows(User $user): Builder
     {
-        return AiInteraction::withoutGlobalScope('tenant')
+        // withTrashed: erasing a person includes what is in Deleted prompts.
+        return AiInteraction::withoutGlobalScope('tenant')->withTrashed()
             ->where('tenant_id', $user->tenant_id)
             ->where('user_id', $user->id);
     }

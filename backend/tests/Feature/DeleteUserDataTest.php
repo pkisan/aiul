@@ -66,7 +66,19 @@ class DeleteUserDataTest extends TestCase
         return AiInteraction::withoutGlobalScope('tenant')->where('user_id', $user->id)->orderBy('id')->pluck('id')->all();
     }
 
-    public function test_an_admin_deletes_one_prompt_with_its_answer_from_the_dashboard(): void
+    private function actingAsRole(string $role, ?Tenant $tenant = null): static
+    {
+        $tenant ??= $this->tenant;
+        $user = User::create(['tenant_id' => $tenant->id, 'name' => $role, 'email' => $role.uniqid().'@example.com', 'password' => 'x', 'role' => $role]);
+        ConsentRecord::withoutGlobalScope('tenant')->create([
+            'tenant_id' => $tenant->id, 'user_id' => $user->id, 'kind' => ConsentRecord::KIND_CAPTURE,
+            'policy_version' => config('aiul.consent_version'), 'granted_at' => now(),
+        ]);
+
+        return $this->actingAs($user);
+    }
+
+    public function test_delete_moves_the_turn_to_deleted_prompts_and_restore_brings_it_back(): void
     {
         $s = $this->aiSession($this->kim, '2026-09-20 10:00');
         $a = $this->row($s, 'human', '2026-09-20 10:00');
@@ -74,34 +86,52 @@ class DeleteUserDataTest extends TestCase
         $bAnswer = $this->row($s, 'agent', '2026-09-20 10:06');
         $c = $this->row($s, 'human', '2026-09-20 10:10');
 
-        $as = function (string $role) {
-            $user = User::create(['tenant_id' => $this->tenant->id, 'name' => $role, 'email' => $role.'@example.com', 'password' => 'x', 'role' => $role]);
-            ConsentRecord::withoutGlobalScope('tenant')->create([
-                'tenant_id' => $this->tenant->id, 'user_id' => $user->id, 'kind' => ConsentRecord::KIND_CAPTURE,
-                'policy_version' => config('aiul.consent_version'), 'granted_at' => now(),
-            ]);
-
-            return $this->actingAs($user);
-        };
-
-        $as(User::ROLE_MANAGER)->delete("/usage/{$b->id}")->assertForbidden();
+        $this->actingAsRole(User::ROLE_MANAGER)->delete("/usage/{$b->id}")->assertForbidden();
+        $this->actingAsRole(User::ROLE_ADMIN, Tenant::create(['name' => 'Other', 'slug' => 'other']))->delete("/usage/{$a->id}")->assertNotFound();
         $this->assertCount(4, $this->left($this->kim));
 
-        // Deleting from the answer's page takes the prompt it answered too.
-        $as(User::ROLE_ADMIN)->delete("/usage/{$bAnswer->id}")->assertRedirect(route('usage.session', $s->id));
-
+        // From the answer's page: the prompt it answered goes too. Hidden, text kept.
+        $this->actingAsRole(User::ROLE_ADMIN)->delete("/usage/{$bAnswer->id}")->assertRedirect(route('usage.session', $s->id));
         $this->assertSame([$a->id, $c->id], $this->left($this->kim));
-        Storage::disk('s3')->assertMissing($b->prompt_object);
+        Storage::disk('s3')->assertExists($b->prompt_object);
         $this->assertSame(2, $s->refresh()->interaction_count);
+        $this->get("/usage/{$b->id}")->assertNotFound();
 
-        $stranger = Tenant::create(['name' => 'Other', 'slug' => 'other']);
-        $outsider = User::create(['tenant_id' => $stranger->id, 'name' => 'O', 'email' => 'o@example.com', 'password' => 'x', 'role' => User::ROLE_ADMIN]);
-        ConsentRecord::withoutGlobalScope('tenant')->create([
-            'tenant_id' => $stranger->id, 'user_id' => $outsider->id, 'kind' => ConsentRecord::KIND_CAPTURE,
-            'policy_version' => config('aiul.consent_version'), 'granted_at' => now(),
-        ]);
-        $this->actingAs($outsider)->delete("/usage/{$a->id}");
-        $this->assertSame([$a->id, $c->id], $this->left($this->kim), 'another tenant cannot delete');
+        $deletion = AiInteraction::onlyTrashed()->withoutGlobalScope('tenant')->find($b->id)->deletion_id;
+        $this->get('/usage/deleted')->assertOk()->assertInertia(fn ($page) => $page
+            ->component('Usage/Deleted')->has('deletions.data', 1)->where('deletions.data.0.rows', 2));
+
+        // The agent re-sending a deleted event does not bring it back.
+        $this->assertTrue(AiInteraction::withTrashed()->where('event_id', $b->event_id)->exists());
+
+        $this->post("/usage/deleted/{$deletion}/restore")->assertRedirect();
+        $this->assertSame([$a->id, $b->id, $bAnswer->id, $c->id], $this->left($this->kim));
+        $this->assertSame(4, $s->refresh()->interaction_count);
+    }
+
+    public function test_permanent_delete_and_the_nightly_purge_erase_the_text(): void
+    {
+        $s = $this->aiSession($this->kim, '2026-09-20 10:00');
+        $a = $this->row($s, 'human', '2026-09-20 10:00', 'leaked secret');
+        $b = $this->row($s, 'human', '2026-09-20 10:05');
+
+        $this->actingAsRole(User::ROLE_ADMIN)->delete("/usage/{$a->id}", ['permanent' => true]);
+        $this->assertFalse(AiInteraction::withTrashed()->withoutGlobalScope('tenant')->whereKey($a->id)->exists());
+        Storage::disk('s3')->assertMissing($a->prompt_object);
+
+        // Moved to Deleted prompts, the session empties and hides with it.
+        $this->delete("/usage/{$b->id}")->assertRedirect(route('usage.index'));
+        $this->assertNull(AiSession::withoutGlobalScope('tenant')->find($s->id), 'hidden from lists');
+        $this->assertTrue(AiSession::withTrashed()->withoutGlobalScope('tenant')->find($s->id)->trashed(), 'kept for a restore');
+
+        $this->artisan('aiul:purge-deleted')->assertSuccessful();
+        Storage::disk('s3')->assertExists($b->prompt_object);   // not old enough yet
+
+        $this->travel(config('aiul.trash_days') + 1)->days();
+        $this->artisan('aiul:purge-deleted')->assertSuccessful();
+        Storage::disk('s3')->assertMissing($b->prompt_object);
+        $this->assertFalse(AiInteraction::withTrashed()->withoutGlobalScope('tenant')->whereKey($b->id)->exists());
+        $this->assertNull(AiSession::withTrashed()->withoutGlobalScope('tenant')->find($s->id), 'nothing left: the session goes too');
     }
 
     public function test_last_n_takes_whole_turns_and_tidies_the_session(): void

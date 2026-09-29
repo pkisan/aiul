@@ -27,4 +27,10 @@ return [
     'tenant' => env('AIUL_TENANT', 'default'),
 
     'consent_version' => env('AIUL_CONSENT_VERSION', '2026-09-28'),
+
+    /*
+     * Days a deleted prompt stays in Deleted prompts (restorable) before
+     * aiul:purge-deleted removes it and its text for good.
+     */
+    'trash_days' => (int) env('AIUL_TRASH_DAYS', 30),
 ];

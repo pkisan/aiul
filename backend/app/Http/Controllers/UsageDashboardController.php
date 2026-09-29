@@ -187,17 +187,22 @@ class UsageDashboardController extends Controller
 
     /**
      * Delete a prompt and everything that answered it (see UsageEraser::turn).
+     * Normally to Deleted prompts (restorable for config('aiul.trash_days'));
+     * with `permanent`, gone now — for a secret that slipped past redaction.
      * The log line records who deleted what, never the text.
      */
     public function destroy(Request $request, AiInteraction $interaction, UsageEraser $eraser): RedirectResponse
     {
         Gate::authorize('delete', $interaction);
 
+        $permanent = $request->boolean('permanent');
         $ids = $eraser->turnContaining($interaction);
         $session = $interaction->ai_session_id;
-        $eraser->delete($interaction->tenant_id, $ids);
+        $permanent
+            ? $eraser->delete($interaction->tenant_id, $ids)
+            : $eraser->trash($interaction->tenant_id, $ids, $request->user()->id);
 
-        Log::info('Prompt deleted from the dashboard', [
+        Log::info($permanent ? 'Prompt deleted permanently from the dashboard' : 'Prompt moved to Deleted prompts', [
             'by_user_id' => $request->user()->id,
             'owner_user_id' => $interaction->user_id,
             'interaction_ids' => $ids->all(),

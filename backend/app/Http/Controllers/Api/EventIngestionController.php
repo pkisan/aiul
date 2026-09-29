@@ -109,7 +109,8 @@ class EventIngestionController extends Controller
 
         // Idempotency: a batch sent twice must not create two rows. Returning the
         // id as accepted lets the agent delete its copy either way.
-        $existing = AiInteraction::where('event_id', $event['id'])->first();
+        // withTrashed: a deleted prompt re-sent by the agent stays deleted.
+        $existing = AiInteraction::withTrashed()->where('event_id', $event['id'])->first();
 
         if ($existing) {
             return $existing->event_id;

@@ -23,9 +23,13 @@ const kind = props.interaction.kind ?? (props.interaction.automated ? 'agent' : 
 const promptWho = { human: 'you', agent: 'agent', utility: 'tool' }[kind] ?? 'you';
 const promptLabel = { human: 'Prompt typed by the person', agent: 'Agent step (tool result fed back)', utility: "Tool's own call" }[kind];
 // Admins only. Takes the whole turn: the prompt, the agent's steps and the answer.
-const destroy = () => {
-    if (confirm('Delete this prompt, its agent steps and its answer? This cannot be undone.')) {
-        router.delete(route('usage.destroy', props.interaction.id));
+// Normally to Deleted prompts (restorable); "permanently" is for a leaked secret.
+const destroy = (permanent) => {
+    const message = permanent
+        ? 'Delete this prompt, its agent steps and its answer PERMANENTLY? The text is erased now and cannot be restored.'
+        : 'Move this prompt, its agent steps and its answer to Deleted prompts? An admin can restore it there until it is removed for good.';
+    if (confirm(message)) {
+        router.delete(route('usage.destroy', props.interaction.id), { data: { permanent } });
     }
 };
 
@@ -47,13 +51,20 @@ const missing = (state, what) =>
                     :href="route('usage.session', interaction.ai_session_id)"
                     class="ml-auto text-sm text-gray-500 hover:text-gray-900"
                 >Whole conversation →</Link>
-                <button
-                    v-if="canDelete"
-                    type="button"
-                    class="text-sm text-rose-600 hover:underline dark:text-rose-400"
-                    :class="{ 'ml-auto': !interaction.ai_session_id }"
-                    @click="destroy"
-                >Delete prompt</button>
+                <template v-if="canDelete">
+                    <button
+                        type="button"
+                        class="text-sm text-rose-600 hover:underline dark:text-rose-400"
+                        :class="{ 'ml-auto': !interaction.ai_session_id }"
+                        @click="destroy(false)"
+                    >Delete prompt</button>
+                    <button
+                        type="button"
+                        class="text-sm text-gray-500 hover:text-rose-600 hover:underline"
+                        title="For a secret that slipped past redaction: erased now, not restorable"
+                        @click="destroy(true)"
+                    >Delete permanently</button>
+                </template>
             </div>
         </template>
 

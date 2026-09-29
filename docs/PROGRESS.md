@@ -4,6 +4,23 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-28 (ChatGPT widget fix ab0bf12 awaits install; W-d, Ubuntu L4 await owner)
 
+## Soft delete (Deleted prompts) — 2026-09-29
+
+Owner chose "trash + purge": Delete prompt -> Deleted prompts (admin nav
+"Deleted", /usage/deleted), restorable; aiul:purge-deleted (nightly 03:45)
+removes it after AIUL_TRASH_DAYS (30). "Delete permanently" on the prompt page
+and in Deleted prompts erases at once (leaked secrets). CLI
+aiul:delete-user-data stays permanent and includes trashed rows.
+- Migration 2026_09_29_100000: ai_interactions deleted_at, deleted_by,
+  deletion_id (one click = one deletion); ai_sessions deleted_at (an emptied
+  session hides, comes back on restore).
+- withTrashed where it must: ingestion duplicate check (a re-sent deleted
+  event stays deleted), PurgeBodies retention, delete-user-data.
+- 98/98 backend tests. Visually checked (throwaway DB copy, dropped after):
+  prompt page buttons, Deleted prompts light + dark, nav link.
+NEXT: owner deploys (migrate needed); the Plesk scheduled task already runs
+schedule:run, so the purge needs no new setup.
+
 ## Device-token redaction + admin prompt delete — 2026-09-29
 
 - [x] `b655e4e` redaction rules v2: agent masks `aiul_` + 32+ alnum as
