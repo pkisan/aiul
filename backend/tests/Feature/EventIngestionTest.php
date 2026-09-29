@@ -214,6 +214,21 @@ class EventIngestionTest extends TestCase
         );
     }
 
+    public function test_a_device_token_in_a_prompt_is_masked_even_from_an_older_agent(): void
+    {
+        [, $token] = $this->newDevice();
+        $leak = 'aiul_'.str_repeat('Ab3', 16);
+        $event = $this->anEvent(['prompt' => "printf 'AIUL_DEVICE_TOKEN={$leak}'", 'answer' => "use {$leak}"]);
+
+        $this->withToken($token)->postJson('/api/aiul/events', ['events' => [$event]])->assertOk();
+
+        $stored = AiInteraction::withoutGlobalScope('tenant')->first();
+        $bodies = app(BodyStore::class);
+        $this->assertSame("printf 'AIUL_DEVICE_TOKEN=[REDACTED:aiul-device-token]'", $bodies->get($stored->prompt_object));
+        $this->assertSame('use [REDACTED:aiul-device-token]', $bodies->get($stored->answer_object));
+        $this->assertSame(['email', 'aiul-device-token'], $stored->redacted);
+    }
+
     public function test_a_batch_sent_twice_does_not_create_duplicates(): void
     {
         [, $token] = $this->newDevice();

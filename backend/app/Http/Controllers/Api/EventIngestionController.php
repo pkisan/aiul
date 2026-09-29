@@ -128,6 +128,7 @@ class EventIngestionController extends Controller
             $event['kind'] = 'utility';
             $event['automated'] = true;
         }
+        $event = $this->maskDeviceTokens($event);
         $session = $this->sessionFor($device, $event, $occurredAt);
 
         $interaction = new AiInteraction([
@@ -187,6 +188,28 @@ class EventIngestionController extends Controller
      * with no gap longer than the idle window. That is what makes "AI time per
      * task" mean something rather than counting wall-clock time with lunch in it.
      */
+    /**
+     * The agent masks secrets before sending. Our own device tokens are masked
+     * here as well, so agents installed before redaction rules v2 (which know
+     * nothing of them) cannot get one stored either. Same rule and same mask as
+     * the agent's "aiul-device-token".
+     */
+    private function maskDeviceTokens(array $event): array
+    {
+        foreach (['prompt', 'answer', 'system'] as $field) {
+            if (! is_string($event[$field] ?? null)) {
+                continue;
+            }
+            $event[$field] = preg_replace('/\baiul_[A-Za-z0-9]{32,}\b/', '[REDACTED:aiul-device-token]', $event[$field], -1, $n);
+            // `redacted` lists rule names, as the agent sends it.
+            if ($n > 0 && ! in_array('aiul-device-token', $event['redacted'] ?? [], true)) {
+                $event['redacted'][] = 'aiul-device-token';
+            }
+        }
+
+        return $event;
+    }
+
     private function sessionFor(Device $device, array $event, Carbon $occurredAt): AiSession
     {
         $idleWindow = now()->parse($occurredAt)->subMinutes(config('aiul.session_idle_minutes', 30));

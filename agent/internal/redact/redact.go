@@ -20,7 +20,7 @@ import (
 
 // RulesVersion is bumped whenever the rule list changes, so a stored record says
 // which version of the rules produced it.
-const RulesVersion = 1
+const RulesVersion = 2
 
 // Rule is one thing we look for.
 type Rule struct {
@@ -163,6 +163,12 @@ func DefaultRules() []Rule {
 		{
 			Name:    "slack-token",
 			Pattern: regexp.MustCompile(`\bxox[baprs]-[A-Za-z0-9-]{10,}\b`),
+		},
+		{
+			// Our own device token (backend: Device::issueToken). People paste
+			// agent.conf into AI tools while setting a device up.
+			Name:    "aiul-device-token",
+			Pattern: regexp.MustCompile(`\baiul_[A-Za-z0-9]{32,}\b`),
 		},
 
 		// ---- credentials in context -------------------------------------------

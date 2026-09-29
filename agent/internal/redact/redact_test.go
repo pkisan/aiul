@@ -74,6 +74,9 @@ func TestProviderAPIKeys(t *testing.T) {
 		{"slack-token",
 			"token " + slackToken,
 			slackToken},
+		{"aiul-device-token",
+			"AIUL_DEVICE_TOKEN=aiul_" + fakeBody36 + "abcdefghijkl",
+			"aiul_" + fakeBody36 + "abcdefghijkl"},
 	}
 	for _, c := range cases {
 		mustMask(t, c.rule, c.input, c.secret)
