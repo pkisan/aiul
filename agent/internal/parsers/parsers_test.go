@@ -139,6 +139,21 @@ func TestAnthropicToolResultIsAutomated(t *testing.T) {
 	}
 }
 
+// Claude Code sizes its context with count_tokens, one call per tool, each with
+// the prompt "foo". Those offer tools, so kindOf alone calls them human.
+func TestAnthropicCountTokensIsNotAHumanPrompt(t *testing.T) {
+	res, _ := Anthropic{}.Parse(Exchange{
+		Host:     "api.anthropic.com",
+		Path:     "/v1/messages/count_tokens",
+		ReqHead:  http.Header{"User-Agent": {"claude-cli/2.1.275 (external, cli)"}},
+		ReqBody:  []byte(`{"model":"claude-opus-5-5","messages":[{"role":"user","content":"foo"}],"tools":[{"name":"Read"}]}`),
+		RespBody: []byte(`{"input_tokens":812}`),
+	})
+	if res.Kind != KindUtility || !res.Automated {
+		t.Errorf("kind = %q automated = %v, want utility and automated", res.Kind, res.Automated)
+	}
+}
+
 func TestOpenAIStreamedConversation(t *testing.T) {
 	res, err := OpenAI{}.Parse(Exchange{
 		Host:    "api.openai.com",

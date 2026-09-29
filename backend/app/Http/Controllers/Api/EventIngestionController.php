@@ -125,7 +125,10 @@ class EventIngestionController extends Controller
 
         // Only what the person typed: the tool's own wrappers never reach storage.
         $event['prompt'] = PromptText::clean($event['prompt'] ?? null);
-        if (PromptText::isToolGenerated($event['prompt'])) {
+        // count_tokens only measures a request, it never asks the model anything.
+        // Claude Code sends one per tool with the prompt "foo" to size its
+        // context, and those carried tools, so the agent called them human.
+        if (PromptText::isToolGenerated($event['prompt']) || str_ends_with((string) ($event['path'] ?? ''), '/count_tokens')) {
             $event['kind'] = 'utility';
             $event['automated'] = true;
         }

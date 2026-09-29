@@ -56,6 +56,11 @@ func (p Anthropic) Parse(ex Exchange) (Result, error) {
 	}
 
 	res.Kind = kindOf(lastUserIsToolResult, len(req.Tools) > 0, res.Tool)
+	// count_tokens only measures a request; the model is never asked anything.
+	// Claude Code sends one per tool with the prompt "foo" to size its context.
+	if strings.HasSuffix(ex.Path, "/count_tokens") {
+		res.Kind = KindUtility
+	}
 	res.Automated = res.Kind != KindHuman
 
 	if len(ex.SSE) > 0 {

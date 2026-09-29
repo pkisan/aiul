@@ -10,7 +10,8 @@ use Illuminate\Console\Command;
 /**
  * One-off repair for rows stored before ingestion recognised prompts the tool
  * wrote itself (Claude Code's next-prompt suggestion and its recap after a
- * break). Those were stored as human prompts, so they inflated every "prompts"
+ * break), and Claude Code's count_tokens calls (the "foo" prompts). Those were
+ * stored as human prompts, so they inflated every "prompts"
  * count. New rows are classified at ingestion; this fixes the old ones.
  *
  * Safe to run again: it only touches rows still marked human.
@@ -30,7 +31,8 @@ class ReclassifyPrompts extends Command
             ->whereNotNull('prompt_object')
             ->chunkById(200, function ($rows) use ($bodies, &$changed) {
                 foreach ($rows as $row) {
-                    if (! PromptText::isToolGenerated(PromptText::clean($bodies->get($row->prompt_object)))) {
+                    $measuring = str_ends_with((string) $row->path, '/count_tokens');
+                    if (! $measuring && ! PromptText::isToolGenerated(PromptText::clean($bodies->get($row->prompt_object)))) {
                         continue;
                     }
 

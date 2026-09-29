@@ -229,6 +229,18 @@ class EventIngestionTest extends TestCase
         $this->assertSame(['email', 'aiul-device-token'], $stored->redacted);
     }
 
+    public function test_count_tokens_foo_calls_from_an_older_agent_are_not_human_prompts(): void
+    {
+        [, $token] = $this->newDevice();
+        $event = $this->anEvent(['path' => '/v1/messages/count_tokens', 'prompt' => 'foo', 'kind' => 'human', 'automated' => false]);
+
+        $this->withToken($token)->postJson('/api/aiul/events', ['events' => [$event]])->assertOk();
+
+        $stored = AiInteraction::withoutGlobalScope('tenant')->first();
+        $this->assertSame('utility', $stored->kind);
+        $this->assertTrue($stored->automated);
+    }
+
     public function test_a_batch_sent_twice_does_not_create_duplicates(): void
     {
         [, $token] = $this->newDevice();
