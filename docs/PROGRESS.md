@@ -2,7 +2,28 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-29 (count_tokens "foo" fix 3f35d6f; Claude desktop tunnelled, see top)
+Last updated: 2026-09-29 (manager Overview page in progress, see top)
+
+## PLAN: manager Overview page — started 2026-09-29
+
+Owner's boss wants a manager screen readable at one glance. Owner decided:
+real build (no mockup); pending tasks later (no task data here, tickets
+dropped 2026-09-22); managers see progress, not money (no spend figure).
+- [ ] O1 UsageReport: previous-period offset, projects count, perBucket
+      (activity over time; hour/day/week/month by period), perProject gets
+      AI time + people, perPerson gets main tool.
+- [ ] O2 /usage = Overview: 4 numbers with change vs previous period,
+      Needs attention (secrets caught, devices silent 3+ days, unassigned
+      devices), activity chart by tool, tools share, projects table with
+      trend, team table (enrolled people with no activity included), latest
+      5 prompts, 2-3 rule-based insight sentences. No chart library: SVG/CSS.
+- [ ] O3 old list moves to /usage/activity (Activity.vue, filters kept, side
+      panels dropped). Nav: Overview, Activity, My data, Devices, People;
+      Deleted moves to the user menu.
+- [ ] O4 tests (old list tests point at /usage/activity; new ones for change,
+      buckets, attention), build, visual check.
+Ceilings: no agent heartbeat, so "silent device" = nothing captured (agent
+off OR no AI use); buckets in UTC.
 
 ## "foo" prompts + Claude desktop not logging — 2026-09-29
 
