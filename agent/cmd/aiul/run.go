@@ -191,6 +191,14 @@ func cmdRun(args []string) int {
 		exitProcess(0)
 	}()
 
+	// Listen before the housekeeping starts, so its first check can find us.
+	ln, err := net.Listen("tcp", proxyAddr)
+	if err != nil {
+		log.Error("the proxy stopped", "err", err)
+		return 1
+	}
+	log.Info("proxy listening", "addr", proxyAddr, "allowlist_version", proxy.AllowListVersion)
+
 	go agentLoop(ctx, log, forwarder, manageProxy, privileged, root, issuer)
 
 	log.Info("agent running",
@@ -199,7 +207,7 @@ func cmdRun(args []string) int {
 		"spool", spool.Dir(),
 		"forwarding", forwarder.Enabled(),
 		"manages_system_proxy", manageProxy)
-	if err := p.ListenAndServe(); err != nil {
+	if err := p.Serve(ln); err != nil {
 		log.Error("the proxy stopped", "err", err)
 		if manageProxy {
 			// The proxy is gone, so nothing must be pointed at it any more.
@@ -214,6 +222,14 @@ func cmdRun(args []string) int {
 func agentLoop(ctx context.Context, log *slog.Logger, forwarder *forward.Forwarder, manageProxy bool, privileged privilegedSource, root *ca.Root, issuer *deviceIssuer) {
 	ticker := time.NewTicker(healthInterval)
 	defer ticker.Stop()
+
+	// Put the system proxy back at once, not on the first tick. A stop removes
+	// it (rule 7), and an app opened in the 30 seconds before the first tick
+	// chose a direct route and kept it: the Claude desktop app did exactly that
+	// after a restart and nothing it sent was captured.
+	if manageProxy {
+		healthCheck(log, privileged)
+	}
 
 	for {
 		select {

@@ -27,8 +27,17 @@ not logged, (c) manual zip install not viable for production, (d) restart.
   (Jamf/Intune), token in a managed config profile; Phase 8 work.
 - (d) Autostart already on: macOS LaunchDaemon RunAtLoad+KeepAlive, Linux
   systemd WantedBy=multi-user.target Restart=always, Windows StartAutomatic.
+- (b) retest 13:06 after owner quit Claude, kickstarted, reopened: no tunnel
+  warning, but no events either. `lsof`: Claude Helper (network service) held
+  9 DIRECT connections to 160.79.104.10 (claude.ai/api.anthropic.com), only 2
+  via :8899. Cause: a stop removes the system proxy (rule 7) and the new
+  process only re-applied it on the first 30 s health tick ("drifted" at
+  13:06:31). The app launched at 13:05:59, saw no proxy, went direct and kept
+  those connections. Same window after every boot/upgrade. FIXED in run.go:
+  listen first, then healthCheck once at start. Not installed yet.
+  Workaround now: quit + reopen Claude after the agent has been up 30 s.
 NEXT: owner deploys backend and runs `php artisan aiul:reclassify-prompts` on
-Plesk; tags a release for the agent change.
+Plesk; build + install the agent (proxy-at-start fix); tag a release.
 
 ## Soft delete (Deleted prompts) — 2026-09-29
 
