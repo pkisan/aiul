@@ -2,28 +2,40 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-29 (manager Overview page in progress, see top)
+Last updated: 2026-09-29 (manager Overview done; tenant-leak fix d0be254, see top)
 
-## PLAN: manager Overview page — started 2026-09-29
+## Manager Overview page — 2026-09-29
 
 Owner's boss wants a manager screen readable at one glance. Owner decided:
 real build (no mockup); pending tasks later (no task data here, tickets
-dropped 2026-09-22); managers see progress, not money (no spend figure).
-- [ ] O1 UsageReport: previous-period offset, projects count, perBucket
-      (activity over time; hour/day/week/month by period), perProject gets
-      AI time + people, perPerson gets main tool.
-- [ ] O2 /usage = Overview: 4 numbers with change vs previous period,
-      Needs attention (secrets caught, devices silent 3+ days, unassigned
-      devices), activity chart by tool, tools share, projects table with
-      trend, team table (enrolled people with no activity included), latest
-      5 prompts, 2-3 rule-based insight sentences. No chart library: SVG/CSS.
-- [ ] O3 old list moves to /usage/activity (Activity.vue, filters kept, side
-      panels dropped). Nav: Overview, Activity, My data, Devices, People;
-      Deleted moves to the user menu.
-- [ ] O4 tests (old list tests point at /usage/activity; new ones for change,
-      buckets, attention), build, visual check.
+dropped 2026-09-22); managers see progress, not money (no spend figure);
+the highlight is how PEOPLE use AI and what PROJECTS it moves, not tools.
+- [x] `ce1a75f` /usage = Overview; the list moved to /usage/activity
+      (Activity.vue); Deleted prompts moved to the user menu.
+- [x] `d0be254` SECURITY FIX, pre-existing: SetTenantFromUser was prepended
+      to the web group, ran before StartSession, found no user, set no
+      tenant: every signed-in person saw EVERY tenant's rows (dashboard,
+      activity, sessions). Invisible until a second tenant had data; tests
+      missed it (actingAs knows the user before the session). Now after
+      Authenticate, before SubstituteBindings; a test checks the order.
+      Production impact depends on how many tenants genailog has: check
+      `select id, slug from tenants` there.
+- [x] `b10133d` Overview: 4 numbers vs previous period; Needs attention
+      (secrets caught, devices silent 3+ days, unassigned devices); AI work
+      by project chart (stacked by project); projects table with trend
+      lines; How the team works with AI (project share, AI steps per
+      prompt, prompts per session, active days per person); team table
+      (main project, active days, steps per prompt, idle people included);
+      latest 5 prompts; 2-3 rule-based insights. No chart library.
+- [x] DemoDataSeeder (local only, refuses production): tenant "demo",
+      sign in demo@example.com; password printed once by the seeder.
+      Rerun rebuilds it. `php artisan db:seed --class=DemoDataSeeder`
+- Visually checked (headless Chrome, 1440 light + dark, 390 phone).
+  Backend 107/107.
 Ceilings: no agent heartbeat, so "silent device" = nothing captured (agent
-off OR no AI use); buckets in UTC.
+off OR no AI use); buckets cut in UTC; ⌘K search not built.
+NEXT: owner reviews on http://127.0.0.1:8088 as demo@example.com, then
+deploys (no migration needed). Pending tasks: later, needs PM task data.
 
 ## "foo" prompts + Claude desktop not logging — 2026-09-29
 
