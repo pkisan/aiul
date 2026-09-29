@@ -4,6 +4,21 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-28 (ChatGPT widget fix ab0bf12 awaits install; W-d, Ubuntu L4 await owner)
 
+## Device-token redaction + admin prompt delete — 2026-09-29
+
+- [x] `b655e4e` redaction rules v2: agent masks `aiul_` + 32+ alnum as
+      [REDACTED:aiul-device-token]; backend ingestion applies the same mask so
+      pre-v2 agents are covered without a reinstall. Existing stored rows are
+      NOT rewritten: delete the leaked one with the new button.
+- [x] Admin "Delete prompt" on the interaction page (DELETE /usage/{id},
+      policy `delete`: admin, same tenant). Takes the whole turn (answer or
+      step pages delete the prompt they belong to). Logic moved from
+      aiul:delete-user-data into Services/UsageEraser (command unchanged in
+      behaviour, its tests pass). Log line: who, whose, ids, never text.
+      97/97 backend tests. Button not visually checked.
+      NEXT: owner deploys Plesk zip, deletes the Mac-mini token prompt, issues
+      that device a new token; tags v0.2.1 for the agent rule.
+
 ## Searchable filters on /usage — 2026-09-28
 
 v0.2.0 released by owner (3 downloads, workflow green). Owner asked for

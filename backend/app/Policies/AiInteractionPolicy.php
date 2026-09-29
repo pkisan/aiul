@@ -35,4 +35,13 @@ class AiInteractionPolicy
 
         return $user->canViewRawPrompts();
     }
+
+    /**
+     * Deleting a prompt (with its answer) is for admins of the same tenant: a
+     * secret that slipped past redaction, or something that should not be kept.
+     */
+    public function delete(User $user, AiInteraction $interaction): bool
+    {
+        return $user->tenant_id === $interaction->tenant_id && $user->isAdmin();
+    }
 }

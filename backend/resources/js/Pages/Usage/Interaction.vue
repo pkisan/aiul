@@ -4,11 +4,12 @@ import Panel from '@/Components/Usage/Panel.vue';
 import Tag from '@/Components/Usage/Tag.vue';
 import { count, when } from '@/Components/Usage/format';
 import Message from '@/Components/Usage/Message.vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 
 const props = defineProps({
     interaction: Object,
     canViewRaw: Boolean,
+    canDelete: Boolean,
     person: String,
     // Present only when canViewRaw.
     prompt: String,
@@ -21,6 +22,13 @@ const props = defineProps({
 const kind = props.interaction.kind ?? (props.interaction.automated ? 'agent' : 'human');
 const promptWho = { human: 'you', agent: 'agent', utility: 'tool' }[kind] ?? 'you';
 const promptLabel = { human: 'Prompt typed by the person', agent: 'Agent step (tool result fed back)', utility: "Tool's own call" }[kind];
+// Admins only. Takes the whole turn: the prompt, the agent's steps and the answer.
+const destroy = () => {
+    if (confirm('Delete this prompt, its agent steps and its answer? This cannot be undone.')) {
+        router.delete(route('usage.destroy', props.interaction.id));
+    }
+};
+
 const missing = (state, what) =>
     state === 'purged' ? `This ${what} was purged by the retention policy.` : `No ${what} text was captured.`;
 </script>
@@ -39,6 +47,13 @@ const missing = (state, what) =>
                     :href="route('usage.session', interaction.ai_session_id)"
                     class="ml-auto text-sm text-gray-500 hover:text-gray-900"
                 >Whole conversation →</Link>
+                <button
+                    v-if="canDelete"
+                    type="button"
+                    class="text-sm text-rose-600 hover:underline dark:text-rose-400"
+                    :class="{ 'ml-auto': !interaction.ai_session_id }"
+                    @click="destroy"
+                >Delete prompt</button>
             </div>
         </template>
 

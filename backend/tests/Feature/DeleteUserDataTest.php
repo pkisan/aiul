@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AiInteraction;
 use App\Models\AiSession;
+use App\Models\ConsentRecord;
 use App\Models\Device;
 use App\Models\Tenant;
 use App\Models\User;
@@ -63,6 +64,44 @@ class DeleteUserDataTest extends TestCase
     private function left(User $user): array
     {
         return AiInteraction::withoutGlobalScope('tenant')->where('user_id', $user->id)->orderBy('id')->pluck('id')->all();
+    }
+
+    public function test_an_admin_deletes_one_prompt_with_its_answer_from_the_dashboard(): void
+    {
+        $s = $this->aiSession($this->kim, '2026-09-20 10:00');
+        $a = $this->row($s, 'human', '2026-09-20 10:00');
+        $b = $this->row($s, 'human', '2026-09-20 10:05', 'my token is aiul_...');
+        $bAnswer = $this->row($s, 'agent', '2026-09-20 10:06');
+        $c = $this->row($s, 'human', '2026-09-20 10:10');
+
+        $as = function (string $role) {
+            $user = User::create(['tenant_id' => $this->tenant->id, 'name' => $role, 'email' => $role.'@example.com', 'password' => 'x', 'role' => $role]);
+            ConsentRecord::withoutGlobalScope('tenant')->create([
+                'tenant_id' => $this->tenant->id, 'user_id' => $user->id, 'kind' => ConsentRecord::KIND_CAPTURE,
+                'policy_version' => config('aiul.consent_version'), 'granted_at' => now(),
+            ]);
+
+            return $this->actingAs($user);
+        };
+
+        $as(User::ROLE_MANAGER)->delete("/usage/{$b->id}")->assertForbidden();
+        $this->assertCount(4, $this->left($this->kim));
+
+        // Deleting from the answer's page takes the prompt it answered too.
+        $as(User::ROLE_ADMIN)->delete("/usage/{$bAnswer->id}")->assertRedirect(route('usage.session', $s->id));
+
+        $this->assertSame([$a->id, $c->id], $this->left($this->kim));
+        Storage::disk('s3')->assertMissing($b->prompt_object);
+        $this->assertSame(2, $s->refresh()->interaction_count);
+
+        $stranger = Tenant::create(['name' => 'Other', 'slug' => 'other']);
+        $outsider = User::create(['tenant_id' => $stranger->id, 'name' => 'O', 'email' => 'o@example.com', 'password' => 'x', 'role' => User::ROLE_ADMIN]);
+        ConsentRecord::withoutGlobalScope('tenant')->create([
+            'tenant_id' => $stranger->id, 'user_id' => $outsider->id, 'kind' => ConsentRecord::KIND_CAPTURE,
+            'policy_version' => config('aiul.consent_version'), 'granted_at' => now(),
+        ]);
+        $this->actingAs($outsider)->delete("/usage/{$a->id}");
+        $this->assertSame([$a->id, $c->id], $this->left($this->kim), 'another tenant cannot delete');
     }
 
     public function test_last_n_takes_whole_turns_and_tidies_the_session(): void

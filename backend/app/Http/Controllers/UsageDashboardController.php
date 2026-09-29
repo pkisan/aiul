@@ -8,11 +8,13 @@ use App\Models\Device;
 use App\Models\User;
 use App\Services\BodyStore;
 use App\Services\PromptText;
+use App\Services\UsageEraser;
 use App\Services\UsageReport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -160,6 +162,7 @@ class UsageDashboardController extends Controller
                 'duration_ms', 'streamed', 'automated', 'redacted', 'occurred_at', 'ai_session_id',
             ]),
             'canViewRaw' => Gate::allows('viewRaw', $interaction),
+            'canDelete' => Gate::allows('delete', $interaction),
             'person' => $interaction->user_id ? User::find($interaction->user_id)?->name : null,
         ];
 
@@ -180,6 +183,29 @@ class UsageDashboardController extends Controller
         }
 
         return Inertia::render('Usage/Interaction', $props);
+    }
+
+    /**
+     * Delete a prompt and everything that answered it (see UsageEraser::turn).
+     * The log line records who deleted what, never the text.
+     */
+    public function destroy(Request $request, AiInteraction $interaction, UsageEraser $eraser): RedirectResponse
+    {
+        Gate::authorize('delete', $interaction);
+
+        $ids = $eraser->turnContaining($interaction);
+        $session = $interaction->ai_session_id;
+        $eraser->delete($interaction->tenant_id, $ids);
+
+        Log::info('Prompt deleted from the dashboard', [
+            'by_user_id' => $request->user()->id,
+            'owner_user_id' => $interaction->user_id,
+            'interaction_ids' => $ids->all(),
+        ]);
+
+        return $session && AiSession::find($session)
+            ? redirect()->route('usage.session', $session)
+            : redirect()->route('usage.index');
     }
 
     /** The old separate text page: the text now lives on the interaction page. */

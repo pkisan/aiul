@@ -61,6 +61,7 @@ Route::middleware(['auth', 'verified', SetTenantFromUser::class, EnsureConsented
     Route::get('/usage/session/{session}', [UsageDashboardController::class, 'session'])->name('usage.session');
     Route::get('/usage/project', [UsageDashboardController::class, 'project'])->name('usage.project');
     Route::get('/usage/{interaction}', [UsageDashboardController::class, 'show'])->name('usage.show');
+    Route::delete('/usage/{interaction}', [UsageDashboardController::class, 'destroy'])->name('usage.destroy');
 
     // Old links to the separate text page.
     Route::get('/usage/{interaction}/raw', [UsageDashboardController::class, 'raw'])->name('usage.raw');
