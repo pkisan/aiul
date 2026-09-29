@@ -72,7 +72,17 @@ Plesk; tag a release. Then find where Cowork answers arrive.
   WebSocket in the log: api.anthropic.com /api/frame/sync (14:43:36,
   unparsed); its dump not copied yet. Prompt POST also carried 3 app-written
   <system-reminder> user messages with shouldQuery:false: parser now skips
-  those (test fails without it). NEXT: owner copies *api.anthropic.com* dumps.
+  those (test fails without it).
+- Cowork answer hunt, 15:02 capture after quitting Claude: answer is in NO
+  decrypted traffic. /v1/code/sessions/<id>/events/stream (gzip SSE, open
+  14:45:35-15:02:19, closed cleanly) and /v1/code/sessions/watch both carried
+  nothing decodable (decompress() checked on truncated gzip: works). No
+  WebSocket from the app. Sealed main-process api.anthropic.com exchanges are
+  ~2 KB/5 KB, too small. Unexplained: the main process holds long-lived DIRECT
+  connections (proxy ignored) to 34.117.41.85 (GCP) and 54.175.92.109 (AWS),
+  hostnames unknown. Prompt-only capture stays. Options given to owner: SNI
+  sniff to name those hosts; server-side (Anthropic compliance/admin API) for
+  cloud sessions. Research copies still in the session scratchpad.
 
 ## Soft delete (Deleted prompts) — 2026-09-29
 
