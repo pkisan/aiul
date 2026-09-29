@@ -2,21 +2,26 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-29 (manager Overview done; tenant-leak fix d0be254, see top)
+Last updated: 2026-09-29 (Overview v2 done; tenant-leak fix d0be254, see top)
 
-## PLAN: Overview v2, a manager's page — started 2026-09-29
+## Overview v2, a manager's page — 2026-09-29 (`a2546e2`)
 
 Owner (as the boss of 30): the chart, Needs attention and the patterns
-panel are not useful to a manager. Their screenshot: 106 "secrets", 70 of
-them the person's own email that Claude Code puts in every request; 5
-"silent devices" = one Mac registered 5 times in testing.
-- [ ] V1 remove: daily chart (perBucket), sparklines, How the team works
-      panel (patterns()), device items (admin concern, not manager's).
-- [ ] V2 leaks: a red banner only when a CREDENTIAL was masked (key and token
-      rules; not email/phone/aadhaar/pan/credit-card/password-assignment).
-- [ ] V3 Team first: change vs previous period per person, sortable
-      columns, search. Projects: people on it, share of prompts, change.
-- [ ] V4 tests, build, screenshots.
+panel were not useful. Their data: 106 "secrets", 70 the person's own email
+(Claude Code sends it with every request), rest mostly password/card/aadhaar
+fixtures this repo's redaction tests contain; only 2 real keys. "5 silent
+devices" = one Mac registered 5 times in testing (never revoked).
+- [x] Removed daily chart (perBucket), sparklines, patterns(), device items,
+      latest prompts. Page title "AI adoption".
+- [x] Red banner only for CREDENTIAL_RULES (key/token rules; not email,
+      phone, aadhaar, pan, credit-card, password-assignment).
+- [x] Team first: change vs previous per person, sortable, search.
+      Projects: share of prompts, contributors, change.
+- [x] Insights: who is not using AI, who changed most (base >= 10,
+      change >= 30%), top project with people count, team change.
+- Backend 108/108; screenshots 1440 light/dark, 390 phone.
+NEXT: owner reviews; stale device records need a "remove device" button on
+People (not built); deploy (no migration).
 
 ## Manager Overview page — 2026-09-29
 
