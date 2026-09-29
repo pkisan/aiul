@@ -10,7 +10,7 @@ import (
 
 // AllowListVersion is bumped whenever the list below changes, so a captured event
 // records which version of the list decided to capture it.
-const AllowListVersion = 3
+const AllowListVersion = 4
 
 // Decision is what the proxy does with one connection.
 type Decision int
@@ -64,6 +64,10 @@ var allowList = []string{
 	"claude.ai",
 	"*.claude.ai",
 	"statsig.anthropic.com",
+	// The Claude desktop app's link to its cloud (Cowork) sessions, added
+	// 2026-09-29 to find where their answers travel. Exact host only: the rest of
+	// claudeusercontent.com serves user-uploaded content.
+	"bridge.claudeusercontent.com",
 
 	// Google Gemini. Note the narrow host: generativelanguage.googleapis.com only,
 	// never all of googleapis.com.

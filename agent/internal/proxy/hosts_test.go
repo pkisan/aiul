@@ -80,6 +80,9 @@ func TestClassifyDefaultsToPass(t *testing.T) {
 		"storage.googleapis.com", "github.com", "api.github.com",
 		"login.microsoftonline.com", "hdfcbank.com", "icloud.com",
 		"notopenai.com", "api.openai.com.evil.net", "openai.com.attacker.io",
+		// Only the bridge is listed; user-uploaded content stays sealed.
+		"claudeusercontent.com", "files.claudeusercontent.com",
+		"bridge.claudeusercontent.com.evil.net", "xbridge.claudeusercontent.com",
 		"", "localhost", "127.0.0.1",
 	} {
 		if got := c.Classify(host, ""); got != Pass {
@@ -94,6 +97,7 @@ func TestClassifyCapturesAIHosts(t *testing.T) {
 		"api.openai.com", "api.openai.com:443", "API.OPENAI.COM:443",
 		"api.anthropic.com", "claude.ai", "api.claude.ai",
 		"generativelanguage.googleapis.com", "chatgpt.com", "cdn.chatgpt.com",
+		"bridge.claudeusercontent.com",
 	} {
 		if got := c.Classify(host, ""); got != Capture {
 			t.Errorf("Classify(%q) = %v, want capture", host, got)

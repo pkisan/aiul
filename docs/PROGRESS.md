@@ -83,6 +83,14 @@ Plesk; tag a release. Then find where Cowork answers arrive.
   hostnames unknown. Prompt-only capture stays. Options given to owner: SNI
   sniff to name those hosts; server-side (Anthropic compliance/admin API) for
   cloud sessions. Research copies still in the session scratchpad.
+- tcpdump (owner ran, SNI only, 15:17): Claude made NO direct connections;
+  the earlier 34.117.x / 54.175.x ones were gone. Every Claude connection
+  goes through the proxy. Sealed because not allow-listed:
+  bridge.claudeusercontent.com (73 KB to server at 15:17:10), likely the
+  cloud session <-> device link. Owner said YES (2026-09-29): allow-list v4
+  adds exactly bridge.claudeusercontent.com (not the domain: user content).
+  Matcher tests: captured; claudeusercontent.com, files., look-alikes pass.
+  NEXT: install, Cowork prompt, quit Claude, copy *bridge* dumps.
 
 ## Soft delete (Deleted prompts) — 2026-09-29
 
