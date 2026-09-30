@@ -236,4 +236,22 @@ class PmCoreTest extends TestCase
         $this->actingAs($me)->post(route('pm.tasks.move', $task), ['project_id' => $theirs->id])->assertSessionHasErrors('project_id');
         $this->actingAs($stranger)->post(route('pm.tasks.move', $task), ['project_id' => $theirs->id])->assertNotFound();
     }
+
+    public function test_a_task_url_opens_the_board_with_the_task_in_a_slide_over(): void
+    {
+        $me = $this->user(User::ROLE_MEMBER);
+        $task = $this->project($me);
+
+        // Cold load of the task URL: the board of its project, with the task open.
+        $this->actingAs($me)->get(route('pm.tasks.show', $task))->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Pm/Board')
+                ->where('project.key', 'SHOP')->has('tasks', 1)
+                ->where('task.key', 'SHOP-1')->has('task.events')->has('trail.sessions')
+                // Opening from the board reloads only the panel, never the columns.
+                ->reloadOnly(['task', 'trail'], fn ($reload) => $reload->missing('tasks')->where('task.key', 'SHOP-1')));
+
+        // The board itself: nothing open.
+        $this->actingAs($me)->get(route('pm.board', $task->project_id))
+            ->assertInertia(fn ($page) => $page->component('Pm/Board')->where('task', null)->where('trail', null));
+    }
 }

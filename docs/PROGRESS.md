@@ -2,9 +2,9 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (task slide-over in progress)
+Last updated: 2026-09-30 (task slide-over done, owner to verify)
 
-## PM tool — task slide-over on the board — 2026-09-30 (IN PROGRESS)
+## PM tool — task slide-over on the board — 2026-09-30 (DONE, owner to verify)
 
 Owner: "Have you built the slide-over UX … If not then build it." Not built
 (task was a full page). Spec: my design answer Q1.
@@ -20,6 +20,17 @@ PLAN:
      Close: Esc, ✕, click on empty board. Focus returns to the card.
      Description draft kept in localStorage per task until saved.
   4. Tests updated (component Pm/Board), screenshots, commit.
+- [x] 1-4 done. Components/TaskPanel.vue; Pages/Pm/Task.vue deleted.
+- Changed from the plan: while a task is open (>= 1024px) the board shrinks
+  to the space left of the panel and its columns scroll sideways, because
+  the 720px panel otherwise hid three columns and their cards could not be
+  clicked to swap. The open task's card scrolls into view and gets a ring.
+- Checked in headless Chrome: open -> /pm/tasks/92, swap -> /pm/tasks/95,
+  Esc -> /pm/projects/10/board, status change inside the panel keeps it
+  open and refreshes the board (AAY-8 set back to Backlog afterwards).
+  Light/dark, 1100px, 1440px, phone. Temp Shot Bot user deleted again.
+- 141/141 backend (26 Pm; new: task URL renders Pm/Board, partial reload
+  of task + trail leaves `tasks` out).
 
 ## PM tool — move task between projects — 2026-09-30 (DONE, owner to verify)
 

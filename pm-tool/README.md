@@ -6,7 +6,8 @@ them, because it reads what the AI Usage Logger (`aiul`) captures.
 
 - **Board:** projects, sprints, tasks, and a five-column board. "Start working"
   marks the task you are on.
-- **Task AI Trail:** on every task page. Every AI session behind the task, with
+- **Task AI Trail:** in the task slide-over (click a card; `/pm/tasks/{id}` links
+  straight to it). Every AI session behind the task, with
   its prompts numbered 1.1, 1.2, 2.1…
 - **Team Pulse** (managers): four numbers, who may be stuck, and the team A–Z.
 - **Tools & cost** (managers) and **My work** / person pages.

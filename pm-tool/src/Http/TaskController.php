@@ -22,32 +22,39 @@ class TaskController
     /**
      * Five columns for one project. ?sprint=ID or ?sprint=all; by default the
      * sprint running today, else all. Backlog shows every backlog task: backlog
-     * work is not in a sprint yet.
+     * work is not in a sprint yet. No task open: `task` and `trail` are null.
      */
     public function board(Request $request, Project $project): Response
+    {
+        return Inertia::render('Pm/Board', $this->boardProps($request, $project) + ['task' => null, 'trail' => null]);
+    }
+
+    /**
+     * The board props, each lazy: opening or closing a task from the board is
+     * a partial reload of `task` and `trail`, and these are not recomputed.
+     */
+    private function boardProps(Request $request, Project $project): array
     {
         $sprints = $project->sprints()->orderByDesc('start_date')->get(['id', 'name', 'start_date', 'end_date']);
         $current = $sprints->first(fn (Sprint $s) => today()->between($s->start_date, $s->end_date));
         $sprint = $request->query('sprint', $current?->id ?? 'all');
         $sprint = $sprint === 'all' ? 'all' : ($sprints->firstWhere('id', (int) $sprint)?->id ?? 'all');
 
-        $tasks = $project->tasks()
-            ->with('assignee:id,name')
-            ->withCount(['aiLinks as ai_sessions'])
-            ->when($sprint !== 'all', fn ($q) => $q->where(fn ($q) => $q->where('sprint_id', $sprint)->orWhere('status', 'backlog')))
-            ->orderBy('number')
-            ->get()
-            ->map(fn (Task $t) => $this->card($t, $project));
-
-        return Inertia::render('Pm/Board', [
-            'project' => $project->only(['id', 'name', 'key']),
-            'projects' => Project::orderBy('name')->get(['id', 'name', 'key']),
-            'sprints' => $sprints,
-            'sprint' => $sprint,
-            'tasks' => $tasks,
-            'statuses' => Task::STATUSES,
-            'people' => $this->people(),
-        ]);
+        return [
+            'project' => fn () => $project->only(['id', 'name', 'key']),
+            'projects' => fn () => Project::orderBy('name')->get(['id', 'name', 'key']),
+            'sprints' => fn () => $sprints,
+            'sprint' => fn () => $sprint,
+            'tasks' => fn () => $project->tasks()
+                ->with('assignee:id,name')
+                ->withCount(['aiLinks as ai_sessions'])
+                ->when($sprint !== 'all', fn ($q) => $q->where(fn ($q) => $q->where('sprint_id', $sprint)->orWhere('status', 'backlog')))
+                ->orderBy('number')
+                ->get()
+                ->map(fn (Task $t) => $this->card($t, $project)),
+            'statuses' => fn () => Task::STATUSES,
+            'people' => fn () => $this->people(),
+        ];
     }
 
     public function store(Request $request, Project $project): RedirectResponse
@@ -71,30 +78,34 @@ class TaskController
         return back();
     }
 
+    /**
+     * A task opens as a slide-over on its project's board, so /pm/tasks/{id}
+     * renders the board with the task open. A shared link lands on the same view.
+     */
     public function show(Request $request, Task $task, Insights $insights, BodyStore $bodies): Response
     {
         $task->load(['project', 'sprint', 'assignee:id,name', 'events' => fn ($q) => $q->latest('occurred_at')]);
-        $names = User::whereIn('id', $task->events->pluck('user_id')->filter())->pluck('name', 'id');
 
-        return Inertia::render('Pm/Task', [
-            'task' => $this->card($task->loadCount('aiLinks as ai_sessions'), $task->project) + [
-                'description' => $task->description,
-                'sprint_id' => $task->sprint_id,
-                'sprint' => $task->sprint?->name,
-                'started_at' => $task->started_at,
-                'completed_at' => $task->completed_at,
-                'created_at' => $task->created_at,
-            ],
-            'project' => $task->project->only(['id', 'name', 'key']),
-            'events' => $task->events->map(fn ($e) => [
-                'id' => $e->id, 'field' => $e->field, 'from' => $e->from, 'to' => $e->to,
-                'at' => $e->occurred_at, 'by' => $names[$e->user_id] ?? null,
-            ]),
-            'sprints' => $task->project->sprints()->orderByDesc('start_date')->get(['id', 'name']),
-            'projects' => Project::where('id', '!=', $task->project_id)->orderBy('name')->get(['id', 'name', 'key']),
-            'statuses' => Task::STATUSES,
-            'people' => $this->people(),
-            'trail' => $insights->trail($task, $request->user(), $bodies),
+        return Inertia::render('Pm/Board', $this->boardProps($request, $task->project) + [
+            'task' => function () use ($task) {
+                $names = User::whereIn('id', $task->events->pluck('user_id')->filter())->pluck('name', 'id');
+
+                return $this->card($task->loadCount('aiLinks as ai_sessions'), $task->project) + [
+                    'description' => $task->description,
+                    'project_id' => $task->project_id,
+                    'sprint_id' => $task->sprint_id,
+                    'started_at' => $task->started_at,
+                    'completed_at' => $task->completed_at,
+                    'created_at' => $task->created_at,
+                    // Sprints of the task's own project (the board may show another after a move).
+                    'sprints' => $task->project->sprints()->orderByDesc('start_date')->get(['id', 'name']),
+                    'events' => $task->events->map(fn ($e) => [
+                        'id' => $e->id, 'field' => $e->field, 'from' => $e->from, 'to' => $e->to,
+                        'at' => $e->occurred_at, 'by' => $names[$e->user_id] ?? null,
+                    ]),
+                ];
+            },
+            'trail' => fn () => $insights->trail($task, $request->user(), $bodies),
         ]);
     }
 

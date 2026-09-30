@@ -2,7 +2,8 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { initials } from '@/Components/Usage/format';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import TaskPanel from '../../Components/TaskPanel.vue';
 import { statusLabels } from '../../pm.js';
 
 const props = defineProps({
@@ -13,7 +14,34 @@ const props = defineProps({
     tasks: Array,
     statuses: Array,
     people: Array,
+    // The task open in the slide-over (/pm/tasks/{id}), and its AI trail; null when closed.
+    task: Object,
+    trail: Object,
 });
+
+// ---- Slide-over. Opening or closing only reloads `task` and `trail`: the
+// board keeps its data, scroll and filters, and the URL is the task's own.
+const only = { only: ['task', 'trail'], preserveState: true, preserveScroll: true };
+const taskHref = (t) => route('pm.tasks.show', { task: t.id, sprint: props.sprint });
+let opener = null; // the card link that opened the panel, to give focus back
+const close = () => {
+    if (!props.task) return;
+    router.visit(route('pm.board', { project: props.project.id, sprint: props.sprint }), {
+        ...only,
+        onSuccess: () => nextTick(() => opener?.focus()),
+    });
+};
+const onKey = (e) => e.key === 'Escape' && props.task && !e.defaultPrevented && close();
+onMounted(() => document.addEventListener('keydown', onKey));
+// The open task's card scrolls into view in the side-scrolling columns.
+const showSelected = () => nextTick(() => document.querySelector('[aria-current="true"]')?.closest('li')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+onMounted(showSelected);
+watch(() => props.task?.id, showSelected);
+onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
+// A click on empty board space closes the panel; cards and controls do not.
+const onBoardClick = (e) => {
+    if (props.task && !e.target.closest('li, a, button, select, input, textarea, label, form')) close();
+};
 
 const me = computed(() => usePage().props.auth.user);
 const activeTask = computed(() => usePage().props.pmActiveTask);
@@ -28,12 +56,13 @@ const move = (task, status) => {
     if (task.status !== status) {
         router.patch(route('pm.tasks.update', task.id), { status }, {
             preserveScroll: true,
+            preserveState: true,
             onStart: () => (saving.value = task.id),
             onFinish: () => (saving.value = null),
         });
     }
 };
-const start = (task) => router.post(route('pm.tasks.start', task.id), {}, { preserveScroll: true });
+const start = (task) => router.post(route('pm.tasks.start', task.id), {}, { preserveScroll: true, preserveState: true });
 const canStart = (t) => t.status !== 'done' && (!t.assignee || t.assignee.id === me.value.id) && activeTask.value?.id !== t.id;
 
 // Drag and drop: plain HTML5 events. The status select on each card does the
@@ -54,10 +83,17 @@ const add = () =>
 </script>
 
 <template>
-    <Head :title="`${project.key} board`" />
+    <Head :title="task ? `${task.key} ${task.title}` : `${project.key} board`" />
 
     <AuthenticatedLayout>
-        <div class="mx-auto max-w-7xl space-y-5 px-4 py-8 sm:px-6 lg:px-8">
+        <!-- With a task open (from 1024px) the board shrinks to the space left of
+             the panel and its columns scroll sideways, so every card can still
+             be clicked to swap the task. -->
+        <div
+            class="space-y-5 px-4 py-8 sm:px-6 lg:px-8"
+            :class="task ? 'mx-auto max-w-7xl lg:mx-0 lg:mr-[60vw] lg:max-w-none xl:mr-[720px]' : 'mx-auto max-w-7xl'"
+            @click="onBoardClick"
+        >
             <div class="flex flex-wrap items-end gap-3">
                 <div class="me-auto">
                     <h1 class="text-xl font-semibold text-gray-900">{{ project.name }}</h1>
@@ -80,7 +116,7 @@ const add = () =>
 
             <form class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-sm" @submit.prevent="add">
                 <label class="sr-only" for="new-task">New task title</label>
-                <input id="new-task" v-model="form.title" type="text" required maxlength="255" placeholder="New task…" class="w-full min-w-0 rounded-lg text-sm sm:w-auto sm:flex-1" />
+                <input id="new-task" v-model="form.title" type="text" required maxlength="255" placeholder="New task…" class="w-full min-w-0 rounded-lg text-sm" :class="task ? '' : 'sm:w-auto sm:flex-1'" />
                 <select v-model="form.assignee_id" aria-label="Assignee" class="rounded-lg text-sm">
                     <option :value="null">Unassigned</option>
                     <option v-for="p in people" :key="p.id" :value="p.id">{{ p.name }}</option>
@@ -92,7 +128,10 @@ const add = () =>
                 <p v-if="form.errors.title" class="w-full text-xs text-rose-600">{{ form.errors.title }}</p>
             </form>
 
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div
+                class="grid gap-4 sm:grid-cols-2"
+                :class="task ? 'lg:auto-cols-[15rem] lg:grid-flow-col lg:grid-cols-none lg:overflow-x-auto lg:pb-2' : 'lg:grid-cols-5'"
+            >
                 <section
                     v-for="col in columns"
                     :key="col.status"
@@ -116,7 +155,10 @@ const add = () =>
                             :key="t.id"
                             draggable="true"
                             class="cursor-grab rounded-lg border border-gray-200 bg-white p-3 shadow-sm active:cursor-grabbing"
-                            :class="[dragging === t.id || saving === t.id ? 'opacity-50' : '', activeTask?.id === t.id ? 'ring-2 ring-emerald-400' : '']"
+                            :class="[
+                                dragging === t.id || saving === t.id ? 'opacity-50' : '',
+                                task?.id === t.id ? 'ring-2 ring-indigo-500' : activeTask?.id === t.id ? 'ring-2 ring-emerald-400' : '',
+                            ]"
                             @dragstart="dragging = t.id"
                             @dragend="dragging = over = null"
                         >
@@ -128,7 +170,15 @@ const add = () =>
                                     :title="`${t.ai_sessions} AI ${t.ai_sessions === 1 ? 'session' : 'sessions'} linked`"
                                 >AI {{ t.ai_sessions }}</span>
                             </div>
-                            <Link :href="route('pm.tasks.show', t.id)" class="mt-1 block text-sm font-medium text-gray-900 hover:underline">{{ t.title }}</Link>
+                            <Link
+                                :href="taskHref(t)"
+                                :only="['task', 'trail']"
+                                preserve-state
+                                preserve-scroll
+                                class="mt-1 block text-sm font-medium text-gray-900 hover:underline"
+                                :aria-current="task?.id === t.id ? 'true' : undefined"
+                                @click="opener = $event.currentTarget"
+                            >{{ t.title }}</Link>
                             <div class="mt-3 flex flex-wrap items-center gap-2">
                                 <span
                                     v-if="t.assignee"
@@ -156,5 +206,31 @@ const add = () =>
                 </section>
             </div>
         </div>
+
+        <!-- Task slide-over: right side. Below 1024px it covers the screen over a
+             backdrop; from 1024px the board stays usable beside it. -->
+        <Transition
+            enter-active-class="transition-opacity duration-200 motion-reduce:transition-none"
+            leave-active-class="transition-opacity duration-150 motion-reduce:transition-none"
+            enter-from-class="opacity-0"
+            leave-to-class="opacity-0"
+        >
+            <div v-if="task" class="fixed inset-0 z-40 bg-gray-900/40 lg:hidden" aria-hidden="true" @click="close"></div>
+        </Transition>
+        <Transition
+            enter-active-class="transition-transform duration-200 ease-out motion-reduce:transition-none"
+            leave-active-class="transition-transform duration-150 ease-in motion-reduce:transition-none"
+            enter-from-class="translate-x-full"
+            leave-to-class="translate-x-full"
+        >
+            <aside
+                v-if="task"
+                class="fixed inset-0 z-50 overflow-y-auto border-gray-200 bg-gray-50 shadow-2xl lg:inset-auto lg:bottom-0 lg:right-0 lg:top-16 lg:z-20 lg:w-[60vw] lg:border-l xl:w-[720px]"
+                role="dialog"
+                aria-labelledby="task-panel-title"
+            >
+                <TaskPanel :key="task.id" :task="task" :trail="trail" :people="people" :statuses="statuses" :projects="projects" @close="close" />
+            </aside>
+        </Transition>
     </AuthenticatedLayout>
 </template>
