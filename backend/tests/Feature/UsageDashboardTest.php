@@ -128,8 +128,7 @@ class UsageDashboardTest extends TestCase
                 ->component('Usage/Overview')
                 ->where('days', 7)
                 ->where('summary.prompts', 2)
-                ->where('previous.prompts', 1)
-                ->where('insights.0', 'Team prompts up 100% on the period before.'));
+                ->where('previous.prompts', 1));
     }
 
     // How people work with AI, not which tool they picked.
@@ -149,8 +148,8 @@ class UsageDashboardTest extends TestCase
         $this->assertSame(2, $row['agent_steps']);
     }
 
-    // Habit, not volume: the dates each person used AI, and the team average.
-    public function test_active_days_are_listed_and_averaged(): void
+    // Habit, not volume: the dates each person used AI, and how often in words.
+    public function test_each_person_gets_their_days_and_a_habit_group(): void
     {
         $alex = $this->user();
         $sam = $this->user();
@@ -163,23 +162,48 @@ class UsageDashboardTest extends TestCase
 
         $row = collect($props['team'])->firstWhere('user_id', $alex->id);
         $this->assertSame([now()->subDays(3)->toDateString(), now()->subDays(2)->toDateString(), now()->subDays(1)->toDateString()], $row['days']);
-        $this->assertEquals(2.0, $props['summary']['active_days']); // (3 + 1) / 2
+        $this->assertSame('some', $row['habit']); // 3 of 7 days
+        $this->assertSame('rare', collect($props['team'])->firstWhere('user_id', $sam->id)['habit']);
+        $this->assertSame(['most' => 4, 'some' => 2], $props['habitDays']);
     }
 
-    // Someone who used AI regularly and stopped gets their own sentence, and is
+    // The thresholds mean the same over any period: a share of its days.
+    public function test_habit_groups_scale_with_the_period(): void
+    {
+        $habit = fn ($d, $p) => \App\Http\Controllers\UsageDashboardController::habit($d, $p);
+
+        $this->assertSame(['none', 'rare', 'some', 'some', 'most', 'most'], [$habit(0, 7), $habit(1, 7), $habit(2, 7), $habit(3, 7), $habit(4, 7), $habit(7, 7)]);
+        $this->assertSame(['rare', 'some', 'some', 'most'], [$habit(7, 30), $habit(8, 30), $habit(16, 30), $habit(17, 30)]);
+        $this->assertSame('most', $habit(1, 1));
+    }
+
+    // Someone who used AI most days and stopped gets their own item, and is
     // not listed again among the people who never started.
-    public function test_a_regular_user_who_stopped_is_named(): void
+    public function test_a_regular_user_who_stopped_needs_attention(): void
     {
         $alex = $this->user();
         $this->device->forceFill(['user_id' => $alex->id])->save();
-        foreach ([8, 9, 10] as $daysAgo) {
+        foreach ([8, 9, 10, 11] as $daysAgo) {
             $this->interaction(['user_id' => $alex->id, 'kind' => 'human', 'occurred_at' => now()->subDays($daysAgo)]);
         }
 
         $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')
             ->assertInertia(fn ($page) => $page
-                ->where('insights.0', "{$alex->name} used AI on 3 days the period before, and not at all this period.")
-                ->where('insights', fn ($i) => ! collect($i)->contains(fn ($s) => str_starts_with($s, 'No AI use'))));
+                ->where('attention.0.kind', 'dropped')
+                ->where('attention.0.title', "{$alex->name} has almost stopped using AI")
+                ->where('attention.0.detail', '4 of 7 days the period before, 0 in the last 7 days.')
+                ->where('attention', fn ($a) => ! collect($a)->contains('kind', 'not_started')));
+    }
+
+    // Not having used AI yet this morning is not "stopped": no items on Today.
+    public function test_nothing_needs_attention_over_a_single_day(): void
+    {
+        $alex = $this->user();
+        $this->device->forceFill(['user_id' => $alex->id])->save();
+        $this->interaction(['user_id' => $alex->id, 'kind' => 'human', 'occurred_at' => now()->subHours(30)]);
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage?days=1')
+            ->assertInertia(fn ($page) => $page->where('days', 1)->where('attention', []));
     }
 
     // One person doing nearly all of a project's AI work is a risk worth naming.
@@ -194,8 +218,9 @@ class UsageDashboardTest extends TestCase
 
         $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')
             ->assertInertia(fn ($page) => $page
-                ->where('insights', fn ($i) => collect($i)->contains("{$alex->name} did 100% of the AI work on shop.")
-                    && ! collect($i)->contains(fn ($s) => str_starts_with($s, 'Most AI work went into shop'))));
+                ->where('attention', fn ($a) => collect($a)->contains(fn ($i) => $i['kind'] === 'one_person'
+                    && $i['title'] === "Only {$alex->name} uses AI on shop"
+                    && $i['detail'] === '100% of its 20 prompts in the last 7 days.')));
     }
 
     // Only a working credential raises the alarm. Claude Code sends the
@@ -224,7 +249,9 @@ class UsageDashboardTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->where('team', fn ($team) => collect($team)->contains(fn ($p) => $p['user_id'] === $alex->id && $p['prompts'] === 0 && $p['enrolled']))
                 ->where('enrolled', 1)
-                ->where('insights.0', "No AI use this period: {$alex->name}."));
+                ->where('attention.0.kind', 'not_started')
+                ->where('attention.0.title', "{$alex->name} has not used AI in the last 7 days")
+                ->where('attention.0.names', [$alex->name]));
     }
 
     // A project lists who worked on it and compares with the period before.

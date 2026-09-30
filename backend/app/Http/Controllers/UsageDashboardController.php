@@ -46,22 +46,31 @@ class UsageDashboardController extends Controller
         ])->all();
         $personBefore = collect($before->perPerson())->keyBy('user_id');
         $team = collect($this->team($now->perPerson()))
-            ->map(fn ($p) => $p + [
-                'prompts_before' => (int) ($personBefore[$p['user_id']]['prompts'] ?? 0),
-                'active_days_before' => (int) ($personBefore[$p['user_id']]['active_days'] ?? 0),
-            ])
+            ->map(function ($p) use ($personBefore, $days) {
+                $daysBefore = (int) ($personBefore[$p['user_id']]['active_days'] ?? 0);
+
+                return $p + [
+                    'prompts_before' => (int) ($personBefore[$p['user_id']]['prompts'] ?? 0),
+                    'active_days_before' => $daysBefore,
+                    'habit' => self::habit($p['active_days'], $days),
+                    'habit_before' => self::habit($daysBefore, $days),
+                ];
+            })
             ->all();
         $enrolled = collect($team)->whereNotNull('user_id')->where('enrolled', true)->count();
 
         return Inertia::render('Usage/Overview', [
             'days' => $days,
-            'summary' => $summary + ['active_days' => $this->averageActiveDays($team, 'active_days')],
-            'previous' => $previous + ['active_days' => $this->averageActiveDays($team, 'active_days_before')],
+            'summary' => $summary,
+            'previous' => $previous,
             'enrolled' => $enrolled,
             'leaks' => $this->leaks($days),
             'perProject' => $perProject,
             'team' => $team,
-            'insights' => $this->insights($summary, $previous, $perProject, $team),
+            'attention' => $this->attention($perProject, $team, $days),
+            // The day counts behind "most days" and "some days", so the page
+            // can say what the words mean for this period.
+            'habitDays' => ['most' => (int) ceil(self::HABIT_MOST * $days), 'some' => (int) ceil(self::HABIT_SOME * $days)],
             'aiTimeDefinition' => $this->aiTimeDefinition(),
         ]);
     }
@@ -89,18 +98,6 @@ class UsageDashboardController extends Controller
 
         return $rows->map(fn ($row) => $row + ['enrolled' => false])
             ->sortByDesc('prompts')->values()->all();
-    }
-
-    /**
-     * Days with AI use, averaged over the people who used it at all. Habit, not
-     * volume: someone on it every day has made it part of their work; ten
-     * prompts in one afternoon is an experiment.
-     */
-    private function averageActiveDays(array $team, string $key): ?float
-    {
-        $days = collect($team)->whereNotNull('user_id')->pluck($key)->filter();
-
-        return $days->isEmpty() ? null : round($days->avg(), 1);
     }
 
     /**
@@ -139,61 +136,91 @@ class UsageDashboardController extends Controller
     }
 
     /**
-     * Two or three plain sentences a manager would otherwise have to work out
-     * from the numbers. Rules, not a model: no prompt data leaves the server.
+     * How often someone used AI in the period, in words a manager uses:
+     * "most days", "some days", "rarely", "not yet". It is the share of the
+     * period's days with any use, so it means the same over 7 days or 90.
+     * 55% is four days of seven: every working day, give or take. Over one
+     * day there is only "used it" or not, which reads as "most days".
      */
-    private function insights(array $now, array $before, array $projects, array $team): array
+    private const HABIT_MOST = 0.55;
+
+    private const HABIT_SOME = 0.25;
+
+    public static function habit(int $activeDays, int $periodDays): string
     {
+        $share = $activeDays / max($periodDays, 1);
+
+        return match (true) {
+            $activeDays === 0 => 'none',
+            $share >= self::HABIT_MOST => 'most',
+            $share >= self::HABIT_SOME => 'some',
+            default => 'rare',
+        };
+    }
+
+    /**
+     * The few things a manager should act on, each with who, what happened and
+     * what to do about it. Rules, not a model: no prompt data leaves the server.
+     * Nothing is ranked or scored: every item is a change or a gap, never
+     * "who is worst".
+     */
+    private function attention(array $projects, array $team, int $days): array
+    {
+        // One day says nothing about a habit: not having used AI yet this
+        // morning is not "stopped". Every rule here needs a week or more.
+        if ($days < 7) {
+            return [];
+        }
+
         $out = [];
         $people = collect($team)->whereNotNull('user_id');
+        $period = "in the last {$days} days";
 
-        // A regular user who stopped: more telling than a newcomer who never started.
-        $stopped = $people->filter(fn ($p) => $p['prompts'] === 0 && $p['active_days_before'] >= 3)
-            ->sortByDesc('active_days_before')->first();
-        if ($stopped) {
-            $out[] = "{$stopped['name']} used AI on {$stopped['active_days_before']} days the period before, and not at all this period.";
+        // Was a regular, is not any more: the most useful early signal.
+        foreach ($people->filter(fn ($p) => $p['habit_before'] === 'most' && in_array($p['habit'], ['rare', 'none'], true)) as $p) {
+            $out[] = [
+                'kind' => 'dropped',
+                'user_id' => $p['user_id'],
+                'names' => [$p['name']],
+                'title' => "{$p['name']} has almost stopped using AI",
+                'detail' => "{$p['active_days_before']} of {$days} days the period before, {$p['active_days']} {$period}.",
+                'action' => 'Worth a quick check-in: a blocker, a tool problem or different work.',
+            ];
         }
 
-        // Who is not using it: the first thing a manager acts on. The person who
-        // stopped already has a sentence of their own.
-        $idle = $people->where('enrolled', true)->where('prompts', 0)
-            ->reject(fn ($p) => $stopped && $p['user_id'] === $stopped['user_id']);
-        if ($idle->isNotEmpty()) {
-            $names = $idle->pluck('name')->take(3)->join(', ').($idle->count() > 3 ? ' and '.($idle->count() - 3).' more' : '');
-            $out[] = "No AI use this period: {$names}.";
+        // Has a paired device and has not used AI at all.
+        $notStarted = $people->where('enrolled', true)->where('habit', 'none')
+            ->reject(fn ($p) => $p['habit_before'] === 'most');
+        if ($notStarted->isNotEmpty()) {
+            $n = $notStarted->count();
+            $out[] = [
+                'kind' => 'not_started',
+                'user_id' => $n === 1 ? $notStarted->first()['user_id'] : null,
+                'names' => $notStarted->pluck('name')->values()->all(),
+                'title' => $n === 1 ? "{$notStarted->first()['name']} has not used AI {$period}" : "{$n} people have not used AI {$period}",
+                'detail' => 'Their device is set up, but nothing was captured.',
+                'action' => 'Check the agent is running on their machine, then offer a short walkthrough.',
+            ];
         }
 
-        // One person carrying a project's AI work: if they are away, it stops.
-        $carried = collect($projects)->whereNotNull('repo')
-            ->filter(fn ($p) => $p['prompts'] >= 20 && count($p['contributors']) > 0
-                && $p['contributors'][0]['prompts'] / $p['prompts'] >= 0.8)
-            ->sortByDesc('prompts')->first();
-        if ($carried && $people->where('prompts', '>', 0)->count() > 1) {
-            $out[] = "{$carried['contributors'][0]['name']} did ".round($carried['contributors'][0]['prompts'] / $carried['prompts'] * 100)
-                ."% of the AI work on {$carried['name']}.";
+        // Only one person uses AI on a busy project: if they are away, it stops.
+        foreach (collect($projects)->whereNotNull('repo') as $p) {
+            $top = $p['contributors'][0] ?? null;
+            if ($p['prompts'] >= 20 && $top && $top['prompts'] / $p['prompts'] >= 0.8 && $people->where('prompts', '>', 0)->count() > 1) {
+                $share = (int) round($top['prompts'] / $p['prompts'] * 100);
+                $out[] = [
+                    'kind' => 'one_person',
+                    'user_id' => $top['user_id'],
+                    'repo' => $p['repo'],
+                    'names' => [$top['name']],
+                    'title' => "Only {$top['name']} uses AI on {$p['name']}",
+                    'detail' => "{$share}% of its {$p['prompts']} prompts {$period}.",
+                    'action' => 'Pair someone else on it, so the know-how is not with one person.',
+                ];
+            }
         }
 
-        // The biggest change in one person, from a base big enough to mean something.
-        // Someone who stopped entirely is already said above.
-        $mover = $people->filter(fn ($p) => $p['prompts_before'] >= 10 && ! ($stopped && $p['user_id'] === $stopped['user_id']))
-            ->map(fn ($p) => $p + ['change' => (int) round(($p['prompts'] - $p['prompts_before']) / $p['prompts_before'] * 100)])
-            ->sortByDesc(fn ($p) => abs($p['change']))->first();
-        if ($mover && abs($mover['change']) >= 30) {
-            $out[] = "{$mover['name']} used AI ".abs($mover['change']).'% '.($mover['change'] > 0 ? 'more' : 'less').' than the period before.';
-        }
-
-        $top = collect($projects)->whereNotNull('repo')->sortByDesc('prompts')->first();
-        if ($top && $now['prompts'] > 0 && $top['prompts'] > 0 && $top['repo'] !== ($carried['repo'] ?? null)) {
-            $out[] = "Most AI work went into {$top['name']}: ".round($top['prompts'] / $now['prompts'] * 100).'% of prompts, '
-                .count($top['contributors']).' '.(count($top['contributors']) === 1 ? 'person' : 'people').'.';
-        }
-
-        if ($before['prompts'] > 0 && $now['prompts'] !== $before['prompts']) {
-            $change = (int) round(($now['prompts'] - $before['prompts']) / $before['prompts'] * 100);
-            $out[] = 'Team prompts '.($change > 0 ? 'up' : 'down').' '.abs($change).'% on the period before.';
-        }
-
-        return array_slice($out, 0, 3);
+        return $out;
     }
 
     /**

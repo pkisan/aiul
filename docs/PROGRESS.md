@@ -2,9 +2,9 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (Overview v4 redesign in progress, see top)
+Last updated: 2026-09-30 (Overview v4 built, owner to review)
 
-## Overview v4: redesign from scratch — 2026-09-30 (IN PROGRESS)
+## Overview v4: redesign from scratch — 2026-09-30 (DONE, owner to review)
 
 Owner on v3: "not very easy to understand what is going on", start from
 scratch if needed. Diagnosis: the scatter needs decoding (two derived axes,
@@ -25,6 +25,17 @@ New page answers three questions, in this order, in plain words:
 Habit groups computed in the controller (share of period days: >= 55% most
 days, >= 25% some days, > 0 rarely, 0 not yet; Today = used / not yet).
 Habit.vue deleted.
+- [x] Built as planned. Ordinal ramp checked with the dataviz validator:
+      light indigo-800/600/400, dark indigo-400/500/700 (each passes its
+      surface). `attention` prop replaces `insights`; `habitDays` tells the
+      page what "most days" means for the period. Attention needs >= 7 days
+      (Today would call a slow morning "stopped"); Today shows only
+      "Used today" / "Not used". "Last used" shows — (not "Never") when the
+      person was idle in the period: last_seen is period-scoped.
+- 115/115 backend. Screenshots light/dark/phone at 7 days, light at 1 and
+  30 days, all looked at.
+NEXT: owner reviews at http://127.0.0.1:8088 (demo@example.com), then deploys
+v4 + the remote work together (`php artisan migrate`).
 
 ## Overview v3: habit, not volume — 2026-09-30 (DONE, owner to review)
 
