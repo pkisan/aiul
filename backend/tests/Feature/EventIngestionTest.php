@@ -229,6 +229,35 @@ class EventIngestionTest extends TestCase
         $this->assertSame(['email', 'aiul-device-token'], $stored->redacted);
     }
 
+    public function test_the_git_remote_is_stored_on_the_interaction_and_its_session(): void
+    {
+        [, $token] = $this->newDevice();
+
+        $this->withToken($token)->postJson('/api/aiul/events', ['events' => [
+            $this->anEvent(['remote' => 'github.com/acme/shop']),
+        ]])->assertOk();
+
+        $stored = AiInteraction::withoutGlobalScope('tenant')->first();
+        $this->assertSame('github.com/acme/shop', $stored->remote);
+        $this->assertSame('github.com/acme/shop', AiSession::withoutGlobalScope('tenant')->first()->remote);
+    }
+
+    // The agent strips credentials; this is the server's own check. A remote that
+    // still carries a user or token is dropped, and the event is kept.
+    public function test_a_remote_that_is_not_host_and_path_is_dropped_not_stored(): void
+    {
+        [, $token] = $this->newDevice();
+
+        foreach (['https://dev:ghp_x@github.com/acme/shop', 'dev:ghp_x@github.com/acme/shop', '/srv/repos/shop', 'github.com'] as $i => $remote) {
+            $this->withToken($token)->postJson('/api/aiul/events', ['events' => [
+                $this->anEvent(['id' => 'bad-remote-'.$i, 'remote' => $remote]),
+            ]])->assertOk();
+        }
+
+        $this->assertSame(4, AiInteraction::withoutGlobalScope('tenant')->count());
+        $this->assertSame(0, AiInteraction::withoutGlobalScope('tenant')->whereNotNull('remote')->count());
+    }
+
     public function test_count_tokens_foo_calls_from_an_older_agent_are_not_human_prompts(): void
     {
         [, $token] = $this->newDevice();

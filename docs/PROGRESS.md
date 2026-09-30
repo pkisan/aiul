@@ -2,9 +2,9 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (git remote URL capture in progress, see top)
+Last updated: 2026-09-30 (git remote URL capture done, see top)
 
-## Git remote URL on every event — 2026-09-30 (IN PROGRESS)
+## Git remote URL on every event — 2026-09-30 (DONE, not installed)
 
 Why: the PM tool will link AI work to tasks (design: D18 in DECISIONS.md).
 `repo` is a local path, different on every machine, so it cannot be joined to
@@ -21,6 +21,20 @@ PLAN:
   3. backend: `remote` column on ai_interactions + ai_sessions, ingestion
      accepts it, validated.
   4. Tests fail without each piece; agent -race, backend suite; commit.
+- [x] 1+2 `81f9293` agent: NormaliseRemote + remoteOf (tasks.go), 8th helper
+      field, dircache, proxy Checkout hook, Event.Remote. Tests: URL forms incl.
+      token stripping and Windows drive paths, origin preference, worktree,
+      helper round trip strips a token, Cursor workspace path carries remote.
+      go test -race green; GOOS=windows/linux vet green.
+- [x] 3 backend: migration 2026_09_30_100000 (remote + index on
+      ai_interactions, ai_sessions), ingestion stores it, drops anything not
+      host/path (a URL with "@" never stored; event kept). Test fails without
+      the check. 110/110.
+- [x] D18 in DECISIONS.md: shared users, remote as project key, task ladder.
+Nothing reads `remote` in the dashboard yet (sessions still group by repo).
+NEXT: owner deploys backend (`php artisan migrate`), installs the new agent,
+checks one event: `select remote from ai_interactions order by id desc limit 5`.
+Then: dashboard UI (habit, quality quadrant, insights), then PM integration.
 
 ## Overview v2, a manager's page — 2026-09-29 (`a2546e2`)
 

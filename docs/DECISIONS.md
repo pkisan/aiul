@@ -608,3 +608,35 @@ changes what differs. This also covers people who log in after the install.
 Not done, deliberately: Firefox (owner chose Chrome only), KDE/other desktops,
 a .deb package (owner chose a script), users created after the install (their
 Chrome store is filled on the next install).
+
+## D18 — How AI work will join the PM tool (2026-09-30)
+
+**Users and tenants are shared.** Owner decided: aiul uses the PM tool's
+`users` and `tenants`, not its own. When the PM tool lands in the same Laravel
+app, aiul's tables become (or point at) the PM tool's; there is no second list
+of people to reconcile. aiul code keeps to `user_id`, `tenant_id` and the git
+remote at its boundary and never reaches into PM models directly.
+
+**The project key is the git remote, not the local path.** `repo` is
+`/Users/priya/code/shop` on one Mac and `/home/ravi/shop` on another. The agent
+now also sends `remote`, the clone URL reduced to `host/path`
+(`github.com/acme/shop`), identical for everyone. SSH and HTTPS clones of one
+project give the same key. Credentials in the URL are dropped on the machine
+(NormaliseRemote) and checked again at ingestion. A PM project will map to one
+or more remotes.
+
+**Tasks: an attribution ladder, run in the backend, stored separately.**
+Designed, not built. Per AI session, first rule that yields exactly one task:
+1. task key in the branch name (the existing pattern) — high confidence;
+2. the PM tool's record of which task a (remote, branch) belongs to, from a
+   "Copy branch name" button or a PR webhook — high;
+3. the person's only In-progress task in the project mapped to that remote,
+   during the session — medium;
+4. several candidates — the person confirms with one click;
+5. none — the session counts for the project only, never forced onto a task.
+Results go in `task_attributions(ai_session_id, task_id, method, confidence)`,
+recomputable: a branch linked to a task tomorrow re-attributes its past
+sessions. Prompt-text matching against task titles is rejected (privacy, and a
+guess). Why the ladder: the 2026-09-22 branch-regex attempt tagged 0% of real
+work because ordinary branch names carry no key; only the PM tool knows the
+tasks, so it has to supply the link.

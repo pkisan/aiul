@@ -97,6 +97,7 @@ class EventIngestionController extends Controller
             'system' => ['nullable', 'string'],
             'task_id' => ['nullable', 'string', 'max:64'],
             'repo' => ['nullable', 'string', 'max:1024'],
+            'remote' => ['nullable', 'string', 'max:512'],
             'branch' => ['nullable', 'string', 'max:255'],
             'streamed' => ['nullable', 'boolean'],
             'automated' => ['nullable', 'boolean'],
@@ -152,6 +153,7 @@ class EventIngestionController extends Controller
             'parser' => $event['parser'] ?? null,
             'task_id' => $event['task_id'] ?? null,
             'repo' => $event['repo'] ?? null,
+            'remote' => $this->remote($event),
             'branch' => $event['branch'] ?? null,
             'prompt_chars' => mb_strlen((string) ($event['prompt'] ?? '')),
             'answer_chars' => mb_strlen((string) ($event['answer'] ?? '')),
@@ -243,6 +245,19 @@ class EventIngestionController extends Controller
         return $event;
     }
 
+    /**
+     * The agent already reduces a clone URL to "host/path" with no credentials.
+     * This is the server-side check of that: anything else, above all a value
+     * with an "@" (a user or token that slipped through), is dropped rather than
+     * stored. Dropped, not rejected: refusing the event would lose the prompt.
+     */
+    private function remote(array $event): ?string
+    {
+        $remote = $event['remote'] ?? null;
+
+        return is_string($remote) && preg_match('~^[a-z0-9.-]+(/[^\s@/:]+)+$~', $remote) ? $remote : null;
+    }
+
     private function sessionFor(Device $device, array $event, Carbon $occurredAt): AiSession
     {
         $idleWindow = now()->parse($occurredAt)->subMinutes(config('aiul.session_idle_minutes', 30));
@@ -269,6 +284,7 @@ class EventIngestionController extends Controller
             'tool' => $event['tool'] ?? null,
             'task_id' => $event['task_id'] ?? null,
             'repo' => $event['repo'] ?? null,
+            'remote' => $this->remote($event),
             'branch' => $event['branch'] ?? null,
             'started_at' => $occurredAt,
             'ended_at' => $occurredAt,
