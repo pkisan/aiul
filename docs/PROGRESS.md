@@ -2,9 +2,9 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (PM tool Phase 2 in progress)
+Last updated: 2026-09-30 (PM tool Phase 2 done, owner to verify)
 
-## PM tool — Phase 2 PM core — 2026-09-30 (IN PROGRESS)
+## PM tool — Phase 2 PM core — 2026-09-30 (DONE, owner to verify)
 
 Roles already exist (member/manager/admin, set on People): Phase 2 applies
 them. Managers/admins create projects (name, key, git remotes) and sprints;
@@ -23,6 +23,15 @@ PLAN:
   5. Pages: Pm/Projects, Pm/Board (five columns, drag and drop plus a
      status select for keyboard/phone), Pm/Task (detail + edit).
   6. Tests (roles, tenant isolation, events, start/stop), screenshots, commit.
+- [x] 1-6 done. Nav: Board, Projects for everyone; "Working on AAY-n · Stop"
+      pill in the top bar (a strip under it on phones).
+- [x] Wire-up needed two more places than planned: app.blade.php @vite picks
+      the pm-tool path for Pm/* pages, and PmServiceProvider adds pm-tool's
+      Pages dir to Inertia's page_paths (tests check pages exist).
+- Remote normaliser in PHP (ProjectController::normaliseRemote) mirrors the
+  agent's NormaliseRemote and also accepts "github.com/org/repo".
+- 123/123 backend (8 Pm). Screenshots board light/dark/phone, task, projects.
+NEXT: owner verifies Phase 2; then Phase 3 (linking engine + inbox).
 
 ## PM tool (Aayatti PM) — Phase 1 Foundation — 2026-09-30 (DONE, owner to verify)
 

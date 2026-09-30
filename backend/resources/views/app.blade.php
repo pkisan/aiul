@@ -26,7 +26,10 @@
 
         <!-- Scripts -->
         @routes
-        @vite(['resources/js/app.js', "resources/js/Pages/{$page['component']}.vue"])
+        {{-- Pm/* pages live in the PM module beside this app (D19). --}}
+        @vite(['resources/js/app.js', str_starts_with($page['component'], 'Pm/')
+            ? "../pm-tool/resources/js/Pages/{$page['component']}.vue"
+            : "resources/js/Pages/{$page['component']}.vue"])
         @inertiaHead
     </head>
     <body class="font-sans antialiased">

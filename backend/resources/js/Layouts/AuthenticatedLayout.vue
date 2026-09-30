@@ -15,6 +15,8 @@ const isManager = computed(() => ['manager', 'admin'].includes(user.value?.role)
 // server enforces the same rules; hiding a link is only tidiness.
 const links = computed(() =>
     [
+        { label: 'Board', route: 'pm.home', active: ['pm.board', 'pm.tasks.*'], show: true },
+        { label: 'Projects', route: 'pm.projects.index', active: ['pm.projects.*'], show: true },
         { label: 'Overview', route: 'usage.index', active: ['usage.index'], show: isManager.value },
         // The list and everything opened from it.
         { label: 'Activity', route: 'usage.activity', active: ['usage.activity', 'usage.session', 'usage.project', 'usage.show'], show: isManager.value },
@@ -27,6 +29,9 @@ const isActive = (l) => l.active.some((name) => route().current(name));
 
 // Housekeeping, in the user menu rather than next to the pages people read.
 const isAdmin = computed(() => user.value?.role === 'admin');
+
+// The task I clicked "Start working" on (PM module), with a way to stop.
+const activeTask = computed(() => usePage().props.pmActiveTask);
 
 </script>
 
@@ -57,6 +62,13 @@ const isAdmin = computed(() => user.value?.role === 'admin');
                 </div>
 
                 <div class="ms-auto flex items-center gap-2">
+                    <div v-if="activeTask" class="hidden items-center gap-1 rounded-full bg-emerald-50 py-1 pl-3 pr-1 text-xs text-emerald-900 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-800 lg:flex">
+                        <span class="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+                        <Link :href="route('pm.tasks.show', activeTask.id)" class="max-w-[14rem] truncate font-medium hover:underline" :title="activeTask.title">
+                            Working on {{ activeTask.key }}
+                        </Link>
+                        <Link :href="route('pm.work.stop')" method="post" as="button" preserve-scroll class="rounded-full px-2 py-0.5 hover:bg-emerald-100 dark:hover:bg-emerald-900">Stop</Link>
+                    </div>
                     <ThemeToggle />
 
                     <Dropdown align="right" width="48" class="hidden md:block">
@@ -96,6 +108,12 @@ const isAdmin = computed(() => user.value?.role === 'admin');
                         </svg>
                     </button>
                 </div>
+            </div>
+
+            <div v-if="activeTask" class="flex items-center gap-2 border-t border-emerald-200 bg-emerald-50 px-4 py-2 text-xs text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200 lg:hidden">
+                <span class="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>
+                <Link :href="route('pm.tasks.show', activeTask.id)" class="min-w-0 truncate font-medium">Working on {{ activeTask.key }} · {{ activeTask.title }}</Link>
+                <Link :href="route('pm.work.stop')" method="post" as="button" preserve-scroll class="ms-auto shrink-0 font-medium underline">Stop</Link>
             </div>
 
             <div v-if="open" class="border-t border-gray-200 px-4 pb-4 pt-2 md:hidden">

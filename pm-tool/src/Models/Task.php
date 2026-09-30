@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Task extends Model
 {
@@ -54,5 +55,40 @@ class Task extends Model
     protected function key(): Attribute
     {
         return Attribute::get(fn () => $this->project->key.'-'.$this->number);
+    }
+
+    /**
+     * Change fields on the task and record who moved it where. Status and
+     * assignee changes become TaskEvents (for cycle time); started_at is the
+     * first move to in_progress, completed_at the last move to done.
+     */
+    public function applyChanges(array $changes, User $by): void
+    {
+        DB::transaction(function () use ($changes, $by) {
+            $this->fill($changes);
+
+            foreach (['status' => 'status', 'assignee_id' => 'assignee'] as $column => $field) {
+                if ($this->isDirty($column)) {
+                    $this->events()->create([
+                        'user_id' => $by->id, 'field' => $field,
+                        'from' => $this->getOriginal($column), 'to' => $this->getAttribute($column),
+                        'occurred_at' => now(),
+                    ]);
+                }
+            }
+
+            if ($this->isDirty('status')) {
+                if ($this->status === 'in_progress' && ! $this->started_at) {
+                    $this->started_at = now();
+                }
+                $this->completed_at = $this->status === 'done' ? now() : null;
+                if ($this->status === 'done') {
+                    // Nobody is still "working on" a finished task.
+                    WorkPeriod::where('task_id', $this->id)->whereNull('ended_at')->update(['ended_at' => now()]);
+                }
+            }
+
+            $this->save();
+        });
     }
 }
