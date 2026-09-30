@@ -2,7 +2,29 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (Overview v3 built, awaiting owner review)
+Last updated: 2026-09-30 (Overview v4 redesign in progress, see top)
+
+## Overview v4: redesign from scratch — 2026-09-30 (IN PROGRESS)
+
+Owner on v3: "not very easy to understand what is going on", start from
+scratch if needed. Diagnosis: the scatter needs decoding (two derived axes,
+medians); insights were sentences with no action; the table had 9 columns
+incl. jargon (AI steps / prompt). Every block answered a different question.
+New page answers three questions, in this order, in plain words:
+  1. "Is my team using AI?" Headline sentence ("8 of 9 people used AI; 5 use
+     it most days") + ONE segmented bar: Most days / Some days / Rarely /
+     Not yet, ordinal indigo ramp, each segment labelled, names listed under
+     each group. Replaces the scatter and the Active days tile.
+  2. "Who needs me?" Attention cards, each: who, what happened, why it
+     matters, one link. Kinds: not started, dropped off (was most days, now
+     rarely/none), only one person using AI on a project. Credential banner
+     stays. Empty state: "Nothing needs you this period."
+  3. "Where does it go?" People table cut to: person, how often (label +
+     day strip), prompts + change, main project, last used. Projects list.
+  Volume numbers (prompts, AI time) demoted to a small context row.
+Habit groups computed in the controller (share of period days: >= 55% most
+days, >= 25% some days, > 0 rarely, 0 not yet; Today = used / not yet).
+Habit.vue deleted.
 
 ## Overview v3: habit, not volume — 2026-09-30 (DONE, owner to review)
 
