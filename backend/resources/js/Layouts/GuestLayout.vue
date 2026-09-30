@@ -9,7 +9,7 @@ import ThemeToggle from '@/Components/ThemeToggle.vue';
 
         <div class="flex flex-col items-center gap-3">
             <ApplicationLogo class="h-14 w-14" />
-            <h1 class="text-lg font-semibold tracking-tight text-gray-900">GenAI Log</h1>
+            <h1 class="text-lg font-semibold tracking-tight text-gray-900">Aayatti PM</h1>
         </div>
 
         <div class="mt-8 w-full rounded-2xl border border-gray-200 bg-white px-6 py-6 shadow-sm sm:max-w-md">

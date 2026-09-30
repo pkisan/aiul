@@ -26,8 +26,12 @@ PLAN:
       1024, 1440, light and dark.
 - [x] pm-tool/README.md; root README points to it. Shot Bot user deleted.
 - 136/136 backend (21 Pm).
+- [x] Name: tab title and login page now "Aayatti PM" (app.js default,
+      GuestLayout, .env.example APP_NAME, package-plesk VITE_APP_NAME). The
+      production .env on Plesk still has APP_NAME="GenAI Log": owner changes
+      it there. Domain genailog.vardaam.site unchanged.
 The PM build prompt's five phases are done. Open items for the owner:
-tab title / login page still say "GenAI Log"; prices for Gemini/GPT
+APP_NAME on the server; prices for Gemini/GPT
 models; outcome rating design; cycle time once there are enough finished
 tasks; deploy (`php artisan migrate`, then check the schedule runs pm:link).
 

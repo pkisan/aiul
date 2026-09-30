@@ -39,7 +39,7 @@ composer install --no-dev --optimize-autoloader --classmap-authoritative --no-in
 
 echo "Building CSS and JS"
 npm ci --silent --no-audit --no-fund
-VITE_APP_NAME="GenAI Log" npm run build --silent
+VITE_APP_NAME="Aayatti PM" npm run build --silent
 
 # Only what runs on the server. Tests, Docker files and Node sources stay home.
 rm -rf node_modules tests docker Dockerfile phpunit.xml .env.example \
