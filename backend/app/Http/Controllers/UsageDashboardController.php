@@ -44,16 +44,19 @@ class UsageDashboardController extends Controller
             'prompts_before' => $projectsBefore[$p['repo'] ?? '']['prompts'] ?? 0,
             'contributors' => $people[$p['repo'] ?? ''] ?? [],
         ])->all();
-        $personBefore = collect($before->perPerson())->pluck('prompts', 'user_id');
+        $personBefore = collect($before->perPerson())->keyBy('user_id');
         $team = collect($this->team($now->perPerson()))
-            ->map(fn ($p) => $p + ['prompts_before' => (int) ($personBefore[$p['user_id']] ?? 0)])
+            ->map(fn ($p) => $p + [
+                'prompts_before' => (int) ($personBefore[$p['user_id']]['prompts'] ?? 0),
+                'active_days_before' => (int) ($personBefore[$p['user_id']]['active_days'] ?? 0),
+            ])
             ->all();
         $enrolled = collect($team)->whereNotNull('user_id')->where('enrolled', true)->count();
 
         return Inertia::render('Usage/Overview', [
             'days' => $days,
-            'summary' => $summary,
-            'previous' => $previous,
+            'summary' => $summary + ['active_days' => $this->averageActiveDays($team, 'active_days')],
+            'previous' => $previous + ['active_days' => $this->averageActiveDays($team, 'active_days_before')],
             'enrolled' => $enrolled,
             'leaks' => $this->leaks($days),
             'perProject' => $perProject,
@@ -80,12 +83,24 @@ class UsageDashboardController extends Controller
                 'user_id' => $userId,
                 'name' => $devices->first()->user?->name ?? 'Unknown',
                 'prompts' => 0, 'interactions' => 0, 'ai_seconds' => 0,
-                'main_tool' => null, 'main_project' => null, 'active_days' => 0, 'agent_steps' => 0, 'last_seen' => null,
+                'main_tool' => null, 'main_project' => null, 'active_days' => 0, 'days' => [], 'agent_steps' => 0, 'last_seen' => null,
             ]) + ['enrolled' => true];
         }
 
         return $rows->map(fn ($row) => $row + ['enrolled' => false])
             ->sortByDesc('prompts')->values()->all();
+    }
+
+    /**
+     * Days with AI use, averaged over the people who used it at all. Habit, not
+     * volume: someone on it every day has made it part of their work; ten
+     * prompts in one afternoon is an experiment.
+     */
+    private function averageActiveDays(array $team, string $key): ?float
+    {
+        $days = collect($team)->whereNotNull('user_id')->pluck($key)->filter();
+
+        return $days->isEmpty() ? null : round($days->avg(), 1);
     }
 
     /**
@@ -132,15 +147,35 @@ class UsageDashboardController extends Controller
         $out = [];
         $people = collect($team)->whereNotNull('user_id');
 
-        // Who is not using it: the first thing a manager acts on.
-        $idle = $people->where('enrolled', true)->where('prompts', 0);
+        // A regular user who stopped: more telling than a newcomer who never started.
+        $stopped = $people->filter(fn ($p) => $p['prompts'] === 0 && $p['active_days_before'] >= 3)
+            ->sortByDesc('active_days_before')->first();
+        if ($stopped) {
+            $out[] = "{$stopped['name']} used AI on {$stopped['active_days_before']} days the period before, and not at all this period.";
+        }
+
+        // Who is not using it: the first thing a manager acts on. The person who
+        // stopped already has a sentence of their own.
+        $idle = $people->where('enrolled', true)->where('prompts', 0)
+            ->reject(fn ($p) => $stopped && $p['user_id'] === $stopped['user_id']);
         if ($idle->isNotEmpty()) {
             $names = $idle->pluck('name')->take(3)->join(', ').($idle->count() > 3 ? ' and '.($idle->count() - 3).' more' : '');
             $out[] = "No AI use this period: {$names}.";
         }
 
+        // One person carrying a project's AI work: if they are away, it stops.
+        $carried = collect($projects)->whereNotNull('repo')
+            ->filter(fn ($p) => $p['prompts'] >= 20 && count($p['contributors']) > 0
+                && $p['contributors'][0]['prompts'] / $p['prompts'] >= 0.8)
+            ->sortByDesc('prompts')->first();
+        if ($carried && $people->where('prompts', '>', 0)->count() > 1) {
+            $out[] = "{$carried['contributors'][0]['name']} did ".round($carried['contributors'][0]['prompts'] / $carried['prompts'] * 100)
+                ."% of the AI work on {$carried['name']}.";
+        }
+
         // The biggest change in one person, from a base big enough to mean something.
-        $mover = $people->filter(fn ($p) => $p['prompts_before'] >= 10)
+        // Someone who stopped entirely is already said above.
+        $mover = $people->filter(fn ($p) => $p['prompts_before'] >= 10 && ! ($stopped && $p['user_id'] === $stopped['user_id']))
             ->map(fn ($p) => $p + ['change' => (int) round(($p['prompts'] - $p['prompts_before']) / $p['prompts_before'] * 100)])
             ->sortByDesc(fn ($p) => abs($p['change']))->first();
         if ($mover && abs($mover['change']) >= 30) {
@@ -148,7 +183,7 @@ class UsageDashboardController extends Controller
         }
 
         $top = collect($projects)->whereNotNull('repo')->sortByDesc('prompts')->first();
-        if ($top && $now['prompts'] > 0 && $top['prompts'] > 0) {
+        if ($top && $now['prompts'] > 0 && $top['prompts'] > 0 && $top['repo'] !== ($carried['repo'] ?? null)) {
             $out[] = "Most AI work went into {$top['name']}: ".round($top['prompts'] / $now['prompts'] * 100).'% of prompts, '
                 .count($top['contributors']).' '.(count($top['contributors']) === 1 ? 'person' : 'people').'.';
         }

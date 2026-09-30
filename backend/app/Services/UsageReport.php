@@ -181,6 +181,8 @@ class UsageReport
                 DB::raw('mode() within group (order by ai_interactions.tool) as main_tool'),
                 DB::raw('mode() within group (order by ai_interactions.repo) as main_repo'),
                 DB::raw('count(distinct ai_interactions.occurred_at::date) as active_days'),
+                // The dates themselves, for the habit strip. UTC dates, like active_days.
+                DB::raw("string_agg(distinct (ai_interactions.occurred_at::date)::text, ',') as days"),
                 DB::raw("count(*) filter (where ai_interactions.kind = 'agent') as agent_steps"),
             ])
             ->get();
@@ -201,6 +203,7 @@ class UsageReport
             'main_tool' => $row->main_tool,
             'main_project' => $row->main_repo ? basename($row->main_repo) : null,
             'active_days' => (int) $row->active_days,
+            'days' => $row->days ? explode(',', $row->days) : [],
             'agent_steps' => (int) $row->agent_steps,
             'last_seen' => $row->last_seen,
         ])->sortByDesc('prompts')->values()->all();

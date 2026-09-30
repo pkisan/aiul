@@ -2,9 +2,9 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (Overview v3 UI in progress, see top)
+Last updated: 2026-09-30 (Overview v3 built, awaiting owner review)
 
-## Overview v3: habit, not volume — 2026-09-30 (IN PROGRESS)
+## Overview v3: habit, not volume — 2026-09-30 (DONE, owner to review)
 
 Owner: "I want to see the dashboard UI first" (before deploying the remote
 work). Quality quadrant is NOT possible: scoring was removed 2026-09-28
@@ -21,6 +21,22 @@ PLAN:
   5. Insights: a regular user who stopped; one person carrying most of a
      project's AI work.
   6. Tests, screenshots light/dark/phone on the demo tenant, commit.
+- [x] 1-6 done. KPIs: Active people, Active days (5.8 of 7 on demo),
+      Prompts, AI time. "Worth a look" panel beside the habit chart
+      (Habit.vue, SVG, dots nudged sideways when they share a spot; hidden
+      below sm, too small on a phone; needs >= 7 days). Days-used strip in
+      the team table (<= 14 days). Insights: stopped regular user (and not
+      repeated in "No AI use"), one person >= 80% of a project with >= 20
+      prompts (then "Most AI work went into" is skipped for that project).
+- [x] Fixed on the way: duration() showed "8h 60m" (rounded only the
+      remainder); dark strip cells used dark:bg-gray-800, which the flipped
+      gray scale turns light.
+- Local dev DB migrated (remote columns); demo tenant reseeded.
+- 113/113 backend. Screenshots 1440 light/dark, 390 phone (headless Chrome
+  over CDP, script in the session scratchpad).
+NEXT: owner looks at http://127.0.0.1:8088 as demo@example.com (password
+printed by the seeder, rerun it for a new one), then deploys both this and
+the remote work (`php artisan migrate`).
 
 ## Git remote URL on every event — 2026-09-30 (DONE, not installed)
 

@@ -4,8 +4,11 @@
 export const duration = (seconds) => {
     if (!seconds) return '—';
     if (seconds < 60) return `${seconds}s`;
-    const h = Math.floor(seconds / 3600);
-    const m = Math.round((seconds % 3600) / 60);
+    // Round to whole minutes first: rounding only the remainder turned
+    // 8h 59m 40s into "8h 60m".
+    const minutes = Math.round(seconds / 60);
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
     return h ? `${h}h ${m}m` : `${m}m`;
 };
 

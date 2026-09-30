@@ -1,5 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import Habit from '@/Components/Usage/Habit.vue';
 import Panel from '@/Components/Usage/Panel.vue';
 import { ago, count, duration, initials, toolName, when } from '@/Components/Usage/format';
 import { Head, Link, router } from '@inertiajs/vue3';
@@ -41,6 +42,14 @@ const kpis = computed(() => [
         suffix: props.enrolled ? `of ${props.enrolled} enrolled` : null,
         change: change(props.summary.people, props.previous.people),
     },
+    {
+        // Habit before volume: it says whether AI has become part of the work.
+        label: 'Active days',
+        value: props.summary.active_days ?? '—',
+        suffix: props.summary.active_days !== null ? `of ${props.days} per person` : null,
+        title: 'Days with any AI use, averaged over the people who used it this period',
+        change: change(props.summary.active_days ?? 0, props.previous.active_days ?? 0),
+    },
     { label: 'Prompts', value: count(props.summary.prompts), change: change(props.summary.prompts, props.previous.prompts) },
     {
         label: 'AI time',
@@ -48,8 +57,15 @@ const kpis = computed(() => [
         title: props.aiTimeDefinition,
         change: change(props.summary.ai_seconds, props.previous.ai_seconds),
     },
-    { label: 'Active projects', value: count(props.summary.projects), change: change(props.summary.projects, props.previous.projects) },
 ]);
+
+// The days of the period as UTC dates, oldest first, for the habit strip. UTC
+// because the server buckets days in UTC too (a known ceiling, see PROGRESS).
+const periodDates = computed(() =>
+    Array.from({ length: props.days }, (_, i) => new Date(Date.now() - (props.days - 1 - i) * 86400000).toISOString().slice(0, 10)),
+);
+// A strip per day reads at a glance up to two weeks; past that, a number.
+const showStrip = computed(() => props.days > 1 && props.days <= 14);
 
 // ---- Team: the heart of the page ----
 
@@ -69,7 +85,7 @@ const columns = [
     { key: 'change', label: 'Change', value: (p) => change(p.prompts, p.prompts_before) ?? -Infinity, hide: 'hidden sm:table-cell', title: 'Prompts compared with the period before' },
     { key: 'ai_seconds', label: 'AI time', value: (p) => p.ai_seconds, hide: 'hidden md:table-cell' },
     { key: 'main_project', label: 'Main project', value: (p) => (p.main_project ?? '').toLowerCase(), align: 'left', hide: 'hidden lg:table-cell' },
-    { key: 'active_days', label: 'Active days', value: (p) => p.active_days, hide: 'hidden lg:table-cell', title: 'Days with any AI use in this period' },
+    { key: 'active_days', label: 'Days used', value: (p) => p.active_days, hide: 'hidden lg:table-cell', title: 'Days with any AI use in this period, oldest on the left' },
     { key: 'steps', label: 'AI steps / prompt', value: (p) => stepsPerPrompt(p) ?? -1, hide: 'hidden xl:table-cell', title: 'Actions the AI took on its own for each request: higher means more work handed over' },
     { key: 'last_seen', label: 'Last seen', value: (p) => (p.last_seen ? new Date(p.last_seen).getTime() : 0), hide: 'hidden sm:table-cell' },
 ];
@@ -163,12 +179,25 @@ const share = (p) => (props.summary.prompts > 0 ? Math.round((p.prompts / props.
                 </div>
             </div>
 
-            <!-- Plain-sentence insights -->
-            <ul v-if="insights.length" class="flex flex-col gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-5 py-3.5 text-sm text-gray-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 lg:flex-row lg:flex-wrap lg:gap-x-6">
-                <li v-for="(i, n) in insights" :key="n" class="flex gap-2">
-                    <span class="text-indigo-500" aria-hidden="true">●</span>{{ i }}
-                </li>
-            </ul>
+            <!-- What is worth a look, next to how the team's habits spread -->
+            <div class="grid gap-5 lg:grid-cols-5">
+                <Panel title="Worth a look" subtitle="Worked out from the numbers below" class="lg:col-span-2">
+                    <ul v-if="insights.length" class="space-y-3 px-5 py-4 text-sm leading-relaxed text-gray-700">
+                        <li v-for="(i, n) in insights" :key="n" class="flex gap-2.5">
+                            <span class="mt-0.5 text-indigo-500" aria-hidden="true">●</span><span>{{ i }}</span>
+                        </li>
+                    </ul>
+                    <p v-else class="px-5 py-10 text-center text-sm text-gray-500">Nothing stands out this period.</p>
+                </Panel>
+                <Panel
+                    title="How each person uses AI"
+                    subtitle="Days used against prompts per day; dashed lines are the team median"
+                    class="hidden sm:block lg:col-span-3"
+                >
+                    <Habit v-if="days >= 7" :people="team" :days="days" :link="(id) => activityLink({ person: id })" />
+                    <p v-else class="px-5 py-10 text-center text-sm text-gray-500">Habits need a longer view: pick 7 days or more.</p>
+                </Panel>
+            </div>
 
             <!-- Team -->
             <Panel title="Team" :subtitle="`${summary.people} of ${enrolled || team.length} people used AI in this period`">
@@ -243,7 +272,17 @@ const share = (p) => (props.summary.prompts > 0 ? Math.round((p.prompts / props.
                             <td class="hidden max-w-[12rem] px-3 py-2.5 lg:table-cell">
                                 <span class="block truncate" :class="p.main_project ? 'text-gray-700' : 'text-gray-400'" :title="p.main_tool ? `Mostly ${toolName(p.main_tool)}` : null">{{ p.main_project ?? (p.prompts ? 'General chat' : '—') }}</span>
                             </td>
-                            <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 lg:table-cell">{{ p.active_days || '—' }}</td>
+                            <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 lg:table-cell">
+                                <span v-if="showStrip" class="inline-flex gap-0.5 align-middle" :title="`${p.active_days} of ${days} days`">
+                                    <span
+                                        v-for="d in periodDates"
+                                        :key="d"
+                                        class="h-3.5 w-2 rounded-sm"
+                                        :class="p.days.includes(d) ? 'bg-indigo-500' : 'bg-gray-100'"
+                                    />
+                                </span>
+                                <template v-else>{{ p.active_days || '—' }}</template>
+                            </td>
                             <td class="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 xl:table-cell">{{ stepsPerPrompt(p) ?? '—' }}</td>
                             <td class="hidden whitespace-nowrap py-2.5 pl-3 pr-5 text-right text-xs text-gray-500 sm:table-cell" :title="when(p.last_seen)">{{ p.last_seen ? ago(p.last_seen) : '—' }}</td>
                         </tr>

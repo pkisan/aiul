@@ -149,6 +149,55 @@ class UsageDashboardTest extends TestCase
         $this->assertSame(2, $row['agent_steps']);
     }
 
+    // Habit, not volume: the dates each person used AI, and the team average.
+    public function test_active_days_are_listed_and_averaged(): void
+    {
+        $alex = $this->user();
+        $sam = $this->user();
+        foreach ([1, 2, 3] as $daysAgo) {
+            $this->interaction(['user_id' => $alex->id, 'kind' => 'human', 'occurred_at' => now()->subDays($daysAgo)->startOfDay()->addHours(12)]);
+        }
+        $this->interaction(['user_id' => $sam->id, 'kind' => 'human', 'occurred_at' => now()->subDays(1)->startOfDay()->addHours(12)]);
+
+        $props = $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')->viewData('page')['props'];
+
+        $row = collect($props['team'])->firstWhere('user_id', $alex->id);
+        $this->assertSame([now()->subDays(3)->toDateString(), now()->subDays(2)->toDateString(), now()->subDays(1)->toDateString()], $row['days']);
+        $this->assertEquals(2.0, $props['summary']['active_days']); // (3 + 1) / 2
+    }
+
+    // Someone who used AI regularly and stopped gets their own sentence, and is
+    // not listed again among the people who never started.
+    public function test_a_regular_user_who_stopped_is_named(): void
+    {
+        $alex = $this->user();
+        $this->device->forceFill(['user_id' => $alex->id])->save();
+        foreach ([8, 9, 10] as $daysAgo) {
+            $this->interaction(['user_id' => $alex->id, 'kind' => 'human', 'occurred_at' => now()->subDays($daysAgo)]);
+        }
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')
+            ->assertInertia(fn ($page) => $page
+                ->where('insights.0', "{$alex->name} used AI on 3 days the period before, and not at all this period.")
+                ->where('insights', fn ($i) => ! collect($i)->contains(fn ($s) => str_starts_with($s, 'No AI use'))));
+    }
+
+    // One person doing nearly all of a project's AI work is a risk worth naming.
+    public function test_one_person_carrying_a_project_is_named(): void
+    {
+        $alex = $this->user();
+        $sam = $this->user();
+        for ($i = 0; $i < 20; $i++) {
+            $this->interaction(['user_id' => $alex->id, 'kind' => 'human', 'repo' => '/Users/dev/shop']);
+        }
+        $this->interaction(['user_id' => $sam->id, 'kind' => 'human', 'repo' => '/Users/dev/lms']);
+
+        $this->actingAs($this->user(User::ROLE_MANAGER))->get('/usage')
+            ->assertInertia(fn ($page) => $page
+                ->where('insights', fn ($i) => collect($i)->contains("{$alex->name} did 100% of the AI work on shop.")
+                    && ! collect($i)->contains(fn ($s) => str_starts_with($s, 'Most AI work went into shop'))));
+    }
+
     // Only a working credential raises the alarm. Claude Code sends the
     // person's own email with every request, so masked emails are routine.
     public function test_only_credentials_raise_an_alarm(): void
