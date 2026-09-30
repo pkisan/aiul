@@ -81,11 +81,11 @@ type Config struct {
 	// Processes finds which program opened a connection. Nil disables the lookup.
 	Processes platform.ProcessFinder
 
-	// Checkout reads the repository root and branch of a directory. Nil reads them
+	// Checkout reads the repository root, branch and remote of a directory. Nil reads them
 	// directly, which is right when the agent runs as the person using it. The
 	// installed worker runs as a service account that cannot see into anyone's
 	// home directory, so it passes a reader that asks the root helper instead.
-	Checkout func(dir string) (repo, branch string)
+	Checkout func(dir string) (repo, branch, remote string)
 
 	// Dial opens the connection to the real server. It exists so tests can point
 	// every hostname at a local fake provider. Nil means an ordinary TCP dial.

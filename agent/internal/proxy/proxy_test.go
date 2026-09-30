@@ -1060,11 +1060,11 @@ func TestTaskFromWorkspaceInBody(t *testing.T) {
 		Sink:   sink,
 		Logger: quietLogger(),
 		Tasks:  tasks.NewResolver(),
-		Checkout: func(dir string) (string, string) {
+		Checkout: func(dir string) (string, string, string) {
 			if dir == "/Users/dev/shop" {
-				return dir, "feature/SHOP-42-cart"
+				return dir, "feature/SHOP-42-cart", "github.com/acme/shop"
 			}
-			return "", ""
+			return "", "", ""
 		},
 	})
 	if err != nil {
@@ -1089,6 +1089,9 @@ func TestTaskFromWorkspaceInBody(t *testing.T) {
 	e := events[0]
 	if e.TaskID != "SHOP-42" || e.Branch != "feature/SHOP-42-cart" || e.WorkDir != "/Users/dev/shop" {
 		t.Errorf("task=%q branch=%q dir=%q", e.TaskID, e.Branch, e.WorkDir)
+	}
+	if e.Remote != "github.com/acme/shop" {
+		t.Errorf("remote = %q, want it carried from the workspace's checkout", e.Remote)
 	}
 	if e.Process != "Cursor Helper (Plugin)" {
 		t.Errorf("process = %q, want it kept from the connection", e.Process)

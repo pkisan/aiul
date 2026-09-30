@@ -111,9 +111,12 @@ type Event struct {
 
 	// Where the work was happening. TaskID empty means the backend's "untagged"
 	// bucket: better than attaching the event to a task we guessed at.
-	TaskID  string `json:"task_id,omitempty"`
-	Branch  string `json:"branch,omitempty"`
-	Repo    string `json:"repo,omitempty"`
+	TaskID string `json:"task_id,omitempty"`
+	Branch string `json:"branch,omitempty"`
+	Repo   string `json:"repo,omitempty"`
+	// Remote is the clone URL, "github.com/acme/shop": what the PM tool joins
+	// a project on, since Repo is a local path that differs per machine.
+	Remote  string `json:"remote,omitempty"`
 	WorkDir string `json:"work_dir,omitempty"`
 	Process string `json:"process,omitempty"`
 }
@@ -143,6 +146,7 @@ func (p *Proxy) record(in interaction) {
 		TaskID:  in.Task.TaskID,
 		Branch:  in.Task.Branch,
 		Repo:    in.Task.Repo,
+		Remote:  in.Task.Remote,
 		WorkDir: in.Task.Dir,
 		Process: in.Task.Process,
 	}
@@ -220,7 +224,7 @@ func (p *Proxy) record(in interaction) {
 		// connection gave no repository of its own.
 		if ev.Repo == "" && res.WorkDir != "" && p.cfg.Tasks != nil {
 			info := p.resolveDir(res.WorkDir)
-			ev.TaskID, ev.Branch, ev.Repo, ev.WorkDir = info.TaskID, info.Branch, info.Repo, info.Dir
+			ev.TaskID, ev.Branch, ev.Repo, ev.Remote, ev.WorkDir = info.TaskID, info.Branch, info.Repo, info.Remote, info.Dir
 		}
 	}
 

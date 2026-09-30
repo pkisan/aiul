@@ -42,6 +42,10 @@ type Info struct {
 	// Branch is the checked-out branch, empty on a detached HEAD.
 	Branch string
 
+	// Remote is where the checkout was cloned from, "github.com/acme/shop",
+	// with no credentials. The same on every machine, unlike Repo.
+	Remote string
+
 	// TaskID is the ticket extracted from the branch name, empty if there is none.
 	// An event with no task ID goes into the "untagged" bucket rather than being
 	// guessed at.
@@ -99,7 +103,7 @@ func (r *Resolver) Resolve(dir string) Info {
 // account with no access to their home directory — so it passes a reader that asks
 // the root helper. Applying the pattern and caching the answer stay here either
 // way, so both ways of running produce the same Info.
-func (r *Resolver) ResolveWith(dir string, checkout func(string) (repo, branch string)) Info {
+func (r *Resolver) ResolveWith(dir string, checkout func(string) (repo, branch, remote string)) Info {
 	if dir == "" {
 		return Info{}
 	}
@@ -112,9 +116,10 @@ func (r *Resolver) ResolveWith(dir string, checkout func(string) (repo, branch s
 	r.mu.Unlock()
 
 	info := Info{Dir: dir}
-	if repo, branch := checkout(dir); repo != "" {
+	if repo, branch, remote := checkout(dir); repo != "" {
 		info.Repo = repo
 		info.Branch = branch
+		info.Remote = remote
 		info.TaskID = r.TaskIDFrom(branch)
 	}
 
@@ -130,12 +135,12 @@ func (r *Resolver) ResolveWith(dir string, checkout func(string) (repo, branch s
 // It exists because of the privilege split: the worker runs as _aiul and cannot
 // traverse into a person's home or temporary directory, so it cannot read
 // .git/HEAD itself. The root helper reads it on the worker's behalf and hands back
-// these two strings. Extracting the task ID from the branch stays in the worker,
+// these strings. Extracting the task ID from the branch stays in the worker,
 // where the configurable pattern lives — the privileged half does the file read
 // and nothing more.
-func CheckoutAt(dir string) (repo, branch string) {
-	repo, branch, _ = checkoutAt(dir)
-	return repo, branch
+func CheckoutAt(dir string) (repo, branch, remote string) {
+	repo, branch, remote, _ = checkoutAt(dir)
+	return repo, branch, remote
 }
 
 // CheckoutAtVerbose is CheckoutAt with the reason a branch could not be read.
@@ -145,23 +150,23 @@ func CheckoutAt(dir string) (repo, branch string) {
 // Access can STAT .git — so the repository is found — and is denied when it OPENS
 // .git/HEAD. Every interaction in such a checkout was recorded with an empty
 // branch and nothing said why.
-func CheckoutAtVerbose(dir string) (repo, branch string, err error) {
+func CheckoutAtVerbose(dir string) (repo, branch, remote string, err error) {
 	return checkoutAt(dir)
 }
 
-func checkoutAt(dir string) (repo, branch string, err error) {
+func checkoutAt(dir string) (repo, branch, remote string, err error) {
 	if dir == "" {
-		return "", "", nil
+		return "", "", "", nil
 	}
 
 	repo, ok := findRepo(dir)
 	if !ok {
-		return "", "", nil
+		return "", "", "", nil
 	}
 
 	branch, err = branchOfWithError(repo)
 
-	return repo, branch, err
+	return repo, branch, remoteOf(repo), err
 }
 
 // TaskIDFrom pulls the ticket out of a branch name.
@@ -204,26 +209,9 @@ func branchOf(repo string) string {
 }
 
 func branchOfWithError(repo string) (string, error) {
-	gitPath := filepath.Join(repo, ".git")
-
-	info, err := os.Stat(gitPath)
+	gitPath, err := gitDir(repo)
 	if err != nil {
 		return "", err
-	}
-	// In a worktree or a submodule, .git is a FILE pointing at the real directory.
-	if !info.IsDir() {
-		data, err := os.ReadFile(gitPath)
-		if err != nil {
-			return "", err
-		}
-		target := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(data)), "gitdir:"))
-		if target == "" {
-			return "", fmt.Errorf("%s names no gitdir", gitPath)
-		}
-		if !filepath.IsAbs(target) {
-			target = filepath.Join(repo, target)
-		}
-		gitPath = target
 	}
 
 	head, err := os.ReadFile(filepath.Join(gitPath, "HEAD"))
@@ -237,4 +225,138 @@ func branchOfWithError(repo string) (string, error) {
 	}
 
 	return ref, nil
+}
+
+// gitDir finds the git directory of a checkout. Usually that is repo/.git, but in
+// a worktree or a submodule .git is a FILE pointing at the real directory.
+func gitDir(repo string) (string, error) {
+	gitPath := filepath.Join(repo, ".git")
+
+	info, err := os.Stat(gitPath)
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() {
+		return gitPath, nil
+	}
+
+	data, err := os.ReadFile(gitPath)
+	if err != nil {
+		return "", err
+	}
+	target := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(data)), "gitdir:"))
+	if target == "" {
+		return "", fmt.Errorf("%s names no gitdir", gitPath)
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(repo, target)
+	}
+	return target, nil
+}
+
+// remoteOf reads where a checkout was cloned from, as "host/owner/name".
+//
+// This is what the PM tool joins on: the local path differs on every machine,
+// the remote is the same for everyone working on the project. "origin" is
+// preferred; a checkout without one uses its first remote. Empty when there is
+// no remote, or it is another directory on disk (not a shared project).
+func remoteOf(repo string) string {
+	gitPath, err := gitDir(repo)
+	if err != nil {
+		return ""
+	}
+	// A worktree's own git directory has no config; "commondir" points at the
+	// main one that does.
+	if common, err := os.ReadFile(filepath.Join(gitPath, "commondir")); err == nil {
+		dir := strings.TrimSpace(string(common))
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(gitPath, dir)
+		}
+		gitPath = dir
+	}
+
+	config, err := os.ReadFile(filepath.Join(gitPath, "config"))
+	if err != nil {
+		return ""
+	}
+
+	// A small reader for the one thing we need, not a full git-config parser:
+	// section headers like [remote "origin"], then "url = ..." lines.
+	var first, origin, section string
+	for _, raw := range strings.Split(string(config), "\n") {
+		line := strings.TrimSpace(raw)
+		if strings.HasPrefix(line, "[") {
+			section = line
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(key) != "url" || !strings.HasPrefix(section, `[remote "`) {
+			continue
+		}
+		url := strings.TrimSpace(value)
+		if first == "" {
+			first = url
+		}
+		if section == `[remote "origin"]` && origin == "" {
+			origin = url
+		}
+	}
+	if origin != "" {
+		return NormaliseRemote(origin)
+	}
+	return NormaliseRemote(first)
+}
+
+// NormaliseRemote turns every way of writing a clone URL into one form, so an
+// SSH clone and an HTTPS clone of the same project match:
+//
+//	git@github.com:Acme/Shop.git            -> github.com/Acme/Shop
+//	https://user:TOKEN@github.com/Acme/Shop -> github.com/Acme/Shop
+//	ssh://git@gitlab.com:22/acme/shop.git   -> gitlab.com/acme/shop
+//
+// Any user name or password in the URL is dropped here, on the machine: HTTPS
+// clones often carry a personal access token, and it must never be sent.
+// The host is lower-cased (hosts are case-insensitive); the path is kept as is,
+// because on some servers it is not.
+func NormaliseRemote(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+
+	var host, path string
+	if scheme, rest, ok := strings.Cut(s, "://"); ok {
+		switch strings.ToLower(scheme) {
+		case "https", "http", "ssh", "git", "git+ssh", "ssh+git":
+		default:
+			return "" // file:// and anything unknown: not a shared project
+		}
+		host, path, _ = strings.Cut(rest, "/")
+	} else {
+		// scp-like "user@host:path". A colon before any slash is what tells it
+		// apart from a local path such as /srv/repos/shop or ../shop.
+		// colon == 1 is a Windows drive letter, C:\\repos\\shop.
+		colon, slash := strings.Index(s, ":"), strings.Index(s, "/")
+		if colon <= 1 || (slash >= 0 && slash < colon) {
+			return ""
+		}
+		host, path = s[:colon], s[colon+1:]
+	}
+
+	// Credentials: everything up to the LAST "@", since a password may hold one.
+	if at := strings.LastIndex(host, "@"); at >= 0 {
+		host = host[at+1:]
+	}
+	// A port is not part of the project's identity.
+	if h, _, ok := strings.Cut(host, ":"); ok {
+		host = h
+	}
+	host = strings.ToLower(host)
+
+	path = strings.Trim(path, "/")
+	path = strings.TrimSuffix(path, ".git")
+	if host == "" || path == "" {
+		return ""
+	}
+	return host + "/" + path
 }

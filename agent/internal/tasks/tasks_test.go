@@ -223,7 +223,7 @@ func TestAnUnreadableHeadIsReportedRatherThanSwallowed(t *testing.T) {
 		t.Skip("root ignores file permissions, so this cannot be tested as root")
 	}
 
-	repo, branch, err := CheckoutAtVerbose(dir)
+	repo, branch, _, err := CheckoutAtVerbose(dir)
 
 	if repo != dir {
 		t.Errorf("repo = %q, want %q — the repository is still found", repo, dir)
@@ -243,7 +243,95 @@ func TestAnUnreadableHeadIsReportedRatherThanSwallowed(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(detached, ".git", "HEAD"), []byte("9f2c1a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, branch, err := CheckoutAtVerbose(detached); branch != "" || err != nil {
+	if _, branch, _, err := CheckoutAtVerbose(detached); branch != "" || err != nil {
 		t.Errorf("detached HEAD = %q, err %v; want empty and no error", branch, err)
+	}
+}
+
+// Every way of writing a clone URL must land on one key, or the PM tool sees one
+// project as several. Credentials must never survive: HTTPS clones often carry a
+// personal access token.
+func TestNormaliseRemote(t *testing.T) {
+	cases := map[string]string{
+		"git@github.com:Acme/Shop.git":                      "github.com/Acme/Shop",
+		"https://github.com/Acme/Shop.git":                  "github.com/Acme/Shop",
+		"https://github.com/Acme/Shop/":                     "github.com/Acme/Shop",
+		"https://dev:ghp_TOKEN@github.com/Acme/Shop.git":    "github.com/Acme/Shop",
+		"https://x-access-token:p@ss@GitHub.com/Acme/Shop":  "github.com/Acme/Shop",
+		"ssh://git@gitlab.example.com:2222/grp/sub/app.git": "gitlab.example.com/grp/sub/app",
+		"git+ssh://git@bitbucket.org/team/app":              "bitbucket.org/team/app",
+		// Not a shared project: another directory on disk.
+		"/srv/repos/shop.git":    "",
+		"../shop":                "",
+		"file:///srv/repos/shop": "",
+		`C:\repos\shop`:          "",
+		"C:/repos/shop":          "",
+		"":                       "",
+		"https://github.com":     "",
+	}
+	for in, want := range cases {
+		if got := NormaliseRemote(in); got != want {
+			t.Errorf("NormaliseRemote(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// origin wins over other remotes, whatever order the config lists them in.
+func TestRemotePrefersOrigin(t *testing.T) {
+	repo := t.TempDir()
+	writeGit(t, repo, "HEAD", "ref: refs/heads/main\n")
+	writeGit(t, repo, "config", `[core]
+	url = https://not-a-remote.example/x
+[remote "upstream"]
+	url = git@github.com:upstream/shop.git
+[remote "origin"]
+	url = git@github.com:acme/shop.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
+`)
+	if _, _, remote := CheckoutAt(repo); remote != "github.com/acme/shop" {
+		t.Errorf("remote = %q, want origin's", remote)
+	}
+
+	// No origin: the first remote.
+	writeGit(t, repo, "config", "[remote \"fork\"]\n\turl = https://github.com/me/shop\n")
+	if _, _, remote := CheckoutAt(repo); remote != "github.com/me/shop" {
+		t.Errorf("remote = %q, want the first remote", remote)
+	}
+}
+
+// A worktree's .git is a file; its own git directory has no config, and the
+// remote lives in the main checkout's, reached through commondir.
+func TestRemoteOfAWorktree(t *testing.T) {
+	main := t.TempDir()
+	writeGit(t, main, "config", "[remote \"origin\"]\n\turl = git@github.com:acme/shop.git\n")
+	wtGit := filepath.Join(main, ".git", "worktrees", "hotfix")
+	if err := os.MkdirAll(wtGit, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtGit, "HEAD"), []byte("ref: refs/heads/hotfix\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtGit, "commondir"), []byte("../..\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wt := t.TempDir()
+	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: "+wtGit+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, branch, remote := CheckoutAt(wt)
+	if branch != "hotfix" || remote != "github.com/acme/shop" {
+		t.Errorf("branch = %q, remote = %q", branch, remote)
+	}
+}
+
+func writeGit(t *testing.T, repo, name, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".git", name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

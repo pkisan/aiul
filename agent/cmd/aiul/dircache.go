@@ -24,12 +24,13 @@ type dirEntry struct {
 	// worker cannot read it itself, so this is the only copy it will get.
 	repo   string
 	branch string
+	remote string
 	at     time.Time
 }
 
 const dirTTL = 60 * time.Second
 
-func (f sourceFinder) remember(pid int, dir, repo, branch string) {
+func (f sourceFinder) remember(pid int, dir, repo, branch, remote string) {
 	dirMu.Lock()
 	defer dirMu.Unlock()
 
@@ -41,7 +42,7 @@ func (f sourceFinder) remember(pid int, dir, repo, branch string) {
 		}
 	}
 
-	dirCache[pid] = dirEntry{dir: dir, repo: repo, branch: branch, at: time.Now()}
+	dirCache[pid] = dirEntry{dir: dir, repo: repo, branch: branch, remote: remote, at: time.Now()}
 }
 
 func lookupRememberedDir(pid int) (string, error) {
@@ -59,15 +60,15 @@ func lookupRememberedDir(pid int) (string, error) {
 // rememberedCheckout answers the proxy's Checkout hook from what the helper
 // already told us about this directory. An empty answer means "not a checkout, or
 // we were never told", and the event goes into the untagged bucket.
-func rememberedCheckout(dir string) (repo, branch string) {
+func rememberedCheckout(dir string) (repo, branch, remote string) {
 	dirMu.Lock()
 	defer dirMu.Unlock()
 
 	for _, entry := range dirCache {
 		if entry.dir == dir && time.Since(entry.at) <= dirTTL {
-			return entry.repo, entry.branch
+			return entry.repo, entry.branch, entry.remote
 		}
 	}
 
-	return "", ""
+	return "", "", ""
 }

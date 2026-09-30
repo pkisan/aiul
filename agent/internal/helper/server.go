@@ -151,7 +151,7 @@ func (s *Server) answer(line string) string {
 		// .git/HEAD itself. This is a file read of a path the worker did not
 		// choose — the directory came from the process that opened the connection
 		// — and the task ID is still worked out in the worker.
-		repo, branch, readErr := tasks.CheckoutAtVerbose(dir)
+		repo, branch, remote, readErr := tasks.CheckoutAtVerbose(dir)
 		if repo != "" && branch == "" && readErr != nil {
 			// Worth a warning, not silence: on macOS ~/Desktop, ~/Documents and
 			// ~/Downloads are protected by TCC, and a daemon without Full Disk
@@ -168,7 +168,9 @@ func (s *Server) answer(line string) string {
 		// ~/.claude.json, which the worker cannot open. See ClaudeCodeAccount.
 		account := ClaudeCodeAccount(pid, name, exe)
 
-		return FormatOK(fmt.Sprintf("%d", pid), name, dir, repo, branch, exe, account)
+		// The remote goes last, so an older worker reading seven fields still works.
+		// NormaliseRemote has already dropped any credentials from it.
+		return FormatOK(fmt.Sprintf("%d", pid), name, dir, repo, branch, exe, account, remote)
 
 	default:
 		// Unreachable: ParseRequest only returns verbs listed above. Kept so that

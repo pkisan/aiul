@@ -30,7 +30,7 @@ type privilegedSource interface {
 	//
 	// The account is the Claude account of a Claude Code process, read from the
 	// person's ~/.claude.json for the same reason. Empty for anything else.
-	ProcessOnPort(port int) (pid int, name, workingDir, repo, branch, executable, account string, err error)
+	ProcessOnPort(port int) (pid int, name, workingDir, repo, branch, executable, account, remote string, err error)
 }
 
 // chooseSource prefers the helper and says plainly which one it picked, because
@@ -59,23 +59,23 @@ type directOps struct{}
 func (directOps) ProxyOn() error  { return platform.Proxy().Set(proxyAddr) }
 func (directOps) ProxyOff() error { return platform.Proxy().Unset() }
 
-func (directOps) ProcessOnPort(port int) (int, string, string, string, string, string, string, error) {
+func (directOps) ProcessOnPort(port int) (int, string, string, string, string, string, string, string, error) {
 	process, err := platform.Processes().ByLocalPort(port)
 	if err != nil {
-		return 0, "", "", "", "", "", "", err
+		return 0, "", "", "", "", "", "", "", err
 	}
 	account := helper.ClaudeCodeAccount(process.PID, process.Name, process.Path)
 
 	dir, err := platform.Processes().WorkingDir(process.PID)
 	if err != nil {
-		return process.PID, process.Name, "", "", "", process.Path, account, nil
+		return process.PID, process.Name, "", "", "", process.Path, account, "", nil
 	}
 
 	// Running by hand, this process is the person using the machine, so it can
 	// read the checkout itself.
-	repo, branch, _ := tasks.CheckoutAtVerbose(dir)
+	repo, branch, remote, _ := tasks.CheckoutAtVerbose(dir)
 
-	return process.PID, process.Name, dir, repo, branch, process.Path, account, nil
+	return process.PID, process.Name, dir, repo, branch, process.Path, account, remote, nil
 }
 
 // sourceFinder adapts a privilegedSource to the interface the proxy wants for
@@ -85,14 +85,14 @@ type sourceFinder struct {
 }
 
 func (f sourceFinder) ByLocalPort(port int) (platform.Process, error) {
-	pid, name, dir, repo, branch, exe, account, err := f.source.ProcessOnPort(port)
+	pid, name, dir, repo, branch, exe, account, remote, err := f.source.ProcessOnPort(port)
 	if err != nil {
 		return platform.Process{}, err
 	}
 
 	// The working directory and its checkout came back in the same answer, so
 	// remember them rather than asking again.
-	f.remember(pid, dir, repo, branch)
+	f.remember(pid, dir, repo, branch, remote)
 
 	return platform.Process{PID: pid, Name: name, Path: exe, Account: account}, nil
 }
