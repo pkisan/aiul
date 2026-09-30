@@ -26,6 +26,20 @@ class Task extends Model
         return ['started_at' => 'datetime', 'completed_at' => 'datetime'];
     }
 
+    /** A new task's key goes into pm_task_keys, where the linker looks keys up. */
+    protected static function booted(): void
+    {
+        static::created(fn (Task $task) => TaskKey::withoutGlobalScope('tenant')->create([
+            'tenant_id' => $task->tenant_id, 'task_id' => $task->id, 'key' => $task->key,
+        ]));
+    }
+
+    /** Every key this task has had, the current one included. */
+    public function keys(): HasMany
+    {
+        return $this->hasMany(TaskKey::class);
+    }
+
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);

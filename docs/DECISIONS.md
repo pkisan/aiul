@@ -659,3 +659,19 @@ an explicit "Start working" period and task keys in prompt text). The LLM
 suggester from the build prompt is deferred: it would send prompt text to a
 third party to make a guess, and the inbox covers the gap until real volume
 says otherwise.
+
+## D20 — Sessions anchor to tasks; keys and link changes are kept (2026-09-30)
+
+A prompt's task and project are never stored on the prompt. Prompt -> session
+-> pm_task_ai_links -> task -> project, derived when read. Moving a task to
+another project therefore needs no change to any prompt or link.
+
+The anchor is the session, not each prompt: a session is one person, one tool,
+no gap over 30 minutes, which in practice is one piece of work. If a session
+ever spans two tasks, the answer is a "split session" action, not per-prompt
+links.
+
+pm_task_keys keeps every key a task has had, so a branch named after an old key
+(aay-4-cart) still resolves after the task becomes MOB-17. The linker looks keys
+up there. pm_link_events is an append-only log of every link change: the linker
+(actor null) logs only real changes, people's inbox decisions log who decided.

@@ -10,9 +10,11 @@ use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Pm\Linking\Linker;
+use Pm\Models\LinkEvent;
 use Pm\Models\Project;
 use Pm\Models\Task;
 use Pm\Models\TaskAiLink;
+use Pm\Models\TaskKey;
 use Pm\Models\WorkPeriod;
 use Tests\TestCase;
 
@@ -181,5 +183,57 @@ class LinkerTest extends TestCase
         $this->actingAs($stranger)->get(route('pm.inbox.index', ['scope' => 'team']))->assertJsonPath('total', 0);
 
         $this->actingAs($this->me)->get(route('pm.projects.index'))->assertInertia(fn ($p) => $p->where('pmInboxCount', 2));
+    }
+
+    public function test_a_task_keeps_its_old_key_after_moving_project(): void
+    {
+        $task = $this->task(4);
+        $this->assertSame(['SHOP-4'], $task->keys()->pluck('key')->all(), 'key written on create');
+
+        // What a move does (the move feature itself is not built yet).
+        $mobile = Project::create(['name' => 'Mobile', 'key' => 'MOB']);
+        $task->update(['project_id' => $mobile->id, 'number' => 17]);
+        TaskKey::create(['task_id' => $task->id, 'key' => 'MOB-17']);
+
+        $this->assertSame([$task->id, TaskAiLink::CONVENTION, 0.9], $this->link($this->aiSession(['branch' => 'shop-4-cart'])));
+        $this->assertSame([$task->id, TaskAiLink::CONVENTION, 0.9], $this->link($this->aiSession(['branch' => 'feature/MOB-17'])));
+        $this->assertSame([$task->id, TaskAiLink::CONVENTION, 0.9], $this->link($this->aiSession(['branch' => 'shop-4-then-mob-17'])), 'two keys of ONE task is not a guess');
+    }
+
+    public function test_every_link_change_is_logged_once(): void
+    {
+        $t = $this->task(1, ['assignee_id' => $this->me->id, 'started_at' => now()->subDay()]);
+        $s = $this->aiSession();
+        $events = fn () => LinkEvent::where('ai_session_id', $s->id)->orderBy('id')->get()
+            ->map(fn ($e) => [$e->action, $e->from_task_id, $e->to_task_id, $e->actor_id])->all();
+
+        app(Linker::class)->link($s);
+        app(Linker::class)->link($s); // nothing changed: nothing logged
+        $this->assertSame([['suggested', null, $t->id, null]], $events());
+
+        WorkPeriod::create(['user_id' => $this->me->id, 'task_id' => $t->id, 'started_at' => now()->subHours(2)]);
+        app(Linker::class)->link($s);
+        WorkPeriod::query()->delete();
+        $t->update(['assignee_id' => null]);
+        app(Linker::class)->link($s);
+        $this->assertSame([
+            ['suggested', null, $t->id, null],
+            ['linked', $t->id, $t->id, null],
+            ['unlinked', $t->id, null, null],
+        ], $events());
+
+        // People's decisions carry who made them.
+        $other = $this->task(2);
+        $this->actingAs($this->me)->postJson(route('pm.inbox.decide', $s), ['action' => 'assign', 'task_id' => $other->id])->assertNoContent();
+        $this->actingAs($this->me)->postJson(route('pm.inbox.decide', $s), ['action' => 'confirm'])->assertNoContent();
+        $this->actingAs($this->me)->postJson(route('pm.inbox.decide', $s), ['action' => 'none'])->assertNoContent();
+        $this->assertSame([
+            ['reassigned', null, $other->id, $this->me->id],
+            ['confirmed', $other->id, $other->id, $this->me->id],
+            ['not_work', $other->id, null, $this->me->id],
+        ], array_slice($events(), 3));
+
+        app(Linker::class)->link($s); // confirmed: the linker leaves it, and logs nothing
+        $this->assertCount(6, $events());
     }
 }

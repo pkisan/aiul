@@ -2,9 +2,9 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (task keys + link audit in progress)
+Last updated: 2026-09-30 (task keys + link audit done, owner to verify)
 
-## PM tool — task keys + link audit — 2026-09-30 (IN PROGRESS)
+## PM tool — task keys + link audit — 2026-09-30 (DONE, owner to verify)
 
 Owner asked for the design (slide-over, task/prompt model, invites, dates)
 and then: "build pm_task_keys and pm_link_events first".
@@ -17,6 +17,14 @@ PLAN:
      unlinked; actor null). Inbox writes confirmed / reassigned / not_work
      with the person.
   4. Tests; commit. No move-task feature and no audit UI yet (not asked).
+- [x] 1-4 done. Migration 2026_09_30_300000 also backfills: one key per
+      existing task, one baseline event per existing link (so the log starts
+      from the current state). Local dev: 10 keys, 27 events.
+- Two keys of the SAME task in one branch still count as one task.
+- 138/138 backend (23 Pm).
+NEXT: owner verifies; candidates from the design answer: move-task
+endpoint (uses pm_task_keys), "project only" inbox option (link.project_id
++ CHECK), audit view per session, invites, due_date + cycle time.
 
 ## PM tool — Phase 5 Polish — 2026-09-30 (DONE, owner to verify)
 

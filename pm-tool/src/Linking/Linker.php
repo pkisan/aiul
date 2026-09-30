@@ -4,9 +4,11 @@ namespace Pm\Linking;
 
 use App\Models\AiSession;
 use Illuminate\Support\Carbon;
+use Pm\Models\LinkEvent;
 use Pm\Models\ProjectRemote;
 use Pm\Models\Task;
 use Pm\Models\TaskAiLink;
+use Pm\Models\TaskKey;
 use Pm\Models\WorkPeriod;
 
 /**
@@ -22,6 +24,7 @@ use Pm\Models\WorkPeriod;
  *
  * A link a person confirmed in the inbox is never changed. Everything else is
  * recomputed, so a later "Start working" or a new task re-attributes old work.
+ * Every change is written to pm_link_events.
  *
  * Queries filter by tenant_id themselves: this also runs from the console,
  * where no tenant is set and the global scope filters nothing.
@@ -41,15 +44,25 @@ class Linker
         [$taskId, $method, $confidence] = $this->decide($session) ?? [null, null, null];
 
         if (! $taskId) {
-            $existing?->delete();
+            if ($existing) {
+                $existing->delete();
+                LinkEvent::record($session->tenant_id, $session->id, $existing->task_id, null, 'unlinked');
+            }
 
             return null;
         }
 
-        return TaskAiLink::withoutGlobalScope('tenant')->updateOrCreate(
+        // Only a real change goes in the audit log; relinking every 5 minutes must not flood it.
+        $changed = ! $existing || $existing->task_id !== $taskId || $existing->method !== $method || $existing->confidence !== $confidence;
+        $link = TaskAiLink::withoutGlobalScope('tenant')->updateOrCreate(
             ['ai_session_id' => $session->id],
             ['tenant_id' => $session->tenant_id, 'task_id' => $taskId, 'method' => $method, 'confidence' => $confidence],
         );
+        if ($changed) {
+            LinkEvent::record($session->tenant_id, $session->id, $existing?->task_id, $taskId, $confidence >= 0.8 ? 'linked' : 'suggested', $method, $confidence);
+        }
+
+        return $link;
     }
 
     /** Relink one person's recent sessions, after a PM change that affects them. */
@@ -118,21 +131,21 @@ class Linker
         return null;
     }
 
-    /** Ids of the tenant's tasks whose keys appear in the session's branch name. */
+    /**
+     * Ids of the tenant's tasks whose keys appear in the session's branch name.
+     * Keys come from pm_task_keys, old ones included, so "aay-4-cart" still finds
+     * the task after it moved to another project.
+     */
     private function tasksInBranch(AiSession $s)
     {
         if (! $s->branch || ! preg_match_all(self::KEY, $s->branch, $m, PREG_SET_ORDER)) {
             return collect();
         }
 
-        return collect($m)
-            ->map(fn ($k) => Task::withoutGlobalScope('tenant')
-                ->where('tenant_id', $s->tenant_id)
-                ->where('number', (int) $k[2])
-                ->whereHas('project', fn ($q) => $q->withoutGlobalScope('tenant')->where('key', strtoupper($k[1])))
-                ->value('id'))
-            ->filter()
-            ->unique()
-            ->values();
+        return TaskKey::withoutGlobalScope('tenant')
+            ->where('tenant_id', $s->tenant_id)
+            ->whereIn('key', collect($m)->map(fn ($k) => strtoupper($k[1]).'-'.(int) $k[2])->unique())
+            ->distinct()
+            ->pluck('task_id');
     }
 }

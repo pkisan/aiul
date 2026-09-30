@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
+use Pm\Models\LinkEvent;
 use Pm\Models\Task;
 use Pm\Models\TaskAiLink;
 
@@ -91,12 +92,20 @@ class InboxController
 
         $link = TaskAiLink::firstOrNew(['ai_session_id' => $session->id]);
         abort_if($data['action'] === 'confirm' && ! $link->task_id, 422, 'Nothing to confirm.');
+        $from = $link->task_id;
 
         $link->fill(match ($data['action']) {
             'confirm' => ['confidence' => 1.0],
             'assign' => ['task_id' => $data['task_id'], 'method' => TaskAiLink::MANUAL, 'confidence' => 1.0],
             'none' => ['task_id' => null, 'method' => TaskAiLink::MANUAL, 'confidence' => 1.0],
         })->fill(['confirmed_by' => $me->id, 'confirmed_at' => now()])->save();
+
+        $action = match (true) {
+            $data['action'] === 'none' => 'not_work',
+            $link->task_id === $from => 'confirmed',
+            default => 'reassigned',
+        };
+        LinkEvent::record($session->tenant_id, $session->id, $from, $link->task_id, $action, $link->method, $link->confidence, $me->id);
 
         return response()->noContent();
     }
