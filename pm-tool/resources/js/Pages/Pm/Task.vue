@@ -7,7 +7,7 @@ import { computed, ref } from 'vue';
 import Trail from '../../Components/Trail.vue';
 import { statusLabels } from '../../pm.js';
 
-const props = defineProps({ task: Object, project: Object, events: Array, sprints: Array, statuses: Array, people: Array, trail: Object });
+const props = defineProps({ task: Object, project: Object, events: Array, sprints: Array, statuses: Array, people: Array, trail: Object, projects: Array });
 
 const me = computed(() => usePage().props.auth.user);
 const isActive = computed(() => usePage().props.pmActiveTask?.id === props.task.id);
@@ -32,9 +32,25 @@ const copyBranch = () =>
 
 const person = (id) => props.people.find((p) => p.id === Number(id))?.name ?? 'nobody';
 const describe = (e) =>
-    e.field === 'status'
-        ? `moved it ${e.from ? `from ${statusLabels[e.from]} ` : ''}to ${statusLabels[e.to]}`
-        : `assigned it to ${e.to ? person(e.to) : 'nobody'}`;
+    ({
+        status: () => `moved it ${e.from ? `from ${statusLabels[e.from]} ` : ''}to ${statusLabels[e.to]}`,
+        assignee: () => `assigned it to ${e.to ? person(e.to) : 'nobody'}`,
+        project: () => `moved it from ${e.from} to ${e.to}`,
+    })[e.field]?.() ?? `changed ${e.field}`;
+
+// Moving changes the key and clears the sprint; AI sessions stay with the task.
+const move = (select) => {
+    const target = props.projects.find((p) => p.id === Number(select.value));
+    const sure = target && confirm(
+        `Move ${props.task.key} to ${target.name}? It gets a ${target.key} key and leaves its sprint. ` +
+            `Its AI sessions stay linked, and branches named ${props.task.key} still work.`,
+    );
+    if (sure) {
+        router.post(route('pm.tasks.move', props.task.id), { project_id: target.id }, { preserveScroll: true });
+    } else {
+        select.value = props.project.id;
+    }
+};
 </script>
 
 <template>
@@ -76,7 +92,7 @@ const describe = (e) =>
                 </p>
             </div>
 
-            <div class="grid gap-4 sm:grid-cols-3">
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <label class="text-xs font-medium text-gray-500">
                     Status
                     <select :value="task.status" class="mt-1 block w-full rounded-lg text-sm" @change="save({ status: $event.target.value })">
@@ -95,6 +111,13 @@ const describe = (e) =>
                     <select :value="task.sprint_id ?? ''" class="mt-1 block w-full rounded-lg text-sm" @change="save({ sprint_id: $event.target.value || null })">
                         <option value="">No sprint</option>
                         <option v-for="s in sprints" :key="s.id" :value="s.id">{{ s.name }}</option>
+                    </select>
+                </label>
+                <label class="text-xs font-medium text-gray-500">
+                    Project
+                    <select :value="project.id" :disabled="!projects.length" class="mt-1 block w-full rounded-lg text-sm disabled:opacity-60" @change="move($event.target)">
+                        <option :value="project.id">{{ project.key }} · {{ project.name }}</option>
+                        <option v-for="p in projects" :key="p.id" :value="p.id">Move to {{ p.key }} · {{ p.name }}</option>
                     </select>
                 </label>
             </div>

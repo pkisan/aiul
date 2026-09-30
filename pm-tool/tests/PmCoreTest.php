@@ -2,14 +2,18 @@
 
 namespace Pm\Tests;
 
+use App\Models\AiSession;
 use App\Models\ConsentRecord;
+use App\Models\Device;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Pm\Http\ProjectController;
 use Pm\Models\Project;
+use Pm\Models\Sprint;
 use Pm\Models\Task;
+use Pm\Models\TaskAiLink;
 use Pm\Models\WorkPeriod;
 use Tests\TestCase;
 
@@ -183,5 +187,53 @@ class PmCoreTest extends TestCase
         $this->actingAs($manager)->get(route('pm.board', $task->project_id))->assertOk();
         $this->actingAs($manager)->get(route('pm.tasks.show', $task))->assertOk()
             ->assertInertia(fn ($page) => $page->where('trail.sessions', [])->where('trail.totals.prompts', 0));
+    }
+
+    public function test_moving_a_task_keeps_its_ai_work_and_old_key(): void
+    {
+        $me = $this->user(User::ROLE_MEMBER);
+        $task = $this->project($me, ['assignee_id' => $me->id]);
+        [$mobile, $session] = app(TenantContext::class)->runAs($me->tenant_id, function () use ($task, $me) {
+            $sprint = Sprint::create(['project_id' => $task->project_id, 'name' => 'S1', 'start_date' => today(), 'end_date' => today()->addWeek()]);
+            $task->update(['sprint_id' => $sprint->id]);
+            $device = Device::create(['user_id' => $me->id, 'hostname' => 'mbp', 'platform' => 'darwin', 'token_hash' => Device::issueToken()[1]]);
+            $session = AiSession::create(['device_id' => $device->id, 'user_id' => $me->id, 'tool' => 'claude-code', 'branch' => 'shop-1-checkout', 'started_at' => now()->subHour(), 'ended_at' => now()]);
+            TaskAiLink::create(['ai_session_id' => $session->id, 'task_id' => $task->id, 'method' => 'convention', 'confidence' => 0.9]);
+
+            return [Project::create(['name' => 'Mobile', 'key' => 'MOB']), $session];
+        });
+
+        $this->actingAs($me)->post(route('pm.tasks.move', $task), ['project_id' => $mobile->id])->assertSessionHasNoErrors();
+
+        $task->refresh()->load('project');
+        $this->assertSame(['MOB-1', null], [$task->key, $task->sprint_id]);
+        $this->assertEqualsCanonicalizing(['SHOP-1', 'MOB-1'], $task->keys()->pluck('key')->all());
+        $this->assertSame(['project', 'SHOP-1', 'MOB-1'], [$task->events()->latest('id')->first()->field, $task->events()->latest('id')->first()->from, $task->events()->latest('id')->first()->to]);
+        // The link still points at the task; the linker still finds it by the OLD branch key.
+        $this->assertSame([$task->id, 'convention'], [TaskAiLink::where('ai_session_id', $session->id)->value('task_id'), TaskAiLink::where('ai_session_id', $session->id)->value('method')]);
+        $this->actingAs($me)->get(route('pm.tasks.show', $task))->assertInertia(fn ($p) => $p->where('task.key', 'MOB-1')->has('trail.sessions', 1));
+
+        // A new SHOP task does not reuse number 1: SHOP-1 still means the moved task.
+        $shop = Project::where('key', 'SHOP')->value('id');
+        $this->actingAs($me)->post(route('pm.tasks.store', $shop), ['title' => 'Cart'])->assertSessionHasNoErrors();
+        $cart = Task::with('project')->where('title', 'Cart')->sole();
+        $this->assertSame([$shop, 'SHOP-2'], [$cart->project_id, $cart->key]);
+
+        // Moving back restores SHOP-1 instead of issuing SHOP-3.
+        $this->actingAs($me)->post(route('pm.tasks.move', $task), ['project_id' => $shop]);
+        $this->assertSame('SHOP-1', $task->refresh()->load('project')->key);
+        $this->assertSame(2, $task->keys()->count());
+    }
+
+    public function test_move_is_refused_to_the_same_project_or_another_tenant(): void
+    {
+        $me = $this->user(User::ROLE_MEMBER);
+        $task = $this->project($me);
+        $this->actingAs($me)->post(route('pm.tasks.move', $task), ['project_id' => $task->project_id])->assertSessionHasErrors('project_id');
+
+        $stranger = $this->user(User::ROLE_MANAGER, 'globex');
+        $theirs = app(TenantContext::class)->runAs($stranger->tenant_id, fn () => Project::create(['name' => 'X', 'key' => 'XX']));
+        $this->actingAs($me)->post(route('pm.tasks.move', $task), ['project_id' => $theirs->id])->assertSessionHasErrors('project_id');
+        $this->actingAs($stranger)->post(route('pm.tasks.move', $task), ['project_id' => $theirs->id])->assertNotFound();
     }
 }

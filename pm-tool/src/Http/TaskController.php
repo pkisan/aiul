@@ -61,7 +61,7 @@ class TaskController
             // The lock makes two people adding a task at once get 43 and 44, not 43 twice.
             Project::whereKey($project->id)->lockForUpdate()->first();
             $project->tasks()->create($data + [
-                'number' => $project->tasks()->max('number') + 1,
+                'number' => $project->nextNumber(),
                 'started_at' => in_array($data['status'], ['in_progress', 'in_review', 'done'], true) ? now() : null,
                 'completed_at' => $data['status'] === 'done' ? now() : null,
             ]);
@@ -91,6 +91,7 @@ class TaskController
                 'at' => $e->occurred_at, 'by' => $names[$e->user_id] ?? null,
             ]),
             'sprints' => $task->project->sprints()->orderByDesc('start_date')->get(['id', 'name']),
+            'projects' => Project::where('id', '!=', $task->project_id)->orderBy('name')->get(['id', 'name', 'key']),
             'statuses' => Task::STATUSES,
             'people' => $this->people(),
             'trail' => $insights->trail($task, $request->user(), $bodies),
@@ -105,6 +106,43 @@ class TaskController
         $before = $task->assignee_id;
         $task->applyChanges($data, $request->user());
         $this->relink($before, $task->assignee_id);
+
+        return back();
+    }
+
+    /**
+     * Move a task to another project. It gets a key there (its old one back if
+     * it was there before) and keeps every earlier key, so branches named after
+     * them still link. Its sprint belonged to the old project, so it is
+     * cleared. AI links point at the task, not the project, so every prompt
+     * follows without being touched (D20).
+     */
+    public function move(Request $request, Task $task): RedirectResponse
+    {
+        $data = $request->validate([
+            'project_id' => ['required', Rule::exists('pm_projects', 'id')->where('tenant_id', $request->user()->tenant_id), Rule::notIn([$task->project_id])],
+        ], ['project_id.not_in' => 'The task is already in that project.']);
+
+        DB::transaction(function () use ($task, $data, $request) {
+            $target = Project::whereKey($data['project_id'])->lockForUpdate()->firstOrFail();
+            $from = $task->key;
+
+            // Back to a project it was in before: take its old number again.
+            $old = $task->keys()->where('key', 'like', $target->key.'-%')->value('key');
+            $number = $old ? (int) substr($old, strlen($target->key) + 1) : $target->nextNumber();
+
+            $task->update(['project_id' => $target->id, 'number' => $number, 'sprint_id' => null]);
+            $task->setRelation('project', $target);
+            if (! $old) {
+                $task->keys()->create(['key' => $task->key]);
+            }
+            $task->events()->create([
+                'user_id' => $request->user()->id, 'field' => 'project',
+                'from' => $from, 'to' => $task->key, 'occurred_at' => now(),
+            ]);
+        });
+        // A suggestion scoped to the old project's repository may no longer fit.
+        $this->relink($task->assignee_id);
 
         return back();
     }

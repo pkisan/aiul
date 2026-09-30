@@ -23,6 +23,7 @@ Route::middleware(['web', 'auth', 'verified', EnsureConsented::class])->prefix('
     Route::post('/projects/{project}/tasks', [TaskController::class, 'store'])->name('tasks.store');
     Route::get('/tasks/{task}', [TaskController::class, 'show'])->name('tasks.show');
     Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
+    Route::post('/tasks/{task}/move', [TaskController::class, 'move'])->name('tasks.move');
     Route::post('/tasks/{task}/start', [TaskController::class, 'start'])->name('tasks.start');
     Route::post('/work/stop', [TaskController::class, 'stop'])->name('work.stop');
 

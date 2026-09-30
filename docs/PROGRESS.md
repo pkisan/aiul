@@ -2,9 +2,9 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (move task in progress)
+Last updated: 2026-09-30 (move task done, owner to verify)
 
-## PM tool — move task between projects — 2026-09-30 (IN PROGRESS)
+## PM tool — move task between projects — 2026-09-30 (DONE, owner to verify)
 
 PLAN:
   1. Project::nextNumber() from pm_task_keys (every key ever issued), not
@@ -18,6 +18,15 @@ PLAN:
      prompts are not touched (D20).
   3. Task page: "Move to…" select with a confirm naming the new key.
   4. Tests; commit.
+- [x] 1-4 done. Task page: fourth field "Project"; picking another asks
+      for confirmation, then POST pm.tasks.move. History shows "moved it
+      from AAY-4 to MOB-1".
+- Expected side effect: a moved task's 0.6 "only task in progress"
+  suggestions drop back to the inbox when the session's repository maps to
+  the OLD project. Explicit, branch-key and confirmed links stay.
+- Mutation check: numbering from current tasks only fails the move test.
+- Temp "Shot Bot" user and MOB project used for screenshots: deleted.
+- 140/140 backend (25 Pm).
 
 ## PM tool — task keys + link audit — 2026-09-30 (DONE, owner to verify)
 
