@@ -640,3 +640,22 @@ sessions. Prompt-text matching against task titles is rejected (privacy, and a
 guess). Why the ladder: the 2026-09-22 branch-regex attempt tagged 0% of real
 work because ordinary branch names carry no key; only the PM tool knows the
 tasks, so it has to supply the link.
+
+## D19 — The PM tool is a Laravel module in pm-tool/, not a Next.js app (2026-09-30)
+
+The build prompt for "Aayatti PM" defaulted to Next.js + Prisma unless reusing
+the logger's stack was reasonable. It is. The owner writes PHP/Laravel; D18
+already puts the PM tool and aiul on one users/tenants list; prompt bodies are
+encrypted with a tenant key only this Laravel app can unwrap. A separate app
+would duplicate login and users and need a cross-app decryption path.
+
+The owner wanted PM code in its own folder. So `pm-tool/` holds it (namespace
+`Pm\`, its own migrations, pages and tests) and `backend/` loads it through
+composer autoload and one service provider. PM code may read aiul tables
+(`ai_sessions`, `ai_interactions`); aiul code never imports `Pm\`.
+
+Linking sessions to tasks runs after the fact in the backend (D18 ladder, plus
+an explicit "Start working" period and task keys in prompt text). The LLM
+suggester from the build prompt is deferred: it would send prompt text to a
+third party to make a guess, and the inbox covers the gap until real volume
+says otherwise.

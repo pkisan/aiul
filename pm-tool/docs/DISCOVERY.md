@@ -1,6 +1,29 @@
 # Discovery — Aayatti PM on top of the AI Usage Logger
 
-Date: 2026-09-30. Status: **plan, awaiting owner approval. No application code written.**
+Date: 2026-09-30. Status: **approved 2026-09-30.** Decisions in section 0; the rest is the original discovery.
+
+## 0. Decisions (2026-09-30)
+
+- **Stack: Laravel module in `pm-tool/`, run by the existing `backend/` app. Not Next.js.**
+  Nothing is live, so a rewrite was on the table. Laravel still wins: the owner writes
+  PHP/Laravel; the logger's users, tenants, sessions and encrypted prompt text are
+  already in this app (D18: one users list); a Next.js app would need a second login,
+  a second users list, and would have to decrypt prompt bodies whose key lives in
+  Laravel. `pm-tool/` holds all PM code (`src/`, `database/`, `resources/js/`,
+  `tests/`); `backend/` only autoloads it (`Pm\\` namespace) and registers
+  `Pm\\PmServiceProvider`. One app, one login, clearly separate code.
+- **Outcome rating:** a rating, deferred. No column until it is designed.
+- **Linking runs after the fact in the backend.** No agent change. "Start working"
+  records a work period (`pm_work_periods`); a session that starts inside it links
+  explicitly. Stamping at capture would need the agent to call the server on every
+  prompt and fails offline; after-the-fact linking is also recomputable.
+- **Managers see prompt text** (redacted copy, as the dashboard already shows).
+  Raw, unredacted text stays behind the existing `can_view_raw_prompts` grant.
+- **Linking layers:** explicit (1.0), task key in branch or prompt (0.9), only
+  in-progress task (0.6), inbox. The LLM suggester is **not built** for now: it
+  sends prompt text to a third party and guesses; add it only if the inbox is
+  too busy in real use.
+
 
 ## 1. What the logger is
 

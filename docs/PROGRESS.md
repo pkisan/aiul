@@ -2,18 +2,24 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (PM tool discovery written, awaiting approval)
+Last updated: 2026-09-30 (PM tool Phase 1 in progress)
 
-## PM tool (Aayatti PM) — Step 0 discovery — 2026-09-30 (WAITING ON OWNER)
+## PM tool (Aayatti PM) — Phase 1 Foundation — 2026-09-30 (IN PROGRESS)
 
-Owner pasted a build prompt for an AI-native PM tool (tasks, sprints, board,
-Task AI Trail, linking sessions to tasks). Step 0 only: explored the repo,
-wrote `pm-tool/docs/DISCOVERY.md`. No application code.
-Recommendation: build inside `backend/` (Laravel) per D18 shared users,
-not a separate Next.js app. Six open questions at the end of DISCOVERY.md
-(incl. D18 conflict: prompt-text matching / LLM suggester).
-NEXT: owner answers the questions and approves; then Phase 1 (schema,
-seed with Parit/Saurabh/Pardeep/Aakash/Mann, AAY-1 trail on 14 Sep 2026).
+Owner answered discovery 2026-09-30: code in a new folder, managers see
+prompt text, rating deferred, rest my call. Decisions: pm-tool/docs/DISCOVERY.md
+section 0 and D19. Summary: Laravel module in `pm-tool/` loaded by `backend/`
+(namespace `Pm\`), linking after the fact, no LLM suggester yet.
+PLAN (Phase 1):
+  1. Wire-up: backend composer autoload `Pm\` -> ../pm-tool/src, seeders and
+     tests; PmServiceProvider loads pm-tool migrations; phpunit "Pm" suite.
+  2. Migrations: pm_projects, pm_project_remotes, pm_sprints, pm_tasks,
+     pm_task_events, pm_work_periods, pm_task_ai_links.
+  3. Models in pm-tool/src/Models (BelongsToTenant).
+  4. PmDemoSeeder: tenant "aayatti", Parit/Saurabh/Pardeep/Aakash/Mann +
+     manager, project AAY, sprint, tasks on every status, Parit AAY-1 trail
+     Mon 14 Sep 2026 10:34-14:15 IST with prompts 1.1-1.4.
+  5. Test: seeder builds the trail; migrate + full suite green; commit. STOP.
 
 ## Overview v4: redesign from scratch — 2026-09-30 (DONE, owner to review)
 
