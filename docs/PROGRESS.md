@@ -2,7 +2,25 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (git remote URL capture done, see top)
+Last updated: 2026-09-30 (Overview v3 UI in progress, see top)
+
+## Overview v3: habit, not volume — 2026-09-30 (IN PROGRESS)
+
+Owner: "I want to see the dashboard UI first" (before deploying the remote
+work). Quality quadrant is NOT possible: scoring was removed 2026-09-28
+(owner's call), quality_scores gets no new rows. Built on existing data:
+PLAN:
+  1. UsageReport::perPerson gains `days` (distinct dates used). Controller:
+     team medians, KPI "Active days" (avg per active person) vs previous.
+  2. KPIs: Active people · Active days · Prompts · AI time. "Active projects"
+     dropped (Projects panel shows them).
+  3. Habit quadrant (Components/Usage/Habit.vue, plain SVG): x = active days,
+     y = prompts per active day, lines at team medians. Tooltip per dot.
+  4. Team table: habit strip (one cell per day, periods <= 14 days) replaces
+     the Active days number.
+  5. Insights: a regular user who stopped; one person carrying most of a
+     project's AI work.
+  6. Tests, screenshots light/dark/phone on the demo tenant, commit.
 
 ## Git remote URL on every event — 2026-09-30 (DONE, not installed)
 
