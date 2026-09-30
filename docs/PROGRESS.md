@@ -2,7 +2,25 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-29 (Overview v2 done; tenant-leak fix d0be254, see top)
+Last updated: 2026-09-30 (git remote URL capture in progress, see top)
+
+## Git remote URL on every event — 2026-09-30 (IN PROGRESS)
+
+Why: the PM tool will link AI work to tasks (design: D18 in DECISIONS.md).
+`repo` is a local path, different on every machine, so it cannot be joined to
+a PM project. The remote URL (github.com/org/repo) is the same everywhere.
+Data not captured now cannot be back-filled, so this goes first.
+Owner decided 2026-09-30: aiul and the PM tool share ONE users/tenants list
+(the PM tool's). UI work (habit, quality quadrant) comes after this.
+PLAN:
+  1. agent/internal/tasks: read the remote from .git/config (origin, else the
+     first remote; worktrees via commondir), normalise to host/path, strip any
+     user:token@ (credentials never leave the machine), local paths -> "".
+  2. Carry it: helper PROCESS reply gains an 8th field (older helpers send 7:
+     tolerated), privileged.go, dircache, proxy Checkout hook, Event.Remote.
+  3. backend: `remote` column on ai_interactions + ai_sessions, ingestion
+     accepts it, validated.
+  4. Tests fail without each piece; agent -race, backend suite; commit.
 
 ## Overview v2, a manager's page — 2026-09-29 (`a2546e2`)
 
