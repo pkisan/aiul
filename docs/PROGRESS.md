@@ -2,7 +2,18 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (Overview v4 built, owner to review)
+Last updated: 2026-09-30 (PM tool discovery written, awaiting approval)
+
+## PM tool (Aayatti PM) — Step 0 discovery — 2026-09-30 (WAITING ON OWNER)
+
+Owner pasted a build prompt for an AI-native PM tool (tasks, sprints, board,
+Task AI Trail, linking sessions to tasks). Step 0 only: explored the repo,
+wrote `pm-tool/docs/DISCOVERY.md`. No application code.
+Recommendation: build inside `backend/` (Laravel) per D18 shared users,
+not a separate Next.js app. Six open questions at the end of DISCOVERY.md
+(incl. D18 conflict: prompt-text matching / LLM suggester).
+NEXT: owner answers the questions and approves; then Phase 1 (schema,
+seed with Parit/Saurabh/Pardeep/Aakash/Mann, AAY-1 trail on 14 Sep 2026).
 
 ## Overview v4: redesign from scratch — 2026-09-30 (DONE, owner to review)
 
