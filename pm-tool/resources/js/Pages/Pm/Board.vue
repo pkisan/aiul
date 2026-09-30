@@ -48,6 +48,16 @@ const activeTask = computed(() => usePage().props.pmActiveTask);
 const columns = computed(() => props.statuses.map((s) => ({ status: s, tasks: props.tasks.filter((t) => t.status === s) })));
 
 const switchProject = (id) => router.get(route('pm.board', id));
+// A link to this board with the chosen sprint, e.g. /pm/projects/10/board?sprint=3.
+// The sprint is always written out: a link with no ?sprint opens whichever
+// sprint is running on the day it is clicked.
+const sprintName = computed(() => (props.sprint === 'all' ? 'all tasks' : props.sprints.find((s) => s.id === props.sprint)?.name ?? 'this sprint'));
+const linkCopied = ref(false);
+const copySprintLink = () =>
+    navigator.clipboard?.writeText(route('pm.board', { project: props.project.id, sprint: props.sprint })).then(() => {
+        linkCopied.value = true;
+        setTimeout(() => (linkCopied.value = false), 1500);
+    });
 const switchSprint = (id) => router.get(route('pm.board', props.project.id), { sprint: id }, { preserveState: true });
 
 // The card being saved fades until the server answers.
@@ -112,6 +122,12 @@ const add = () =>
                         <option v-for="s in sprints" :key="s.id" :value="s.id">{{ s.name }}</option>
                     </select>
                 </label>
+                <button
+                    type="button"
+                    class="rounded-lg px-2 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950"
+                    :title="`Copy a link to this board showing ${sprintName}`"
+                    @click="copySprintLink"
+                >{{ linkCopied ? 'Copied' : 'Copy link' }}</button>
             </div>
 
             <form class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-sm" @submit.prevent="add">

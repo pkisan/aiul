@@ -2,7 +2,16 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (task slide-over done, owner to verify)
+Last updated: 2026-09-30 (sprint links done, owner to verify)
+
+## PM tool — sprint links — 2026-09-30 (DONE, owner to verify)
+
+Owner: "how am I going to give particular sprint link". The board already
+took ?sprint=ID; nothing showed it. Added "Copy link" beside the board's
+sprint picker (always writes ?sprint=, since no parameter means "the sprint
+running today") and made sprint names on Projects link to their board.
+Also explained to the owner how a prompt ends up under a task and sprint
+(session -> link -> task -> task.sprint_id; nothing stored per sprint).
 
 ## PM tool — task slide-over on the board — 2026-09-30 (DONE, owner to verify)
 

@@ -98,7 +98,7 @@ const saveSprint = (p) => sprint.post(route('pm.sprints.store', p.id), { preserv
                     <div>
                         <h4 class="text-xs font-medium uppercase tracking-wide text-gray-500">Sprints</h4>
                         <ul v-if="p.sprints.length" class="mt-1 space-y-0.5 text-gray-700">
-                            <li v-for="s in p.sprints" :key="s.id">{{ s.name }} <span class="text-xs text-gray-500">{{ day(s.start_date) }} – {{ day(s.end_date) }}</span></li>
+                            <li v-for="s in p.sprints" :key="s.id"><Link :href="route('pm.board', { project: p.id, sprint: s.id })" class="text-indigo-600 hover:underline dark:text-indigo-400">{{ s.name }}</Link> <span class="text-xs text-gray-500">{{ day(s.start_date) }} – {{ day(s.end_date) }}</span></li>
                         </ul>
                         <p v-else class="mt-1 text-gray-500">None yet.</p>
                     </div>
