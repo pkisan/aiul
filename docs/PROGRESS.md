@@ -2,7 +2,27 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (PM tool Phase 1 in progress)
+Last updated: 2026-09-30 (PM tool Phase 2 in progress)
+
+## PM tool — Phase 2 PM core — 2026-09-30 (IN PROGRESS)
+
+Roles already exist (member/manager/admin, set on People): Phase 2 applies
+them. Managers/admins create projects (name, key, git remotes) and sprints;
+everyone in the tenant sees the board, creates, edits and moves tasks.
+PLAN:
+  1. Wire-up: pm-tool/routes/web.php (prefix /pm, names pm.*) loaded by
+     PmServiceProvider; Vite resolves `Pm/*` pages from
+     pm-tool/resources/js/Pages; tailwind scans pm-tool; nav links.
+  2. Task::applyChanges(): status/assignee events, started_at on first
+     in_progress, completed_at on done (cleared when reopened).
+  3. Controllers: ProjectController (index, store, update, sprint store),
+     TaskController (board, store, show, update, start, stop).
+  4. "Start working": closes my open work period, opens one; moves a
+     backlog/todo task to in_progress; assigns an unassigned task to me.
+     Only for tasks assigned to me or nobody. Active task shown in the nav.
+  5. Pages: Pm/Projects, Pm/Board (five columns, drag and drop plus a
+     status select for keyboard/phone), Pm/Task (detail + edit).
+  6. Tests (roles, tenant isolation, events, start/stop), screenshots, commit.
 
 ## PM tool (Aayatti PM) — Phase 1 Foundation — 2026-09-30 (DONE, owner to verify)
 
