@@ -50,12 +50,12 @@ const inboxOpen = ref(false);
                     <span class="hidden text-sm font-semibold tracking-tight text-gray-900 sm:block">Aayatti PM</span>
                 </Link>
 
-                <div class="hidden flex-1 items-center gap-1 md:flex">
+                <div class="hidden flex-1 items-center gap-1 lg:flex">
                     <Link
                         v-for="l in links"
                         :key="l.route"
                         :href="route(l.route)"
-                        class="rounded-lg px-3 py-2 text-sm font-medium transition"
+                        class="whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium transition xl:px-3"
                         :class="
                             isActive(l)
                                 ? 'bg-gray-100 text-gray-900'
@@ -84,19 +84,19 @@ const inboxOpen = ref(false);
                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M4 13h4l1.5 3h5L16 13h4M5.5 6.5 4 13v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5l-1.5-6.5A1 1 0 0 0 17.5 5.7h-11a1 1 0 0 0-1 .8Z" />
                         </svg>
-                        <span class="hidden sm:inline">Inbox</span>
+                        <span class="hidden xl:inline">Inbox</span>
                         <span v-if="inboxCount" class="rounded-full bg-indigo-600 px-1.5 text-xs font-semibold text-indigo-50">{{ inboxCount }}</span>
                     </button>
                     <ThemeToggle />
 
-                    <Dropdown align="right" width="48" class="hidden md:block">
+                    <Dropdown align="right" width="48" class="hidden lg:block">
                         <template #trigger>
                             <button
                                 type="button"
                                 class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-900"
                             >
                                 <span class="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-indigo-50">{{ initials(user.name) }}</span>
-                                <span class="max-w-[10rem] truncate">{{ user.name }}</span>
+                                <span class="hidden max-w-[10rem] truncate xl:inline">{{ user.name }}</span>
                                 <svg class="h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
                                     <path fill-rule="evenodd" d="M5.3 7.3a1 1 0 011.4 0L10 10.6l3.3-3.3a1 1 0 111.4 1.4l-4 4a1 1 0 01-1.4 0l-4-4a1 1 0 010-1.4z" clip-rule="evenodd" />
                                 </svg>
@@ -115,7 +115,7 @@ const inboxOpen = ref(false);
 
                     <button
                         type="button"
-                        class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 md:hidden"
+                        class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 lg:hidden"
                         :aria-expanded="open"
                         aria-label="Menu"
                         @click="open = !open"
@@ -134,7 +134,7 @@ const inboxOpen = ref(false);
                 <Link :href="route('pm.work.stop')" method="post" as="button" preserve-scroll class="ms-auto shrink-0 font-medium underline">Stop</Link>
             </div>
 
-            <div v-if="open" class="border-t border-gray-200 px-4 pb-4 pt-2 md:hidden">
+            <div v-if="open" class="border-t border-gray-200 px-4 pb-4 pt-2 lg:hidden">
                 <Link
                     v-for="l in links"
                     :key="l.route"

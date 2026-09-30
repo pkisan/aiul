@@ -6,6 +6,7 @@ import Panel from '@/Components/Usage/Panel.vue';
 import { ago, toolName } from '@/Components/Usage/format';
 import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import InsightTabs from '../../Components/InsightTabs.vue';
 import Kpi from '../../Components/Kpi.vue';
 import PeriodPicker from '../../Components/PeriodPicker.vue';
 import Spark from '../../Components/Spark.vue';
@@ -40,6 +41,7 @@ const quiet = computed(() => props.people.filter((p) => !p.sessions && !p.inProg
         <div class="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
             <div class="flex flex-wrap items-end gap-3">
                 <div class="me-auto">
+                    <InsightTabs :period="period" class="mb-3" />
                     <h1 class="text-xl font-semibold text-gray-900">Team Pulse</h1>
                     <p class="mt-1 text-sm text-gray-500">Is AI helping the work get done, and is anyone stuck?</p>
                 </div>
@@ -72,7 +74,7 @@ const quiet = computed(() => props.people.filter((p) => !p.sessions && !p.inProg
                 </ul>
             </Panel>
 
-            <Panel title="People" :subtitle="`A-Z. ${quiet ? `${quiet} with no AI sessions and nothing in progress.` : 'Everyone has something going.'}`">
+            <Panel title="People" :subtitle="`A-Z. Open a name for that person's tasks and tools. ${quiet ? `${quiet} with no AI sessions and nothing in progress.` : 'Everyone has something going.'}`">
                 <div class="overflow-x-auto">
                     <table class="min-w-full text-sm">
                         <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
@@ -87,7 +89,7 @@ const quiet = computed(() => props.people.filter((p) => !p.sessions && !p.inProg
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="p in people" :key="p.id">
                                 <td class="px-5 py-2.5">
-                                    <Link :href="route('pm.people.show', { user: p.id, period: period.key })" class="font-medium text-gray-900 hover:underline">{{ p.name }}</Link>
+                                    <Link :href="route('pm.people.show', { user: p.id, period: period.key })" class="font-medium text-indigo-600 hover:underline dark:text-indigo-400">{{ p.name }}</Link>
                                 </td>
                                 <td class="px-3 py-2.5 text-gray-600">{{ p.tool ? toolName(p.tool) : '—' }}</td>
                                 <td class="px-3 py-2.5 text-right tabular-nums text-gray-700">{{ p.inProgress }}</td>

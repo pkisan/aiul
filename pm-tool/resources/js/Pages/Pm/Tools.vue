@@ -7,6 +7,7 @@ import { count, toolName } from '@/Components/Usage/format';
 import { Head } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import DayBars from '../../Components/DayBars.vue';
+import InsightTabs from '../../Components/InsightTabs.vue';
 import Kpi from '../../Components/Kpi.vue';
 import PeriodPicker from '../../Components/PeriodPicker.vue';
 import { usd } from '../../pm.js';
@@ -34,6 +35,7 @@ const bars = computed(() => props.days.map((d) => ({ day: d.day, value: d.usd })
         <div class="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
             <div class="flex flex-wrap items-end gap-3">
                 <div class="me-auto">
+                    <InsightTabs :period="period" class="mb-3" />
                     <h1 class="text-xl font-semibold text-gray-900">Tools &amp; cost</h1>
                     <p class="mt-1 text-sm text-gray-500">Estimated at API list prices. Chat subscriptions are not billed per token, so for them this is “what it would cost on the API”.</p>
                 </div>

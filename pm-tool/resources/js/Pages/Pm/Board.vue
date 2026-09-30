@@ -22,9 +22,15 @@ const columns = computed(() => props.statuses.map((s) => ({ status: s, tasks: pr
 const switchProject = (id) => router.get(route('pm.board', id));
 const switchSprint = (id) => router.get(route('pm.board', props.project.id), { sprint: id }, { preserveState: true });
 
+// The card being saved fades until the server answers.
+const saving = ref(null);
 const move = (task, status) => {
     if (task.status !== status) {
-        router.patch(route('pm.tasks.update', task.id), { status }, { preserveScroll: true });
+        router.patch(route('pm.tasks.update', task.id), { status }, {
+            preserveScroll: true,
+            onStart: () => (saving.value = task.id),
+            onFinish: () => (saving.value = null),
+        });
     }
 };
 const start = (task) => router.post(route('pm.tasks.start', task.id), {}, { preserveScroll: true });
@@ -110,7 +116,7 @@ const add = () =>
                             :key="t.id"
                             draggable="true"
                             class="cursor-grab rounded-lg border border-gray-200 bg-white p-3 shadow-sm active:cursor-grabbing"
-                            :class="[dragging === t.id ? 'opacity-50' : '', activeTask?.id === t.id ? 'ring-2 ring-emerald-400' : '']"
+                            :class="[dragging === t.id || saving === t.id ? 'opacity-50' : '', activeTask?.id === t.id ? 'ring-2 ring-emerald-400' : '']"
                             @dragstart="dragging = t.id"
                             @dragend="dragging = over = null"
                         >

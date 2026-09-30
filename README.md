@@ -8,6 +8,10 @@ The agent and the TLS-inspecting proxy are one Go binary, `aiul`. The backend is
 Laravel. **macOS first**; Linux and Windows sit behind the same interfaces and come
 later.
 
+**Aayatti PM**, the project management tool built on this data (tasks, board,
+Task AI Trail, Team Pulse), lives in [`pm-tool/`](pm-tool/README.md) and runs
+inside the same backend.
+
 > Intended for company-owned, MDM-managed devices. The agent refuses to run on an
 > unenrolled device. It is not for personal or BYOD machines.
 

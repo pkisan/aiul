@@ -167,4 +167,21 @@ class PmCoreTest extends TestCase
         $this->actingAs($me)->post(route('pm.tasks.start', $task))->assertForbidden();
         $this->assertSame(0, WorkPeriod::count());
     }
+
+    public function test_every_screen_renders_for_a_brand_new_tenant(): void
+    {
+        $manager = $this->user(User::ROLE_MANAGER, 'fresh');
+
+        $this->actingAs($manager)->get(route('pm.home'))->assertRedirect(route('pm.projects.index'));
+        foreach (['pm.projects.index', 'pm.pulse', 'pm.tools', 'pm.people.me'] as $name) {
+            $this->actingAs($manager)->get(route($name))->assertOk();
+        }
+        $this->actingAs($manager)->get(route('pm.inbox.index'))->assertOk()->assertJsonPath('total', 0);
+
+        // A project with no tasks, and a task with no AI work.
+        $task = $this->project($manager);
+        $this->actingAs($manager)->get(route('pm.board', $task->project_id))->assertOk();
+        $this->actingAs($manager)->get(route('pm.tasks.show', $task))->assertOk()
+            ->assertInertia(fn ($page) => $page->where('trail.sessions', [])->where('trail.totals.prompts', 0));
+    }
 }

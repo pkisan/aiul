@@ -2,9 +2,9 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (PM tool Phase 5 in progress)
+Last updated: 2026-09-30 (PM tool Phase 5 done, owner to verify)
 
-## PM tool — Phase 5 Polish — 2026-09-30 (IN PROGRESS)
+## PM tool — Phase 5 Polish — 2026-09-30 (DONE, owner to verify)
 
 Owner could not check "click a person, then By tool and model". Checked in
 headless Chrome: both links work (person page, /pm/tools). Cause is
@@ -18,6 +18,18 @@ PLAN:
   4. pm-tool/README.md: run PM + logger, seed, schedule, prices, layout.
   5. Remove the temporary "Shot Bot" manager used for screenshots
      (shotbot@aayatti.test, demo tenant only). Commit. STOP.
+- [x] 1-5 done. InsightTabs (Team Pulse | Tools & cost), names in indigo,
+      "← Team Pulse" on person pages, board card fades while a move saves.
+- [x] Nav: desktop menu from 1024px (was 768px, overflowed at 800px); Inbox
+      label and user name show from 1280px, icons below.
+- [x] Empty-tenant test renders every PM page. Screenshots at 390, 800,
+      1024, 1440, light and dark.
+- [x] pm-tool/README.md; root README points to it. Shot Bot user deleted.
+- 136/136 backend (21 Pm).
+The PM build prompt's five phases are done. Open items for the owner:
+tab title / login page still say "GenAI Log"; prices for Gemini/GPT
+models; outcome rating design; cycle time once there are enough finished
+tasks; deploy (`php artisan migrate`, then check the schedule runs pm:link).
 
 ## PM tool — Phase 4 Insight screens — 2026-09-30 (DONE, owner to verify)
 

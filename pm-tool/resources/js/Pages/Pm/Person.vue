@@ -33,6 +33,7 @@ const splitRows = computed(() => [
         <div class="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
             <div class="flex flex-wrap items-end gap-3">
                 <div class="me-auto">
+                    <Link v-if="!isMe" :href="route('pm.pulse', { period: period.key })" class="text-sm text-gray-500 hover:underline">← Team Pulse</Link>
                     <h1 class="text-xl font-semibold text-gray-900">{{ isMe ? 'My work' : person.name }}</h1>
                     <p class="mt-1 text-sm text-gray-500">
                         What {{ isMe ? 'you are' : `${person.name} is` }} working on and where AI helps. For support, not for ranking.
