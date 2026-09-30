@@ -2,7 +2,21 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (PM tool Phase 5 done, owner to verify)
+Last updated: 2026-09-30 (task keys + link audit in progress)
+
+## PM tool — task keys + link audit — 2026-09-30 (IN PROGRESS)
+
+Owner asked for the design (slide-over, task/prompt model, invites, dates)
+and then: "build pm_task_keys and pm_link_events first".
+PLAN:
+  1. Migration: pm_task_keys (every key a task has had, unique per tenant;
+     backfilled from current tasks) and pm_link_events (append-only audit).
+  2. Task::created writes its key. Linker resolves branch keys through
+     pm_task_keys, so AAY-4 keeps matching after a future move.
+  3. Linker writes an event only when a link changes (linked, suggested,
+     unlinked; actor null). Inbox writes confirmed / reassigned / not_work
+     with the person.
+  4. Tests; commit. No move-task feature and no audit UI yet (not asked).
 
 ## PM tool — Phase 5 Polish — 2026-09-30 (DONE, owner to verify)
 
