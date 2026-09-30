@@ -2,7 +2,33 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (PM tool Phase 2 done, owner to verify)
+Last updated: 2026-09-30 (PM tool Phase 3 in progress)
+
+## PM tool — Phase 3 Linking engine — 2026-09-30 (IN PROGRESS)
+
+Menu name changed to "Aayatti PM" (`64ea5b2`; tab title, login page and
+.env APP_NAME still say GenAI Log).
+Decision: task keys are read from the BRANCH only, not prompt text. Reading
+prompts means decrypting bodies from object storage on every relink, and D18
+rejected prompt matching. "Copy branch name" on the task page gives people
+a branch with the key in it.
+PLAN:
+  1. Pm\Linking\Linker::link(AiSession): skip sessions a person confirmed;
+     else first rule with exactly one task: explicit (work period covering
+     session start, 1.0), convention (task key in branch, any case, 0.9),
+     time_window (only task assigned to the person with started_at <= start
+     < completed_at, limited to the project of the session's remote, 0.6).
+     Nothing found: delete the automatic row.
+  2. `pm:link {--minutes=15} {--days=}` for all tenants; scheduled every 5
+     minutes. PM changes (start/stop, status, assignee) relink that person's
+     last 30 days at once.
+  3. Inbox: nav badge "Inbox n" (my sessions, 30 days, no confirmed link and
+     confidence < 0.8) opens a drawer: session, first prompt, suggestion;
+     Confirm / pick a task / Not task work. Owner or a manager may act.
+     Managers can switch to everyone's.
+  4. Task page: "Copy branch name" (aay-4-task-ai-trail-timeline).
+  5. Seeder runs the linker instead of writing AAY-1's link by hand.
+  6. Tests per rule + inbox permissions; screenshots; commit. STOP.
 
 ## PM tool — Phase 2 PM core — 2026-09-30 (DONE, owner to verify)
 

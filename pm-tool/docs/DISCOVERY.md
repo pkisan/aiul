@@ -19,7 +19,8 @@ Date: 2026-09-30. Status: **approved 2026-09-30.** Decisions in section 0; the r
   prompt and fails offline; after-the-fact linking is also recomputable.
 - **Managers see prompt text** (redacted copy, as the dashboard already shows).
   Raw, unredacted text stays behind the existing `can_view_raw_prompts` grant.
-- **Linking layers:** explicit (1.0), task key in branch or prompt (0.9), only
+- **Linking layers:** explicit (1.0), task key in the branch (0.9; prompt text
+  dropped in Phase 3: needs decrypting bodies on every relink, and D18 said no), only
   in-progress task (0.6), inbox. The LLM suggester is **not built** for now: it
   sends prompt text to a third party and guesses; add it only if the inbox is
   too busy in real use.
