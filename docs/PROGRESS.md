@@ -2,7 +2,24 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (move task done, owner to verify)
+Last updated: 2026-09-30 (task slide-over in progress)
+
+## PM tool — task slide-over on the board — 2026-09-30 (IN PROGRESS)
+
+Owner: "Have you built the slide-over UX … If not then build it." Not built
+(task was a full page). Spec: my design answer Q1.
+PLAN:
+  1. /pm/tasks/{id} renders Pm/Board (the task's project) with `task` and
+     `trail` props; board props become lazy closures, so opening a card
+     from the board is a partial reload of task + trail only. ?sprint=
+     rides along so the board filter survives saves.
+  2. Pm/Task.vue body becomes Components/TaskPanel.vue; the page is gone.
+  3. Panel: right side; 720px from 1280px, 60vw from 1024px, full screen
+     below with a backdrop. 200ms slide in / 150ms out, none with reduced
+     motion. No dimming on desktop: clicking another card swaps the task.
+     Close: Esc, ✕, click on empty board. Focus returns to the card.
+     Description draft kept in localStorage per task until saved.
+  4. Tests updated (component Pm/Board), screenshots, commit.
 
 ## PM tool — move task between projects — 2026-09-30 (DONE, owner to verify)
 
