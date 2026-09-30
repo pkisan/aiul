@@ -13,8 +13,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO="$PWD"
 
-if ! git diff --quiet HEAD -- backend; then
-  echo "backend/ has uncommitted changes; the zip is built from the last commit." >&2
+if ! git diff --quiet HEAD -- backend pm-tool; then
+  echo "backend/ or pm-tool/ has uncommitted changes; the zip is built from the last commit." >&2
   echo "Commit first, or run again to package the committed version anyway? [y/N]" >&2
   read -r answer
   [ "$answer" = "y" ] || exit 1
@@ -25,8 +25,14 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 echo "Exporting backend at $SHA"
-git archive HEAD backend | tar -x -C "$WORK"
+git archive HEAD backend pm-tool | tar -x -C "$WORK"
 cd "$WORK/backend"
+
+# The PM module (pm-tool/) sits beside backend/ in the repo. The zip is the site
+# root, so it goes inside it and composer is pointed at the new place.
+cp -R ../pm-tool ./pm-tool
+rm -rf pm-tool/tests pm-tool/docs
+sed -i.bak 's#"\.\./pm-tool/#"pm-tool/#' composer.json && rm composer.json.bak
 
 echo "Installing PHP dependencies (no dev packages)"
 composer install --no-dev --optimize-autoloader --classmap-authoritative --no-interaction --no-progress --quiet

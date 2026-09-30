@@ -4,7 +4,7 @@ Single handoff file. Every new session reads CLAUDE.md then this file before doi
 
 Last updated: 2026-09-30 (PM tool Phase 1 in progress)
 
-## PM tool (Aayatti PM) — Phase 1 Foundation — 2026-09-30 (IN PROGRESS)
+## PM tool (Aayatti PM) — Phase 1 Foundation — 2026-09-30 (DONE, owner to verify)
 
 Owner answered discovery 2026-09-30: code in a new folder, managers see
 prompt text, rating deferred, rest my call. Decisions: pm-tool/docs/DISCOVERY.md
@@ -20,6 +20,18 @@ PLAN (Phase 1):
      manager, project AAY, sprint, tasks on every status, Parit AAY-1 trail
      Mon 14 Sep 2026 10:34-14:15 IST with prompts 1.1-1.4.
   5. Test: seeder builds the trail; migrate + full suite green; commit. STOP.
+- [x] 1-5 done. One migration (2026_09_30_200000_create_pm_tables). Active
+      task = pm_work_periods (history, one open per person by partial unique
+      index), so the linker can ask "what was active when this session began".
+      No outcome_score/estimate columns (rating deferred by owner).
+- [x] Deploy paths updated for pm-tool/: compose.demo.yaml builds from the
+      repo root (backend/Dockerfile.dockerignore replaces backend/.dockerignore);
+      package-plesk.sh copies pm-tool into the zip and rewrites the composer path.
+- Local dev DB migrated and seeded: 29 sessions, 294 interactions. Manager
+  login manager@aayatti.test (password printed by the seeder; rerun for new).
+- 116/116 backend (115 + Pm suite).
+NEXT: owner verifies Phase 1, then Phase 2 (PM core: projects, sprints,
+tasks, board, Start working, manager role screens).
 
 ## Overview v4: redesign from scratch — 2026-09-30 (DONE, owner to review)
 

@@ -17,7 +17,9 @@
 name: aiul-demo
 
 x-app: &app
-  build: ./backend
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
   image: aiul-demo-backend
   environment:
     APP_ENV: production

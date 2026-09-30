@@ -1,0 +1,17 @@
+# Build context is the repo root (the image needs backend/ and pm-tool/).
+# Docker reads this file because it sits next to the Dockerfile.
+*
+!backend
+!pm-tool
+backend/.env
+backend/node_modules
+backend/vendor
+backend/public/build
+backend/public/hot
+backend/storage/logs/*
+backend/storage/framework/cache/data/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/storage/app/*
+backend/tests
+pm-tool/tests
