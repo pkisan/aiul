@@ -17,6 +17,8 @@ class PmServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->mergeConfigFrom(__DIR__.'/../config/pm.php', 'pm');
+
         // Where Inertia looks for page files when it checks they exist (tests).
         $pages = realpath(__DIR__.'/../resources/js/Pages');
         if ($pages) {

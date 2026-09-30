@@ -11,14 +11,14 @@ use App\Http\Controllers\UsageDashboardController;
 use App\Http\Middleware\SetTenantFromUser;
 use Illuminate\Support\Facades\Route;
 
-// No landing page: the application IS the report. Managers open on /usage,
-// everyone else on what was captured about them.
+// No landing page. Managers open on Team Pulse, everyone else on the board
+// (the PM module, pm-tool/).
 Route::get('/', function (Request $request) {
     if (! $request->user()) {
         return redirect()->route('login');
     }
 
-    return redirect()->route($request->user()->isManager() ? 'usage.index' : 'usage.my-data');
+    return redirect()->route($request->user()->isManager() ? 'pm.pulse' : 'pm.home');
 })->name('home');
 
 // The capture notice, accepted once per version before anything else is usable.

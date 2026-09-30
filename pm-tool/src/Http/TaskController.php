@@ -3,6 +3,7 @@
 namespace Pm\Http;
 
 use App\Models\User;
+use App\Services\BodyStore;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -10,6 +11,7 @@ use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 use Pm\Linking\Linker;
+use Pm\Metrics\Insights;
 use Pm\Models\Project;
 use Pm\Models\Sprint;
 use Pm\Models\Task;
@@ -69,7 +71,7 @@ class TaskController
         return back();
     }
 
-    public function show(Request $request, Task $task): Response
+    public function show(Request $request, Task $task, Insights $insights, BodyStore $bodies): Response
     {
         $task->load(['project', 'sprint', 'assignee:id,name', 'events' => fn ($q) => $q->latest('occurred_at')]);
         $names = User::whereIn('id', $task->events->pluck('user_id')->filter())->pluck('name', 'id');
@@ -91,6 +93,7 @@ class TaskController
             'sprints' => $task->project->sprints()->orderByDesc('start_date')->get(['id', 'name']),
             'statuses' => Task::STATUSES,
             'people' => $this->people(),
+            'trail' => $insights->trail($task, $request->user(), $bodies),
         ]);
     }
 

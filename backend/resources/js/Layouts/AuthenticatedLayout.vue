@@ -16,8 +16,10 @@ const isManager = computed(() => ['manager', 'admin'].includes(user.value?.role)
 // server enforces the same rules; hiding a link is only tidiness.
 const links = computed(() =>
     [
+        { label: 'Pulse', route: 'pm.pulse', active: ['pm.pulse', 'pm.tools', 'pm.people.show'], show: isManager.value },
         { label: 'Board', route: 'pm.home', active: ['pm.board', 'pm.tasks.*'], show: true },
         { label: 'Projects', route: 'pm.projects.index', active: ['pm.projects.*'], show: true },
+        { label: 'My work', route: 'pm.people.me', active: ['pm.people.me'], show: true },
         { label: 'Overview', route: 'usage.index', active: ['usage.index'], show: isManager.value },
         // The list and everything opened from it.
         { label: 'Activity', route: 'usage.activity', active: ['usage.activity', 'usage.session', 'usage.project', 'usage.show'], show: isManager.value },

@@ -4,9 +4,10 @@ import Panel from '@/Components/Usage/Panel.vue';
 import { when } from '@/Components/Usage/format';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import Trail from '../../Components/Trail.vue';
 import { statusLabels } from '../../pm.js';
 
-const props = defineProps({ task: Object, project: Object, events: Array, sprints: Array, statuses: Array, people: Array });
+const props = defineProps({ task: Object, project: Object, events: Array, sprints: Array, statuses: Array, people: Array, trail: Object });
 
 const me = computed(() => usePage().props.auth.user);
 const isActive = computed(() => usePage().props.pmActiveTask?.id === props.task.id);
@@ -98,6 +99,8 @@ const describe = (e) =>
                 </label>
             </div>
 
+            <Trail :trail="trail" :task-key="task.key" />
+
             <Panel title="Details">
                 <form class="space-y-4 px-5 py-4" @submit.prevent="saveText">
                     <label class="block text-xs font-medium text-gray-500">
@@ -117,12 +120,6 @@ const describe = (e) =>
                 </form>
             </Panel>
 
-            <Panel title="AI work" :subtitle="`${task.ai_sessions} linked AI ${task.ai_sessions === 1 ? 'session' : 'sessions'}`">
-                <p class="px-5 py-4 text-sm text-gray-500">
-                    Sessions link here when you pressed Start working, when the branch has {{ task.key }} in it, or when this was your only task in progress.
-                    The prompt-by-prompt trail comes in the next phase.
-                </p>
-            </Panel>
 
             <Panel title="History">
                 <ul class="divide-y divide-gray-100 text-sm">

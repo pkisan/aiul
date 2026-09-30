@@ -2,9 +2,9 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (PM tool Phase 4 in progress)
+Last updated: 2026-09-30 (PM tool Phase 4 done, owner to verify)
 
-## PM tool — Phase 4 Insight screens — 2026-09-30 (IN PROGRESS)
+## PM tool — Phase 4 Insight screens — 2026-09-30 (DONE, owner to verify)
 
 Owner confirmed `pm:link` is scheduled on their machine.
 PLAN:
@@ -27,6 +27,19 @@ PLAN:
      per day, linked vs unlinked. Tools & cost /pm/tools (managers).
   6. Nav: Pulse (managers), Board, Projects, My work. Members' home: Board.
   7. Tests for Cost, metrics, permissions; screenshots; commit. STOP.
+- [x] 1-7 done. Pm\Metrics\{Cost,Period,Insights}, InsightsController,
+      pages Pm/Pulse, Pm/Person, Pm/Tools, Components Trail/Kpi/Spark/
+      DayBars/PeriodPicker. Trail sits on the task page above Details;
+      expanding a row fetches /pm/trail/{interaction} (owner or manager).
+- Home: managers -> /pm/pulse, members -> /pm (board); the old test
+  expecting /usage and /my-data updated. Overview/Activity still in nav.
+- Unpriced on demo data: gemini-3-pro, gpt-5 (config/pm.php, null on purpose).
+- Not built: cycle time AI vs not (too few finished tasks to mean anything),
+  outcome rating (deferred by owner). Both noted in METRICS.md.
+- 135/135 backend (20 Pm). Screenshots: pulse light/dark/phone, trail with a
+  row open, person, tools.
+NEXT: owner verifies Phase 4; then Phase 5 (polish: empty/loading states,
+responsive pass, dark mode pass, README for running PM + logger).
 
 ## PM tool — Phase 3 Linking engine — 2026-09-30 (DONE, owner to verify)
 

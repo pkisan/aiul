@@ -3,6 +3,7 @@
 use App\Http\Middleware\EnsureConsented;
 use Illuminate\Support\Facades\Route;
 use Pm\Http\InboxController;
+use Pm\Http\InsightsController;
 use Pm\Http\ProjectController;
 use Pm\Http\TaskController;
 
@@ -24,6 +25,13 @@ Route::middleware(['web', 'auth', 'verified', EnsureConsented::class])->prefix('
     Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
     Route::post('/tasks/{task}/start', [TaskController::class, 'start'])->name('tasks.start');
     Route::post('/work/stop', [TaskController::class, 'stop'])->name('work.stop');
+
+    // Insight screens. Pulse and Tools: managers. A person page: themselves or a manager.
+    Route::get('/pulse', [InsightsController::class, 'pulse'])->name('pulse');
+    Route::get('/tools', [InsightsController::class, 'tools'])->name('tools');
+    Route::get('/people/me', [InsightsController::class, 'person'])->name('people.me');
+    Route::get('/people/{user}', [InsightsController::class, 'person'])->name('people.show');
+    Route::get('/trail/{interaction}', [InsightsController::class, 'turn'])->name('trail.turn');
 
     // The unlinked inbox (a drawer; JSON). My sessions, or a manager's team view.
     Route::get('/inbox', [InboxController::class, 'index'])->name('inbox.index');

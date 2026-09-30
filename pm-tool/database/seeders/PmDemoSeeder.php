@@ -214,7 +214,7 @@ class PmDemoSeeder extends Seeder
             if ($start->gt($this->now())) {
                 break;
             }
-            $count = $stuck ? mt_rand(5, 8) : mt_rand(2, 4);
+            $count = $stuck ? mt_rand(6, 9) : mt_rand(2, 4);
             $picked = array_map(fn () => $prompts[array_rand($prompts)], range(1, $count));
             $this->session($name, $start, $branch, $picked);
         }
