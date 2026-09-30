@@ -2,7 +2,22 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (PM tool Phase 4 done, owner to verify)
+Last updated: 2026-09-30 (PM tool Phase 5 in progress)
+
+## PM tool — Phase 5 Polish — 2026-09-30 (IN PROGRESS)
+
+Owner could not check "click a person, then By tool and model". Checked in
+headless Chrome: both links work (person page, /pm/tools). Cause is
+discoverability: names look like plain text, and "By tool and model" is on
+the Pulse cost card, not on the person page (my instructions were unclear).
+PLAN:
+  1. Links look like links (indigo); Pulse and Tools & cost get tabs;
+     person page gets "← Team Pulse" for managers.
+  2. Empty tenant: every PM page renders (feature test).
+  3. Nav at tablet width; dark-mode screenshots of every PM page.
+  4. pm-tool/README.md: run PM + logger, seed, schedule, prices, layout.
+  5. Remove the temporary "Shot Bot" manager used for screenshots
+     (shotbot@aayatti.test, demo tenant only). Commit. STOP.
 
 ## PM tool — Phase 4 Insight screens — 2026-09-30 (DONE, owner to verify)
 
