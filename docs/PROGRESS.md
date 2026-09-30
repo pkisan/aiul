@@ -2,7 +2,31 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (PM tool Phase 3 done, owner to verify)
+Last updated: 2026-09-30 (PM tool Phase 4 in progress)
+
+## PM tool — Phase 4 Insight screens — 2026-09-30 (IN PROGRESS)
+
+Owner confirmed `pm:link` is scheduled on their machine.
+PLAN:
+  1. pm-tool/config/pm.php: price per million tokens by model prefix
+     (Claude prices from the claude-api skill, cached 2026-09-25; other
+     vendors left null = "unpriced", shown as such, never guessed).
+     Pm\Metrics\Cost (tokens x price, grouped by model in SQL) and
+     Pm\Metrics\Period (this sprint | 7 | 30 days).
+  2. pm-tool/docs/METRICS.md: exact definitions. "Trusted link" = task set
+     and (confidence >= 0.8 or confirmed).
+  3. Team Pulse /pm/pulse (managers; managers' home): 4 KPIs (AI-assisted
+     done tasks %, prompts per AI-assisted done task, AI cost, linked
+     activity %), each with a takeaway sentence; people table A-Z (tool,
+     in progress, sessions, sparkline); Needs attention = prompt churn
+     (>= 10 prompts in 48 h on an in-progress task with no status change).
+  4. Task AI Trail on the task page: totals (span, prompts, tokens, cost,
+     AI time), sessions in order, prompts numbered 1.1, 1.2..., collapsed
+     to one line, expand loads prompt + answer (owner or manager only).
+  5. Person /pm/people/{user} (self or manager): tasks, tool mix, sessions
+     per day, linked vs unlinked. Tools & cost /pm/tools (managers).
+  6. Nav: Pulse (managers), Board, Projects, My work. Members' home: Board.
+  7. Tests for Cost, metrics, permissions; screenshots; commit. STOP.
 
 ## PM tool — Phase 3 Linking engine — 2026-09-30 (DONE, owner to verify)
 
