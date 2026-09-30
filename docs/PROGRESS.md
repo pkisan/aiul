@@ -2,7 +2,22 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (task keys + link audit done, owner to verify)
+Last updated: 2026-09-30 (move task in progress)
+
+## PM tool — move task between projects — 2026-09-30 (IN PROGRESS)
+
+PLAN:
+  1. Project::nextNumber() from pm_task_keys (every key ever issued), not
+     from current tasks: otherwise AAY-4 moving away frees number 4, the
+     next new task becomes AAY-4 again and clashes with the kept key.
+     Task creation uses it too.
+  2. POST /pm/tasks/{task}/move {project_id}: lock target project; reuse the
+     task's old number there if it had one (moving back restores AAY-4),
+     else next number + new key row; clear sprint; TaskEvent field
+     "project" from old key to new key; relink the assignee. Links and
+     prompts are not touched (D20).
+  3. Task page: "Move to…" select with a confirm naming the new key.
+  4. Tests; commit.
 
 ## PM tool — task keys + link audit — 2026-09-30 (DONE, owner to verify)
 
