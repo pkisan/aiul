@@ -134,7 +134,7 @@ Then: dashboard UI (habit, quality quadrant, insights), then PM integration.
 
 ## Overview v2, a manager's page — 2026-09-29 (`a2546e2`)
 
-Owner (as the boss of 30): the chart, Needs attention and the patterns
+Owner (as the manager of 30): the chart, Needs attention and the patterns
 panel were not useful. Their data: 106 "secrets", 70 the person's own email
 (Claude Code sends it with every request), rest mostly password/card/aadhaar
 fixtures this repo's redaction tests contain; only 2 real keys. "5 silent
@@ -153,7 +153,7 @@ People (not built); deploy (no migration).
 
 ## Manager Overview page — 2026-09-29
 
-Owner's boss wants a manager screen readable at one glance. Owner decided:
+A manager wants a screen readable at one glance. Owner decided:
 real build (no mockup); pending tasks later (no task data here, tickets
 dropped 2026-09-22); managers see progress, not money (no spend figure);
 the highlight is how PEOPLE use AI and what PROJECTS it moves, not tools.
