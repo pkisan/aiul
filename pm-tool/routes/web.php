@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureConsented;
 use Illuminate\Support\Facades\Route;
+use Pm\Http\InboxController;
 use Pm\Http\ProjectController;
 use Pm\Http\TaskController;
 
@@ -23,4 +24,8 @@ Route::middleware(['web', 'auth', 'verified', EnsureConsented::class])->prefix('
     Route::patch('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
     Route::post('/tasks/{task}/start', [TaskController::class, 'start'])->name('tasks.start');
     Route::post('/work/stop', [TaskController::class, 'stop'])->name('work.stop');
+
+    // The unlinked inbox (a drawer; JSON). My sessions, or a manager's team view.
+    Route::get('/inbox', [InboxController::class, 'index'])->name('inbox.index');
+    Route::post('/inbox/{session}', [InboxController::class, 'decide'])->name('inbox.decide');
 });

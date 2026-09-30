@@ -3,7 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Panel from '@/Components/Usage/Panel.vue';
 import { when } from '@/Components/Usage/format';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { statusLabels } from '../../pm.js';
 
 const props = defineProps({ task: Object, project: Object, events: Array, sprints: Array, statuses: Array, people: Array });
@@ -16,6 +16,18 @@ const canStart = computed(() => props.task.status !== 'done' && (!props.task.ass
 const save = (changes) => router.patch(route('pm.tasks.update', props.task.id), changes, { preserveScroll: true });
 const form = useForm({ title: props.task.title, description: props.task.description ?? '' });
 const saveText = () => form.patch(route('pm.tasks.update', props.task.id), { preserveScroll: true });
+
+// A branch name with the task key in it: AI work on that branch links to
+// this task by itself ("aay-4-task-ai-trail-timeline").
+const branch = computed(() =>
+    `${props.task.key.toLowerCase()}-${props.task.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40).replace(/-$/, '')}`,
+);
+const copied = ref(false);
+const copyBranch = () =>
+    navigator.clipboard?.writeText(branch.value).then(() => {
+        copied.value = true;
+        setTimeout(() => (copied.value = false), 1500);
+    });
 
 const person = (id) => props.people.find((p) => p.id === Number(id))?.name ?? 'nobody';
 const describe = (e) =>
@@ -53,6 +65,11 @@ const describe = (e) =>
                         class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-emerald-50 shadow-sm hover:bg-emerald-500"
                     >Start working</Link>
                 </div>
+                <p class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    Branch:
+                    <code class="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-gray-700">{{ branch }}</code>
+                    <button type="button" class="font-medium text-indigo-600 hover:underline dark:text-indigo-400" @click="copyBranch">{{ copied ? 'Copied' : 'Copy branch name' }}</button>
+                </p>
                 <p v-if="isActive" class="mt-1 text-sm text-emerald-700 dark:text-emerald-400">
                     You are working on this. AI sessions you start now count for this task.
                 </p>
@@ -101,7 +118,10 @@ const describe = (e) =>
             </Panel>
 
             <Panel title="AI work" :subtitle="`${task.ai_sessions} linked AI ${task.ai_sessions === 1 ? 'session' : 'sessions'}`">
-                <p class="px-5 py-4 text-sm text-gray-500">The prompt-by-prompt trail for this task comes in the next phase.</p>
+                <p class="px-5 py-4 text-sm text-gray-500">
+                    Sessions link here when you pressed Start working, when the branch has {{ task.key }} in it, or when this was your only task in progress.
+                    The prompt-by-prompt trail comes in the next phase.
+                </p>
             </Panel>
 
             <Panel title="History">

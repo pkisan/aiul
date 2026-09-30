@@ -13,10 +13,10 @@ use App\Support\TenantContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Pm\Linking\Linker;
 use Pm\Models\Project;
 use Pm\Models\Sprint;
 use Pm\Models\Task;
-use Pm\Models\TaskAiLink;
 use Pm\Models\TaskEvent;
 use Pm\Models\WorkPeriod;
 use RuntimeException;
@@ -32,8 +32,9 @@ use RuntimeException;
  * Rerunning deletes the tenant (everything cascades) and rebuilds it. Refuses
  * production. Times are written in IST and stored in UTC.
  *
- * Only AAY-1 gets a link row here (explicit, from its work period). All other
- * sessions are left for the linker (Phase 3) to link, so it has real work.
+ * Links are not written here: the linker runs at the end, exactly as in real
+ * use. Expected: AAY-1 explicit, AAY-2 by branch key, AAY-3/4/5/10 by time
+ * window (inbox suggestions), Mann's two personal chats unlinked (inbox).
  */
 class PmDemoSeeder extends Seeder
 {
@@ -144,6 +145,8 @@ class PmDemoSeeder extends Seeder
         }
 
         app(TenantContext::class)->set(null);
+        $linked = app(Linker::class)->relink(startedSince: $this->ist('2026-09-01 00:00'));
+        $this->command->info("Linker looked at {$linked} sessions.");
         $this->command->info('Aayatti ready: 5 people, project AAY, '.count(self::TASKS).' tasks'.($this->withBodies ? '' : ' (no prompt text: object storage unreachable)').'.');
         $this->command->warn('Sign in as manager@aayatti.test with password (shown once):');
         $this->command->line('    '.$password);
@@ -217,16 +220,15 @@ class PmDemoSeeder extends Seeder
         }
     }
 
-    /** Parit's AAY-1: work period, one session 10:34 to 14:15, prompts 1.1-1.4, explicit link. */
+    /** Parit's AAY-1: work period, one session 10:34 to 14:15, prompts 1.1-1.4 (the linker makes it explicit). */
     private function trail(Task $task): void
     {
         [$user] = $this->people['Parit'];
         WorkPeriod::create(['user_id' => $user->id, 'task_id' => $task->id, 'started_at' => $this->ist('2026-09-14 10:30'), 'ended_at' => $this->ist('2026-09-14 14:30')]);
 
         $turns = array_map(fn ($t) => [$t[0], $t[1], $this->ist('2026-09-14 '.$t[2])], self::TRAIL);
-        $session = $this->session('Parit', $turns[0][2], 'feature/board', $turns);
+        $this->session('Parit', $turns[0][2], 'feature/board', $turns);
 
-        TaskAiLink::create(['ai_session_id' => $session->id, 'task_id' => $task->id, 'method' => TaskAiLink::EXPLICIT, 'confidence' => 1.0]);
     }
 
     /**

@@ -2,9 +2,9 @@
 
 Single handoff file. Every new session reads CLAUDE.md then this file before doing anything.
 
-Last updated: 2026-09-30 (PM tool Phase 3 in progress)
+Last updated: 2026-09-30 (PM tool Phase 3 done, owner to verify)
 
-## PM tool — Phase 3 Linking engine — 2026-09-30 (IN PROGRESS)
+## PM tool — Phase 3 Linking engine — 2026-09-30 (DONE, owner to verify)
 
 Menu name changed to "Aayatti PM" (`64ea5b2`; tab title, login page and
 .env APP_NAME still say GenAI Log).
@@ -29,6 +29,17 @@ PLAN:
   4. Task page: "Copy branch name" (aay-4-task-ai-trail-timeline).
   5. Seeder runs the linker instead of writing AAY-1's link by hand.
   6. Tests per rule + inbox permissions; screenshots; commit. STOP.
+- [x] 1-6 done. Pm\Linking\Linker, `pm:link` (schedule:list shows it every
+      5 min), InboxController (JSON for the drawer), InboxDrawer.vue opened
+      from the "Inbox" button in the top bar (`@pm` Vite alias to
+      pm-tool/resources/js). Seeded demo: AAY-1 explicit, AAY-2 branch key
+      (6), AAY-3/4/5/10 time window (inbox suggestions), 5 unlinked.
+- Board badge "AI n" counts every link, weak ones included.
+- Inbox badge counts MY sessions only; managers switch to "Everyone" inside.
+- 130/130 backend (15 Pm). A mutation (confirmed-link guard removed) fails
+  the suite. Screenshots: drawer light/dark/phone, task page.
+NEXT: owner verifies Phase 3; then Phase 4 (Team Pulse, Task AI Trail,
+Person, Tool & Cost).
 
 ## PM tool — Phase 2 PM core — 2026-09-30 (DONE, owner to verify)
 

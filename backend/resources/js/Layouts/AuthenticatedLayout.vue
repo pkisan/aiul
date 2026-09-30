@@ -3,6 +3,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
+import InboxDrawer from '@pm/Components/InboxDrawer.vue';
 import { initials } from '@/Components/Usage/format';
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
@@ -32,6 +33,9 @@ const isAdmin = computed(() => user.value?.role === 'admin');
 
 // The task I clicked "Start working" on (PM module), with a way to stop.
 const activeTask = computed(() => usePage().props.pmActiveTask);
+// AI sessions of mine waiting to be linked to a task.
+const inboxCount = computed(() => usePage().props.pmInboxCount ?? 0);
+const inboxOpen = ref(false);
 
 </script>
 
@@ -69,6 +73,18 @@ const activeTask = computed(() => usePage().props.pmActiveTask);
                         </Link>
                         <Link :href="route('pm.work.stop')" method="post" as="button" preserve-scroll class="rounded-full px-2 py-0.5 hover:bg-emerald-100 dark:hover:bg-emerald-900">Stop</Link>
                     </div>
+                    <button
+                        type="button"
+                        class="relative inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                        :aria-label="`Inbox, ${inboxCount} waiting`"
+                        @click="inboxOpen = true"
+                    >
+                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M4 13h4l1.5 3h5L16 13h4M5.5 6.5 4 13v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5l-1.5-6.5A1 1 0 0 0 17.5 5.7h-11a1 1 0 0 0-1 .8Z" />
+                        </svg>
+                        <span class="hidden sm:inline">Inbox</span>
+                        <span v-if="inboxCount" class="rounded-full bg-indigo-600 px-1.5 text-xs font-semibold text-indigo-50">{{ inboxCount }}</span>
+                    </button>
                     <ThemeToggle />
 
                     <Dropdown align="right" width="48" class="hidden md:block">
@@ -145,5 +161,7 @@ const activeTask = computed(() => usePage().props.pmActiveTask);
         <main>
             <slot />
         </main>
+
+        <InboxDrawer :open="inboxOpen" @close="inboxOpen = false" />
     </div>
 </template>

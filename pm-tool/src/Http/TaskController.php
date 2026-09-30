@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Pm\Linking\Linker;
 use Pm\Models\Project;
 use Pm\Models\Sprint;
 use Pm\Models\Task;
@@ -63,6 +64,7 @@ class TaskController
                 'completed_at' => $data['status'] === 'done' ? now() : null,
             ]);
         });
+        $this->relink($data['assignee_id'] ?? null);
 
         return back();
     }
@@ -97,7 +99,9 @@ class TaskController
         $data = $request->validate($this->rules($task->project, $request->user()) + [
             'title' => ['sometimes', 'required', 'string', 'max:255'],
         ]);
+        $before = $task->assignee_id;
         $task->applyChanges($data, $request->user());
+        $this->relink($before, $task->assignee_id);
 
         return back();
     }
@@ -124,6 +128,7 @@ class TaskController
                 $task->applyChanges($changes, $me);
             }
         });
+        $this->relink($me->id);
 
         return back();
     }
@@ -131,8 +136,17 @@ class TaskController
     public function stop(Request $request): RedirectResponse
     {
         WorkPeriod::where('user_id', $request->user()->id)->whereNull('ended_at')->update(['ended_at' => now()]);
+        $this->relink($request->user()->id);
 
         return back();
+    }
+
+    /** Who a task change affects: their recent AI sessions may now point elsewhere. */
+    private function relink(?int ...$userIds): void
+    {
+        foreach (array_unique(array_filter($userIds)) as $id) {
+            app(Linker::class)->relinkUser($id);
+        }
     }
 
     /** What a board card and the task page header show. */

@@ -2,8 +2,11 @@
 
 namespace Pm;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
 use Inertia\Inertia;
+use Pm\Console\LinkCommand;
+use Pm\Http\InboxController;
 use Pm\Models\WorkPeriod;
 
 /**
@@ -26,6 +29,13 @@ class PmServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
+
+        $this->commands([LinkCommand::class]);
+        // Link sessions that got new prompts; PM changes relink at once anyway.
+        $this->callAfterResolving(Schedule::class, fn (Schedule $s) => $s->command('pm:link')->everyFiveMinutes()->withoutOverlapping()->onOneServer());
+
+        // How many of my AI sessions wait in the inbox (nav badge).
+        Inertia::share('pmInboxCount', fn () => auth()->user() ? InboxController::countFor(auth()->user()) : 0);
 
         // The task I am working on, shown in the top bar on every page.
         Inertia::share('pmActiveTask', function () {
