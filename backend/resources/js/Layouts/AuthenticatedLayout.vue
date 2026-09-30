@@ -41,7 +41,7 @@ const activeTask = computed(() => usePage().props.pmActiveTask);
             <div class="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8">
                 <Link :href="route('home')" class="flex shrink-0 items-center gap-2.5">
                     <ApplicationLogo class="h-8 w-8" />
-                    <span class="hidden text-sm font-semibold tracking-tight text-gray-900 sm:block">GenAI Log</span>
+                    <span class="hidden text-sm font-semibold tracking-tight text-gray-900 sm:block">Aayatti PM</span>
                 </Link>
 
                 <div class="hidden flex-1 items-center gap-1 md:flex">
